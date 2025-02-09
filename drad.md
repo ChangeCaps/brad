@@ -1,4 +1,5 @@
-# Brad (insert acronym) (the language)
+# Drad (insert acronym) (the language)
+> Dump Brad
 
 ## Types
 
@@ -10,10 +11,11 @@
 
 ### Generics
 
+Simple generics for types and functions.
+
 ### Composites
 
  - references `ref 'a`
- - tasks `task 'a`
  - lists `['a]`
  - array `['a; N]`
  - functions `'a -> 'b -> 'c`
@@ -37,6 +39,24 @@ type works = float | named
 ```
 
 A named type is can be implicitly cast to it's inner type, but the reverse is not possible.
+
+```
+type T =
+  | A
+  | B = str & int
+  | C = int | none
+```
+
+```
+type option<'a> = 'a | none
+```
+
+```
+type struct<'a, 'b> = {
+    field_a: 'a
+    field_b: 'b
+}
+```
 
 ### Builtins
 
@@ -109,36 +129,21 @@ A block returns the value of its last expression.
 
 Follows precedence in above order.
 
-### Do and await
+#### Default operand behaviors
 
-The `do` expression runs an expression asynchonously, that can later be
-`await`ed. `await` takes a task, waits for it to complete and returns the
-result.
+All types have built-in structrual equality with each
 
-```
-let t: task int = do fib(100) 
-let r: int = await t
-```
+1 = 1
+(1,2) == (1,2)
+[1] == [1]
+{ field: 1 } == { field: 1 }
+
+as well as relational comparisions for ordered types (tuples or lists of these primitives). 
 
 ### Calls
 
 Calling a function is done by writing the callee expression followed by a
 number of argument expressions, e.g. `foo 1.0 false`.
-
-#### Closure
-
-If you have a closure that captures some data
-
-#### Zero-argument functions
-
-```
-fn foo(a: int, b: int, c: int) -> int {
-  a + b + c
-}
-
-let closure = fn(none) -> foo 1 2 3
-let result = closure none
-```
 
 ### Tuple initializer
 
@@ -242,11 +247,3 @@ let var: int | none = 0
  - `mut identifier` a mutable binding
  - `ref identifier` a reference to the original variable
  - `pattern, pattern, ...` tuple pattern
-
-
-<!-- - `{ field: pattern, ... }` record pattern -->
-
-## Keywords
-
- - `as`
- - `is` remember these
