@@ -15,7 +15,7 @@ fn main() {
         file: String::from("test.brad"),
     });
     let mut tokens = parse::Tokens::tokenize(&mut interner, source, &input).unwrap();
-    let ast = parse::expr(&mut tokens, true).unwrap();
+    let ast = parse::module(&mut tokens).unwrap();
 
     println!("{:#?}", ast);
 }

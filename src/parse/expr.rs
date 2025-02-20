@@ -443,7 +443,7 @@ fn record(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     Ok(ast::Expr::Record(ast::RecordExpr { fields, span }))
 }
 
-fn block(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
+pub fn block(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let start = input.expect(Token::Open(Delim::Brace))?;
 
     consume_newlines(input);

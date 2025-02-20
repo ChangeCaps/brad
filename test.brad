@@ -1,1 +1,6 @@
-x = ref 2 + 2
+type foo<'a> = int
+alias bar = foo
+
+fn baz (x: int) y, z -> int -> int {
+	let mut i = x * 3
+}
