@@ -1,9 +1,13 @@
-/* Identifiers */
+(* Identifiers *)
 
 <ident>    ::= ident
 <generic>  ::= quote <ident>
 
-/* Literals and initializers */
+(* Literals and initializers 
+
+- Use semicolon as seperator for lists and records, but it is optional as newlines suffice.
+
+*)
 
 <integer>  ::= lit_int
 <string>   ::= lit_str
@@ -11,9 +15,11 @@
 <list>     ::= lbracket nl* (<expr> (comma nl* <expr>)* comma?)? nl* rbracket
 <fieldval> ::= <ident> colon <expr>
 <record>   ::= lbrace nl* (<fieldval> (comma nl* <fieldval>)* comma?)? nl* rbrace
-<literal>  ::= <integer> | <float> | <string> | <list> | <record>
+<tuple>    ::= <expr> (comma <expr>)+
+<literal>  ::= <integer> | <float> | <string> | <list> | <record> | <tuple>
 
-/* Types */
+
+(* Types *)
 
 <type_list>   ::= lbracket <type> rbracket
 
@@ -35,11 +41,19 @@
 <type_tuple>  ::= <type_tuple> star <type>
 
 
-/* Expressions, generally ordered by precedence. */
+(* Expressions, generally ordered by precedence.
+
+- Call binds stronger than unary
+- Bash function call semantics (call first, everything else is an argument in the same expressions!)
+
+- Assignments bind weaker than everything but ref
+- Ref binds the weakest.
+
+ *)
 
 <spec>   ::= lt <generic> (comma <generic>)* comma? gt
 
-<path>   ::= <ident> (colon <ident>)* <spec>?
+<path>   ::= <ident> (coloncolon <ident>)* <spec>?
 
 <term>   ::= <literal> | <path> | lparen <expr> rparen
 
@@ -47,70 +61,35 @@
            | <access> dot <ident>
            | <term>
 
+(* Fix this see below. *)
+
 <call>   ::= <assign> <assign>*
 
-// Binary operators from lowest precedence to highest
-
-// Assignment =
-<assign> ::= <assign> eq <logic>
-           | <logic>
-
-// Logical && and ||
-<logic>  ::= <logic> ampamp <eql>
-           | <logic> pipepipe <eql>
-           | <eql>
-    
-// Equality == and !=
-<eql>    ::= <eql> eqeq <cmp>
-           | <eql> noteq <cmp>
-           | <cmp>
-
-// Comparisions > < >= <=
-<cmp>    ::= <cmp> gt <bitor>
-           | <cmp> lt <bitor>
-           | <cmp> gteq <bitor>
-           | <cmp> lteq <bitor>
-           | <bitor>
-
-// Binary or |
-<bitor>  ::= <bitor> pipe <bitxor>
-           | <bitxor>
-
-// Binary xor ^
-<bitxor> ::= <bitxor> caret <bitand>
-           | <bitand>
-  
-// Binary and &
-<bitand> ::= <bitand> amp <shifts>
-           | <shifts>
-
-// Shifts << >>
-<shifts> ::= <shifts> gtgt <addsub>
-           | <shifts> ltlt <addsub>
-           | <addsub>
-
-// Add and sub + -
-<addsub> ::= <addsub> plus <mumodi>
-           | <addsub> minus <mumodi>
-           | <mumodi>
-
-// Mul *, mod % and div /
-<mumodi> ::= <mumodi> star <unary>
-           | <mumodi> percent <unary>
-           | <mumodi> slash <unary>
-           | <unary>
-
-<unary>  ::= bang  <unary> // !   logical not
-           | minus <unary> // -   numerical negation
-           | tilde <unary> // ~   binary negation
-           | star  <unary> // *   dereference
-           | <access>
+(*  Binary operators from lowest precedence to highest 
 
 
-<arm>    ::= pipe <type> (as <ident>)? thickarrow <expr>
+- Custom token types for unary / sticky operators such as unary but also indices.
+*)
+<assign> ::= <assign> eq                      <logic>  | <logic>
+<logic>  ::= <logic>  (ampamp|pipepipe)       <eql>    | <eql>
+<eql>    ::= <eql>    (eqeq|noteq)            <cmp>    | <cmp>
+<cmp>    ::= <cmp>    (gt|lt|gteq|lteq)       <bitor>  | <bitor>
+<bitor>  ::= <bitor>  pipe                    <bitxor> | <bitxor>
+<bitxor> ::= <bitxor> caret                   <bitand> | <bitand>  
+<bitand> ::= <bitand> amp                     <shift>  | <shift>
+<shift>  ::= <shift>  (gtgt|ltlt)             <addsub> | <addsub>
+<addsub> ::= <addsub> (plus|minus)            <mudimo> | <mumodi>
+<mudimo> ::= <mudimo> (star|slash|percent)    <unary>  | <unary>
+<unary>  ::=          (bang|minus|tilde|star) <unary>  | <access>
+
+
+(* Constant pattern *)
+<bind>   ::= mut? <ident> | <bind> (comma <bind>)+ | rparen <bind> lparen
+
+<arm>    ::= pipe <type> (as <bind>)? thickarrow <expr>
 <match>  ::= match <call> nl (<arm> (nl <arm>)*)*
 
-<let>    ::= let mut? <ident> (colon <type>)? eq <expr>
+<let>    ::= let <bind> (colon <type>)? eq <expr>
 <loop>   ::= loop <block>
 
 <block>  ::= lbrace nl* (<expr> (nl+ <expr>)*)? nl* rbrace
@@ -118,7 +97,7 @@
 <expr>   ::= <match> | <let> | <loop> | <call> | <block> | break
 
 
-/* Decl and Program */
+(* Decl and Program *)
 
 <generics>   ::= lt <type> (comma <type>)* comma? gt
 
@@ -126,9 +105,9 @@
 
 <alias_decl> ::= alias <ident> <generics>? eq <type>
 
-<fn_arg>     ::= <ident> | lparen <ident> colon <type> rparen
+<fn_arg>     ::= lparen <bind> colon <type> rparen
 
-<fn_decl>    ::= fn <ident> <fn_arg>* (thinarrow <type>)? <block>
+<fn_decl>    ::= fn <ident> <generics>? <fn_arg>* (thinarrow <type>)? <block>
 
 <decl>       ::= <type_decl> | <alias_decl> | <fn_decl>
 

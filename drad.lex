@@ -11,6 +11,7 @@ lit_float = [0-9]+ '.' [0-9]*
 
 
 /* two-character symbols */
+coloncolon = '::'
 dotdot     = '..'
 pipelt     = '|>'
 gtgt       = '<<'
@@ -49,6 +50,7 @@ question = '?'
 under    = '_'
 colon    = ':'
 comma    = ','
+semi     = ';'
 dot      = '.'
 eq       = '='
 gt       = '>'
