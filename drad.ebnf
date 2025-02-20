@@ -1,7 +1,7 @@
 /* Identifiers */
 
 <ident>    ::= ident
-<generic>  ::= quote ident
+<generic>  ::= quote <ident>
 
 /* Literals and initializers */
 
@@ -9,7 +9,7 @@
 <string>   ::= lit_str
 <float>    ::= lit_float
 <list>     ::= lbracket nl* (<expr> (comma nl* <expr>)* comma?)? nl* rbracket
-<fieldval> ::= ident colon <expr>
+<fieldval> ::= <ident> colon <expr>
 <record>   ::= lbrace nl* (<fieldval> (comma nl* <fieldval>)* comma?)? nl* rbrace
 <literal>  ::= <integer> | <float> | <string> | <list> | <record>
 
