@@ -1,8 +1,41 @@
+mod binding;
+mod expr;
+mod generic;
 mod interner;
+mod path;
 mod stream;
 mod token;
 mod tokenize;
+mod ty;
 
-pub use interner::Interner;
-pub use stream::Tokens;
-pub use token::{Delim, Token};
+pub use binding::*;
+pub use expr::*;
+pub use generic::*;
+pub use interner::*;
+pub use path::*;
+pub use stream::*;
+pub use token::*;
+pub use ty::*;
+
+use crate::diagnostic::{Diagnostic, Span};
+
+pub fn ident(input: &mut Tokens) -> Result<(&'static str, Span), Diagnostic> {
+    let (token, span) = input.consume();
+
+    match token {
+        Token::Ident(ident) => Ok((ident, span)),
+        _ => {
+            let diagnostic = Diagnostic::error("expected::identifier")
+                .message(format!("expected identifier, found {:?}", token))
+                .span(span);
+
+            Err(diagnostic)
+        }
+    }
+}
+
+pub fn consume_newlines(input: &mut Tokens) {
+    while input.is(Token::Newline) {
+        input.consume();
+    }
+}

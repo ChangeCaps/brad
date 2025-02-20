@@ -1,5 +1,8 @@
+#![allow(dead_code)]
+
 use std::fs;
 
+mod ast;
 mod diagnostic;
 mod parse;
 
@@ -11,7 +14,8 @@ fn main() {
         content: input.clone(),
         file: String::from("test.brad"),
     });
-    let tokens = parse::Tokens::tokenize(&mut interner, source, &input).unwrap();
+    let mut tokens = parse::Tokens::tokenize(&mut interner, source, &input).unwrap();
+    let ast = parse::expr(&mut tokens, true).unwrap();
 
-    println!("{:?}", tokens);
+    println!("{:#?}", ast);
 }

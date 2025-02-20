@@ -76,6 +76,10 @@ impl<'a> Tokenizer<'a> {
 
         let ident = &self.input[start..end];
 
+        if ident == "_" {
+            return Ok((Token::Under, span));
+        }
+
         if let Some(token) = Token::from_keyword(ident) {
             return Ok((token, span));
         }
@@ -129,6 +133,14 @@ impl Iterator for Tokenizer<'_> {
             return Some(Ok((Token::Newline, span)));
         }
 
+        if Self::is_ident_start(c) {
+            return Some(self.ident());
+        }
+
+        if c.is_ascii_digit() {
+            return Some(self.number());
+        }
+
         if self.remaining().len() >= 2 {
             if let Some(token) = Token::from_symbol(&self.remaining()[..2]) {
                 let span = Span {
@@ -143,7 +155,7 @@ impl Iterator for Tokenizer<'_> {
             }
         }
 
-        if let Some(token) = Token::from_symbol(&self.remaining()[..1]) {
+        if let Some(mut token) = Token::from_symbol(&self.remaining()[..1]) {
             let span = Span {
                 source: self.source,
                 start: self.index,
@@ -152,15 +164,15 @@ impl Iterator for Tokenizer<'_> {
 
             self.index += 1;
 
+            let has_whitespace = self.peek().map_or(false, char::is_whitespace);
+
+            match token {
+                Token::Minus if !has_whitespace => token = Token::StickyMinus,
+                Token::Star if !has_whitespace => token = Token::StickyStar,
+                _ => {}
+            }
+
             return Some(Ok((token, span)));
-        }
-
-        if Self::is_ident_start(c) {
-            return Some(self.ident());
-        }
-
-        if c.is_ascii_digit() {
-            return Some(self.number());
         }
 
         let span = Span {

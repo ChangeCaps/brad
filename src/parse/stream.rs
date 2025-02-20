@@ -46,16 +46,48 @@ impl Tokens {
         let result = self.peek_nth(n);
 
         self.index += n + 1;
-        self.index = self.index.max(self.tokens.len());
+        self.index = self.index.min(self.tokens.len());
 
         result
+    }
+
+    pub fn span(&self) -> Span {
+        let (_, start) = self.peek();
+        start
+    }
+
+    pub fn take<E>(&mut self, expected: E) -> bool
+    where
+        E: PartialEq<Token>,
+    {
+        if self.is(expected) {
+            self.consume();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn nth_is<E>(&self, n: usize, expected: E) -> bool
+    where
+        E: PartialEq<Token>,
+    {
+        let (actual, _) = self.peek_nth(n);
+        expected == actual
+    }
+
+    pub fn is<E>(&self, expected: E) -> bool
+    where
+        E: PartialEq<Token>,
+    {
+        self.nth_is(0, expected)
     }
 
     pub fn expect<E>(&mut self, expected: E) -> Result<Span, Diagnostic>
     where
         E: PartialEq<Token> + fmt::Debug,
     {
-        let (actual, span) = self.peek();
+        let (actual, span) = self.consume();
 
         if expected == actual {
             return Ok(span);
