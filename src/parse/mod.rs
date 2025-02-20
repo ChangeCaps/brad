@@ -27,10 +27,6 @@ use crate::{
 pub fn module(input: &mut Tokens) -> Result<ast::Module, Diagnostic> {
     let mut decls = Vec::new();
 
-    /*
-        fn foo {} fn bar {} fn baz {}
-    */
-
     while !input.is(Token::Eof) {
         if !decls.is_empty() {
             input.expect(Token::Newline)?;
