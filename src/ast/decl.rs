@@ -13,6 +13,7 @@ pub enum Decl {
 #[derive(Clone, Debug)]
 pub struct Func {
     pub name: &'static str,
+    pub generics: Option<Generics>,
     pub args: Vec<Argument>,
     pub output: Option<Ty>,
     pub body: Expr,

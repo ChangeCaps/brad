@@ -1,6 +1,6 @@
 use crate::{ast, diagnostic::Diagnostic};
 
-use super::{ident, Token, Tokens};
+use super::{ident, Delim, Token, Tokens};
 
 pub fn binding(input: &mut Tokens) -> Result<ast::Binding, Diagnostic> {
     let first = term(input)?;
@@ -50,6 +50,16 @@ fn term(input: &mut Tokens) -> Result<ast::Binding, Diagnostic> {
                 name,
                 span: span.join(name_span),
             })
+        }
+
+        Token::Open(Delim::Paren) => {
+            input.expect(Token::Open(Delim::Paren))?;
+
+            let binding = binding(input)?;
+
+            input.expect(Token::Close(Delim::Paren))?;
+
+            Ok(binding)
         }
 
         _ => {

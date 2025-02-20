@@ -190,7 +190,7 @@ fn record(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
         if multiline {
             consume_newlines(input);
         } else {
-            input.expect(Token::Comma)?;
+            input.expect(Token::Semi)?;
         }
     }
 

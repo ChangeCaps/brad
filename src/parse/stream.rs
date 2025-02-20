@@ -4,19 +4,35 @@ use crate::diagnostic::{Diagnostic, Span};
 
 use super::token::Token;
 
+#[derive(Clone, Copy, Debug)]
+pub struct TokenEntry {
+    pub whitespace: bool,
+    pub token: Token,
+    pub span: Span,
+}
+
+#[derive(Clone)]
 pub struct Tokens {
-    tokens: Arc<[(Token, Span)]>,
+    tokens: Arc<[TokenEntry]>,
     index: usize,
     span: Span,
 }
 
 impl Tokens {
-    pub fn new(tokens: Vec<(Token, Span)>, span: Span) -> Tokens {
+    pub fn new(tokens: Vec<TokenEntry>, span: Span) -> Tokens {
         Tokens {
             tokens: tokens.into(),
             index: 0,
             span,
         }
+    }
+
+    pub fn nth_has_whitespace(&self, n: usize) -> bool {
+        (self.tokens.get(self.index + n)).map_or(false, |e| e.whitespace)
+    }
+
+    pub fn has_whitespace(&self) -> bool {
+        self.nth_has_whitespace(0)
     }
 
     pub fn peek(&self) -> (Token, Span) {
@@ -29,7 +45,7 @@ impl Tokens {
 
     pub fn peek_nth(&self, n: usize) -> (Token, Span) {
         match self.tokens.get(self.index + n) {
-            Some(result) => *result,
+            Some(result) => (result.token, result.span),
             None => {
                 let span = Span::new(
                     self.span.source,
@@ -104,7 +120,7 @@ impl Tokens {
 impl fmt::Debug for Tokens {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_list()
-            .entries(self.tokens.iter().map(|(token, _)| token))
+            .entries(self.tokens.iter().map(|e| e.token))
             .finish()
     }
 }

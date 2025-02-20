@@ -11,7 +11,7 @@ pub fn expr(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic>
         Token::Loop => loop_(input),
         Token::Match => match_(input),
         Token::Break => break_(input),
-        _ => binary(input, can_call),
+        _ => tuple(input, can_call),
     }
 }
 
@@ -137,17 +137,11 @@ fn pattern(input: &mut Tokens) -> Result<ast::Pattern, Diagnostic> {
     Ok(ast::Pattern::Ty { ty, binding, span })
 }
 
-#[rustfmt::skip]
 fn is_expr(input: &mut Tokens) -> bool {
     let (token, _) = input.peek();
 
-    matches!(
-        token,
-        Token::Bang
-        | Token::StickyMinus
-        | Token::Tilde
-        | Token::StickyStar
-        | Token::Ref
+    match token {
+        Token::Ref
         | Token::Match
         | Token::Let
         | Token::True
@@ -157,8 +151,31 @@ fn is_expr(input: &mut Tokens) -> bool {
         | Token::Ident(_)
         | Token::Integer(_)
         | Token::Floating(_)
-        | Token::String(_)
-    )
+        | Token::String(_) => true,
+
+        Token::Bang | Token::Minus | Token::Tilde | Token::Star => !input.nth_has_whitespace(1),
+
+        _ => false,
+    }
+}
+
+fn tuple(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
+    let first = binary(input, can_call)?;
+
+    if !input.is(Token::Comma) {
+        return Ok(first);
+    }
+
+    let mut span = first.span();
+    let mut items = vec![first];
+
+    while input.take(Token::Comma) {
+        let expr = binary(input, can_call)?;
+        span = span.join(expr.span());
+        items.push(expr);
+    }
+
+    Ok(ast::Expr::Tuple(ast::TupleExpr { items, span }))
 }
 
 fn binary(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
@@ -269,13 +286,17 @@ fn unary(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
 }
 
 fn unary_op(input: &mut Tokens) -> Option<ast::UnaryOp> {
+    if input.nth_has_whitespace(1) {
+        return None;
+    }
+
     let (token, _) = input.peek();
 
     let op = match token {
         Token::Bang => ast::UnaryOp::Not,
-        Token::StickyMinus => ast::UnaryOp::Neg,
+        Token::Minus => ast::UnaryOp::Neg,
         Token::Tilde => ast::UnaryOp::BitNot,
-        Token::StickyStar => ast::UnaryOp::Deref,
+        Token::Star => ast::UnaryOp::Deref,
 
         _ => return None,
     };
@@ -287,7 +308,7 @@ fn unary_op(input: &mut Tokens) -> Option<ast::UnaryOp> {
 fn call(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
     let mut expr = access(input)?;
 
-    while is_expr(input) && can_call {
+    while can_call && is_expr(input) {
         let arg = self::expr(input, false)?;
         let span = expr.span().join(arg.span());
 
@@ -328,7 +349,7 @@ fn access(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
                 });
             }
 
-            Token::Open(Delim::Bracket) => {
+            Token::Open(Delim::Bracket) if !input.has_whitespace() => {
                 input.expect(Token::Open(Delim::Bracket))?;
 
                 let index = self::expr(input, true)?;
@@ -388,12 +409,14 @@ fn term(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
         Token::Open(Delim::Paren) => {
             input.expect(Token::Open(Delim::Paren))?;
 
-            let expr = expr(input, false)?;
+            let expr = expr(input, true)?;
 
             input.expect(Token::Close(Delim::Paren))?;
 
             Ok(expr)
         }
+
+        Token::Open(Delim::Bracket) => list(input),
 
         Token::Open(Delim::Brace) => {
             if is_record(input) {
@@ -413,6 +436,35 @@ fn term(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     }
 }
 
+fn list(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
+    let start = input.expect(Token::Open(Delim::Bracket))?;
+
+    let multiline = input.is(Token::Newline);
+    consume_newlines(input);
+
+    let mut items = Vec::new();
+
+    while !input.is(Token::Close(Delim::Bracket)) {
+        let item = expr(input, true)?;
+        items.push(item);
+
+        if input.is(Token::Close(Delim::Bracket)) {
+            break;
+        }
+
+        if multiline {
+            consume_newlines(input);
+        } else {
+            input.expect(Token::Semi)?;
+        }
+    }
+
+    let end = input.expect(Token::Close(Delim::Bracket))?;
+    let span = start.join(end);
+
+    Ok(ast::Expr::List(ast::ListExpr { items, span }))
+}
+
 fn record(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let start = input.expect(Token::Open(Delim::Brace))?;
 
@@ -430,10 +482,14 @@ fn record(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
 
         fields.push(ast::FieldInit { name, value, span });
 
+        if input.is(Token::Close(Delim::Brace)) {
+            break;
+        }
+
         if multiline {
             consume_newlines(input);
         } else {
-            input.expect(Token::Comma)?;
+            input.expect(Token::Semi)?;
         }
     }
 

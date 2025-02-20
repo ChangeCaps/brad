@@ -29,6 +29,11 @@ fn funcy(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
 
     let (name, span) = ident(input)?;
 
+    let generics = match input.is(Token::Lt) {
+        true => Some(generics(input)?),
+        false => None,
+    };
+
     let mut args = Vec::new();
 
     while !input.is(Token::Open(Delim::Brace)) && !input.is(Token::ThinArrow) {
@@ -45,6 +50,7 @@ fn funcy(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
 
     Ok(ast::Decl::Func(ast::Func {
         name,
+        generics,
         args,
         output,
         body,
@@ -53,9 +59,6 @@ fn funcy(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
 }
 
 fn argument(input: &mut Tokens) -> Result<ast::Argument, Diagnostic> {
-    // x
-    // (x: t)
-
     if !input.is(Token::Open(Delim::Paren)) {
         let binding = binding(input)?;
         let span = binding.span();
@@ -69,16 +72,17 @@ fn argument(input: &mut Tokens) -> Result<ast::Argument, Diagnostic> {
     let (_, start) = input.consume();
 
     let binding = binding(input)?;
-    input.expect(Token::Colon)?;
-    let ty = ty(input)?;
+
+    let ty = if input.take(Token::Colon) {
+        Some(ty(input)?)
+    } else {
+        None
+    };
 
     let end = input.expect(Token::Close(Delim::Paren))?;
+    let span = start.join(end);
 
-    Ok(ast::Argument {
-        binding,
-        ty: Some(ty),
-        span: start.join(end),
-    })
+    Ok(ast::Argument { binding, ty, span })
 }
 
 fn type_(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {

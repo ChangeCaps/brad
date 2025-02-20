@@ -7,6 +7,7 @@ pub enum Expr {
     Literal(Literal),
     List(ListExpr),
     Record(RecordExpr),
+    Tuple(TupleExpr),
     Path(Path),
     Index(IndexExpr),
     Field(FieldExpr),
@@ -28,6 +29,7 @@ impl Expr {
             Self::Literal(lit) => lit.span(),
             Self::List(list) => list.span,
             Self::Record(record) => record.span,
+            Self::Tuple(tuple) => tuple.span,
             Self::Path(path) => path.span,
             Self::Index(index) => index.span,
             Self::Field(field) => field.span,
@@ -64,7 +66,7 @@ impl Literal {
 
 #[derive(Clone, Debug)]
 pub struct ListExpr {
-    pub values: Vec<Expr>,
+    pub items: Vec<Expr>,
     pub span: Span,
 }
 
@@ -85,6 +87,12 @@ pub struct FieldInit {
 pub struct IndexExpr {
     pub target: Box<Expr>,
     pub index: Box<Expr>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct TupleExpr {
+    pub items: Vec<Expr>,
     pub span: Span,
 }
 

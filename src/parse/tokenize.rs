@@ -1,6 +1,6 @@
 use crate::diagnostic::{Diagnostic, SourceId, Span};
 
-use super::{interner::Interner, stream::Tokens, token::Token};
+use super::{interner::Interner, stream::Tokens, token::Token, TokenEntry};
 
 impl Tokens {
     pub fn tokenize(
@@ -110,12 +110,21 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
+fn with_whitespace(whitespace: bool) -> impl FnOnce((Token, Span)) -> TokenEntry {
+    move |(token, span)| TokenEntry {
+        token,
+        span,
+        whitespace,
+    }
+}
+
 impl Iterator for Tokenizer<'_> {
-    type Item = Result<(Token, Span), Diagnostic>;
+    type Item = Result<TokenEntry, Diagnostic>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut c = self.peek()?;
 
+        let whitespace = c.is_whitespace() && c != '\n';
         while c.is_whitespace() && c != '\n' {
             self.consume();
             c = self.peek()?;
@@ -130,15 +139,19 @@ impl Iterator for Tokenizer<'_> {
 
             self.index += 1;
 
-            return Some(Ok((Token::Newline, span)));
+            return Some(Ok(TokenEntry {
+                whitespace,
+                token: Token::Newline,
+                span,
+            }));
         }
 
         if Self::is_ident_start(c) {
-            return Some(self.ident());
+            return Some(self.ident().map(with_whitespace(whitespace)));
         }
 
         if c.is_ascii_digit() {
-            return Some(self.number());
+            return Some(self.number().map(with_whitespace(whitespace)));
         }
 
         if self.remaining().len() >= 2 {
@@ -151,11 +164,15 @@ impl Iterator for Tokenizer<'_> {
 
                 self.index += 2;
 
-                return Some(Ok((token, span)));
+                return Some(Ok(TokenEntry {
+                    whitespace,
+                    token,
+                    span,
+                }));
             }
         }
 
-        if let Some(mut token) = Token::from_symbol(&self.remaining()[..1]) {
+        if let Some(token) = Token::from_symbol(&self.remaining()[..1]) {
             let span = Span {
                 source: self.source,
                 start: self.index,
@@ -164,15 +181,11 @@ impl Iterator for Tokenizer<'_> {
 
             self.index += 1;
 
-            let has_whitespace = self.peek().map_or(false, char::is_whitespace);
-
-            match token {
-                Token::Minus if !has_whitespace => token = Token::StickyMinus,
-                Token::Star if !has_whitespace => token = Token::StickyStar,
-                _ => {}
-            }
-
-            return Some(Ok((token, span)));
+            return Some(Ok(TokenEntry {
+                whitespace,
+                token,
+                span,
+            }));
         }
 
         let span = Span {
