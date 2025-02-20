@@ -1,0 +1,136 @@
+/* Identifiers */
+
+<ident>    ::= ident
+<generic>  ::= quote ident
+
+/* Literals and initializers */
+
+<integer>  ::= lit_int
+<string>   ::= lit_str
+<float>    ::= lit_float
+<list>     ::= lbracket nl* (<expr> (comma nl* <expr>)* comma?)? nl* rbracket
+<fieldval> ::= ident colon <expr>
+<record>   ::= lbrace nl* (<fieldval> (comma nl* <fieldval>)* comma?)? nl* rbrace
+<literal>  ::= <integer> | <float> | <string> | <list> | <record>
+
+/* Types */
+
+<type_list>   ::= lbracket <type> rbracket
+
+<type_field>  ::= <ident> colon <type>
+<type_record> ::= lbrace nl* (<type_field> (comma nl* <type_field>)* comma?)? nl* rbrace
+
+<type_fn>     ::= <type> thinarrow <type>
+
+<type>        ::= <path>
+                | <generic>
+                | <type_fn>
+                | <type_list>
+                | <type_record>
+                | <type_union>
+                | lparen <type> rparen
+
+<type_union>  ::= <type_union> pipe <type_tuple>
+
+<type_tuple>  ::= <type_tuple> star <type>
+
+
+/* Expressions, generally ordered by precedence. */
+
+<spec>   ::= lt <generic> (comma <generic>)* comma? gt
+
+<path>   ::= <ident> (colon <ident>)* <spec>?
+
+<term>   ::= <literal> | <path> | lparen <expr> rparen
+
+<access> ::= <access> lbracket <expr> rbracket
+           | <access> dot <ident>
+           | <term>
+
+<call>   ::= <assign> <assign>*
+
+// Binary operators from lowest precedence to highest
+
+// Assignment =
+<assign> ::= <assign> eq <logic>
+           | <logic>
+
+// Logical && and ||
+<logic>  ::= <logic> ampamp <eql>
+           | <logic> pipepipe <eql>
+           | <eql>
+    
+// Equality == and !=
+<eql>    ::= <eql> eqeq <cmp>
+           | <eql> noteq <cmp>
+           | <cmp>
+
+// Comparisions > < >= <=
+<cmp>    ::= <cmp> gt <bitor>
+           | <cmp> lt <bitor>
+           | <cmp> gteq <bitor>
+           | <cmp> lteq <bitor>
+           | <bitor>
+
+// Binary or |
+<bitor>  ::= <bitor> pipe <bitxor>
+           | <bitxor>
+
+// Binary xor ^
+<bitxor> ::= <bitxor> caret <bitand>
+           | <bitand>
+  
+// Binary and &
+<bitand> ::= <bitand> amp <shifts>
+           | <shifts>
+
+// Shifts << >>
+<shifts> ::= <shifts> gtgt <addsub>
+           | <shifts> ltlt <addsub>
+           | <addsub>
+
+// Add and sub + -
+<addsub> ::= <addsub> plus <mumodi>
+           | <addsub> minus <mumodi>
+           | <mumodi>
+
+// Mul *, mod % and div /
+<mumodi> ::= <mumodi> star <unary>
+           | <mumodi> percent <unary>
+           | <mumodi> slash <unary>
+           | <unary>
+
+<unary>  ::= bang  <unary> // !   logical not
+           | minus <unary> // -   numerical negation
+           | tilde <unary> // ~   binary negation
+           | star  <unary> // *   dereference
+           | ref   <unary> // ref reference
+           | <access>
+
+
+<arm>    ::= pipe <type> (as <ident>)? thickarrow <expr>
+<match>  ::= match <call> nl (<arm> (nl <arm>)*)*
+
+<let>    ::= let mut? <ident> (colon <type>)? eq <expr>
+<loop>   ::= loop <block>
+
+<block>  ::= lbrace nl* (<expr> (nl+ <expr>)*)? nl* rbrace
+
+<expr>   ::= <match> | <let> | <loop> | <call> | <block> | break
+
+
+/* Decl and Program */
+
+<generics>   ::= lt <type> (comma <type>)* comma? gt
+
+<type_decl>  ::= type <ident> <generics>? (eq <type>)?
+
+<alias_decl> ::= alias <ident> <generics>? eq <type>
+
+<fn_arg>     ::= <ident> | lparen <ident> colon <type> rparen
+
+<fn_decl>    ::= fn <ident> <fn_arg>* (thinarrow <type>)? <block>
+
+<decl>       ::= <type_decl> | <alias_decl> | <fn_decl>
+
+<program>    ::= nl* <decl> (nl+ <decl>)* nl* eof
