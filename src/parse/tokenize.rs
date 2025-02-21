@@ -108,6 +108,26 @@ impl<'a> Tokenizer<'a> {
 
         Ok((Token::Integer(n), span))
     }
+
+    fn string(&mut self) -> Result<(Token, Span), Diagnostic> {
+        let start = self.index;
+        self.consume();
+
+        while self.consume() != Some('"') {}
+
+        let end = self.index;
+
+        let span = Span {
+            source: self.source,
+            start,
+            end,
+        };
+
+        let string = &self.input[start + 1..end - 1];
+        let s = self.interner.intern(string);
+
+        Ok((Token::String(s), span))
+    }
 }
 
 fn with_whitespace(whitespace: bool) -> impl FnOnce((Token, Span)) -> TokenEntry {
@@ -152,6 +172,10 @@ impl Iterator for Tokenizer<'_> {
 
         if c.is_ascii_digit() {
             return Some(self.number().map(with_whitespace(whitespace)));
+        }
+
+        if c == '"' {
+            return Some(self.string().map(with_whitespace(whitespace)));
         }
 
         if self.remaining().len() >= 2 {
