@@ -102,7 +102,7 @@ where
             let spaces = s.content[idx..label.span.start].chars().count();
             write!(w, "{}", " ".repeat(spaces))?;
 
-            let end = usize::min(label.span.end, idx + line.len());
+            let end = usize::min(label.span.end, idx + line.len() + 1);
             let underline = usize::max(1, end - label.span.start);
             let underline = "^".repeat(underline);
             write!(w, "{}", underline.red())?;
@@ -113,8 +113,7 @@ where
             }
 
             writeln!(w)?;
-
-            idx += line.len() + '\n'.len_utf8();
+            break;
         }
 
         writeln!(w, "{}{}", " ".repeat(indent + 1), "|".blue())?;
