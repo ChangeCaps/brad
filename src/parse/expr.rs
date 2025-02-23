@@ -429,7 +429,7 @@ fn term(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
         _ => {
             let diagnostic = Diagnostic::error("expected::expression")
                 .message(format!("expected an expression, found {}", token))
-                .span(span);
+                .label(span, "here");
 
             Err(diagnostic)
         }

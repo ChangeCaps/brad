@@ -1,6 +1,10 @@
+mod formatter;
 mod source;
 mod span;
 
+use std::fmt;
+
+pub use formatter::Formatter;
 pub use source::{Source, SourceId, Sources};
 pub use span::Span;
 
@@ -12,10 +16,21 @@ pub enum Severity {
     Help,
 }
 
+impl fmt::Display for Severity {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Severity::Error => write!(f, "error"),
+            Severity::Warning => write!(f, "warning"),
+            Severity::Note => write!(f, "note"),
+            Severity::Help => write!(f, "help"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Diagnostic {
     pub severity: Severity,
-    pub code: String,
+    pub code: Option<String>,
     pub message: Option<String>,
     pub labels: Vec<Label>,
 }
@@ -27,29 +42,34 @@ pub struct Label {
 }
 
 impl Diagnostic {
-    pub fn new(severity: Severity, code: impl Into<String>) -> Diagnostic {
+    pub fn new(severity: Severity) -> Diagnostic {
         Diagnostic {
             severity,
-            code: code.into(),
+            code: None,
             message: None,
             labels: Vec::new(),
         }
     }
 
     pub fn error(code: impl Into<String>) -> Diagnostic {
-        Diagnostic::new(Severity::Error, code)
+        Diagnostic::new(Severity::Error).code(code)
     }
 
-    pub fn warn(code: impl Into<String>) -> Diagnostic {
-        Diagnostic::new(Severity::Warning, code)
+    pub fn warn() -> Diagnostic {
+        Diagnostic::new(Severity::Warning)
     }
 
-    pub fn note(code: impl Into<String>) -> Diagnostic {
-        Diagnostic::new(Severity::Note, code)
+    pub fn note() -> Diagnostic {
+        Diagnostic::new(Severity::Note)
     }
 
-    pub fn help(code: impl Into<String>) -> Diagnostic {
-        Diagnostic::new(Severity::Help, code)
+    pub fn help() -> Diagnostic {
+        Diagnostic::new(Severity::Help)
+    }
+
+    pub fn code(mut self, code: impl Into<String>) -> Diagnostic {
+        self.code = Some(code.into());
+        self
     }
 
     pub fn message(mut self, message: impl Into<String>) -> Diagnostic {

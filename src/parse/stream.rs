@@ -101,7 +101,7 @@ impl Tokens {
 
     pub fn expect<E>(&mut self, expected: E) -> Result<Span, Diagnostic>
     where
-        E: PartialEq<Token> + fmt::Debug,
+        E: PartialEq<Token> + fmt::Display,
     {
         let (actual, span) = self.consume();
 
@@ -109,8 +109,8 @@ impl Tokens {
             return Ok(span);
         }
 
-        let diagnostic = Diagnostic::error("unexpected token")
-            .message(format!("expected {:?}, found {:?}", expected, actual))
+        let diagnostic = Diagnostic::error("unexpected::token")
+            .message(format!("expected {}, found {}", expected, actual))
             .label(span, "here");
 
         Err(diagnostic)

@@ -1,6 +1,3 @@
-type foo<'a> = int
-alias bar = foo
-
-fn baz (x: int) y, z -> int -> int {
-	let mut i = x * 3
+fn main {
+    let x: int = true + false
 }
