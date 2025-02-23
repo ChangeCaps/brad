@@ -64,7 +64,7 @@ fn term(input: &mut Tokens) -> Result<ast::Binding, Diagnostic> {
 
         _ => {
             let diagnostic = Diagnostic::error("expected::binding")
-                .message(format!("expected a binding, found {}", token))
+                .message(format!("expected a binding, found `{}`", token))
                 .span(span);
 
             Err(diagnostic)

@@ -219,7 +219,7 @@ impl Iterator for Tokenizer<'_> {
         };
 
         let diagnostic = Diagnostic::error("unexpected::character")
-            .message(format!("unexpected character: {:?}", c))
+            .message(format!("unexpected character `{}`", c))
             .label(span, "found here");
 
         Some(Err(diagnostic))

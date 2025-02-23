@@ -16,7 +16,7 @@ pub fn decl(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
         Token::Import => import(input),
         _ => {
             let diagnostic = Diagnostic::error("expected::declaration")
-                .message(format!("expected declaration, found {}", token))
+                .message(format!("expected declaration, found `{}`", token))
                 .span(span);
 
             Err(diagnostic)

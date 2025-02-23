@@ -164,7 +164,7 @@ fn term(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
 
         _ => {
             let diagnostic = Diagnostic::error("expected::type")
-                .message(format!("expected a type, found {}", token))
+                .message(format!("expected a type, found `{}`", token))
                 .span(span);
 
             Err(diagnostic)

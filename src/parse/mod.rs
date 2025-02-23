@@ -51,7 +51,7 @@ pub fn ident(input: &mut Tokens) -> Result<(&'static str, Span), Diagnostic> {
         Token::Ident(ident) => Ok((ident, span)),
         _ => {
             let diagnostic = Diagnostic::error("expected::identifier")
-                .message(format!("expected identifier, found {:?}", token))
+                .message(format!("expected identifier, found `{}`", token))
                 .span(span);
 
             Err(diagnostic)

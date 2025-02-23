@@ -110,7 +110,7 @@ impl Tokens {
         }
 
         let diagnostic = Diagnostic::error("unexpected::token")
-            .message(format!("expected {}, found {}", expected, actual))
+            .message(format!("expected `{}`, found `{}`", expected, actual))
             .label(span, "here");
 
         Err(diagnostic)
