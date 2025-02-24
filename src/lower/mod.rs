@@ -105,10 +105,7 @@ impl Lowerer {
 
             if found_module.is_none() && found_item.is_none() {
                 let diagnostic = Diagnostic::error("unresolved::import")
-                    .message(format!(
-                        "path `{}` does not resolve to a module or item",
-                        path,
-                    ))
+                    .message(format!("path `{}` does not resolve to a item", path))
                     .label(path.span, "here");
 
                 return Err(diagnostic);
