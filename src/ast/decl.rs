@@ -1,6 +1,6 @@
 use crate::diagnostic::Span;
 
-use super::{Binding, Expr, Generics, Path, Ty};
+use super::{Binding, Expr, Generic, Generics, Path, Ty};
 
 #[derive(Clone, Debug)]
 pub enum Decl {
@@ -20,6 +20,15 @@ pub struct Func {
     pub span: Span,
 }
 
+impl Func {
+    pub fn generics(&self) -> impl Iterator<Item = &Generic> {
+        self.generics
+            .as_ref()
+            .into_iter()
+            .flat_map(|g| g.generics.iter())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Argument {
     pub binding: Binding,
@@ -35,12 +44,30 @@ pub struct Type {
     pub span: Span,
 }
 
+impl Type {
+    pub fn generics(&self) -> impl Iterator<Item = &Generic> {
+        self.generics
+            .as_ref()
+            .into_iter()
+            .flat_map(|g| g.generics.iter())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Alias {
     pub name: &'static str,
     pub generics: Option<Generics>,
     pub ty: Ty,
     pub span: Span,
+}
+
+impl Alias {
+    pub fn generics(&self) -> impl Iterator<Item = &Generic> {
+        self.generics
+            .as_ref()
+            .into_iter()
+            .flat_map(|g| g.generics.iter())
+    }
 }
 
 #[derive(Clone, Debug)]

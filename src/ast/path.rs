@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::diagnostic::Span;
 
 use super::generic::Spec;
@@ -26,4 +28,26 @@ impl PathSegment {
 pub struct PathItem {
     pub name: &'static str,
     pub span: Span,
+}
+
+impl fmt::Display for PathItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+impl fmt::Display for PathSegment {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PathSegment::Item(item) => write!(f, "{}", item),
+        }
+    }
+}
+
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let segments: Vec<_> = self.segments.iter().map(ToString::to_string).collect();
+
+        write!(f, "{}", segments.join("::"))
+    }
 }

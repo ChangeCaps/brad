@@ -68,7 +68,7 @@ where
             "{}{} {}:{}:{}",
             " ".repeat(indent),
             "-->".blue(),
-            s.file,
+            s.file.display(),
             start_line,
             start_column,
         )?;

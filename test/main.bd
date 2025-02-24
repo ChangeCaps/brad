@@ -1,0 +1,6 @@
+type foo<'a>
+type bar = foo<int> | foo<float>
+
+fn main -> ! {
+    list::each io::println [1, 2, 3]
+}

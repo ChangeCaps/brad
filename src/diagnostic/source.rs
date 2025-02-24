@@ -1,8 +1,8 @@
-use std::{fmt, ops::Index};
+use std::{fmt, ops::Index, path::PathBuf};
 
 pub struct Source {
     pub content: String,
-    pub file: String,
+    pub file: PathBuf,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
