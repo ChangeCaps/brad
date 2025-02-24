@@ -401,6 +401,27 @@ fn term(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
             Ok(ast::Expr::Literal(lit))
         }
 
+        Token::True => {
+            input.consume();
+
+            let lit = ast::Literal::True { span };
+            Ok(ast::Expr::Literal(lit))
+        }
+
+        Token::False => {
+            input.consume();
+
+            let lit = ast::Literal::False { span };
+            Ok(ast::Expr::Literal(lit))
+        }
+
+        Token::None => {
+            input.consume();
+
+            let lit = ast::Literal::None { span };
+            Ok(ast::Expr::Literal(lit))
+        }
+
         Token::Ident(_) => {
             let path = path(input)?;
             Ok(ast::Expr::Path(path))

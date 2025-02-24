@@ -52,6 +52,9 @@ pub enum Literal {
     Int { value: i64, span: Span },
     Float { value: f64, span: Span },
     String { value: &'static str, span: Span },
+    True { span: Span },
+    False { span: Span },
+    None { span: Span },
 }
 
 impl Literal {
@@ -60,6 +63,9 @@ impl Literal {
             Self::Int { span, .. } => *span,
             Self::Float { span, .. } => *span,
             Self::String { span, .. } => *span,
+            Self::True { span } => *span,
+            Self::False { span } => *span,
+            Self::None { span } => *span,
         }
     }
 }
