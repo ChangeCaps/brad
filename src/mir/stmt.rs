@@ -1,5 +1,4 @@
 use super::{BodyId, Local, Tid};
-use crate::hir::{BinaryOp, UnaryOp};
 
 #[derive(Clone, Debug)]
 pub struct Block {
@@ -38,6 +37,53 @@ pub enum Value {
     Binary(BinaryOp, Operand, Operand),
     Unary(UnaryOp, Operand),
     Closure(BodyId, Vec<Operand>, Vec<Tid>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BinaryOp {
+    /// Integer operations
+    Addi,
+    Subi,
+    Muli,
+    Divi,
+    Modi,
+    BitAndi,
+    BitOri,
+    BitXori,
+    Shli,
+    Shri,
+    Eqi,
+    Nei,
+    Lti,
+    Lei,
+    Gti,
+    Gei,
+    /// Floating point operations
+    Addf,
+    Subf,
+    Mulf,
+    Divf,
+    Modf,
+    Eqf,
+    Nef,
+    Ltf,
+    Lef,
+    Gtf,
+    Gef,
+    /// Booleans only
+    And,
+    Or,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnaryOp {
+    Negi,
+    BitNoti,
+    Negf,
+    // Only bools
+    Not,
+    // only ptrs
+    Deref,
 }
 
 impl Value {

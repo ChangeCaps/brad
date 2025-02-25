@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::hir::BinaryOp;
+use crate::mir::Ty;
 use crate::{diagnostic::Diagnostic, hir, mir};
 
 macro_rules! unpack {
@@ -307,16 +309,71 @@ impl<'a> Builder<'a> {
             }
 
             hir::ExprKind::Unary(op, expr) => {
+                let expr_ty = self.build_ty(expr.ty.clone());
+
+                let op = match (op, expr_ty) {
+                    (hir::UnaryOp::Neg, Ty::Int) => mir::UnaryOp::Negi,
+                    (hir::UnaryOp::Neg, Ty::Float) => mir::UnaryOp::Negf,
+                    (hir::UnaryOp::BitNot, Ty::Int) => mir::UnaryOp::BitNoti,
+                    (hir::UnaryOp::Deref, Ty::Ref(_)) => mir::UnaryOp::Deref,
+                    (hir::UnaryOp::Not, _) => todo!(),
+                    (_, expr_ty) => {
+                        return Err(Diagnostic::error("invalid::type::operator")
+                            .message(format!("Type {:?} is not valid for {:?}", expr_ty, op))
+                            .span(expr.span));
+                    }
+                };
+
                 let operand = unpack!(block = self.build_operand(block, *expr)?);
                 let value = mir::Value::Unary(op, operand);
                 Ok(BlockAnd::new(block, value))
             }
 
             hir::ExprKind::Binary(op, lhs, rhs) => {
+                let lhs_ty = self.build_ty(lhs.ty.clone());
+
                 let lhs = unpack!(block = self.build_operand(block, *lhs)?);
+
+                let rhs_ty = self.build_ty(rhs.ty.clone());
                 let rhs = unpack!(block = self.build_operand(block, *rhs)?);
 
+                let op = match (op, rhs_ty, lhs_ty) {
+                    (BinaryOp::Add, Ty::Int, Ty::Int) => mir::BinaryOp::Addi,
+                    (BinaryOp::Add, Ty::Float, Ty::Float) => mir::BinaryOp::Addf,
+                    (BinaryOp::Sub, Ty::Int, Ty::Int) => mir::BinaryOp::Subi,
+                    (BinaryOp::Sub, Ty::Float, Ty::Float) => mir::BinaryOp::Subf,
+                    (BinaryOp::Mul, Ty::Int, Ty::Int) => mir::BinaryOp::Muli,
+                    (BinaryOp::Mul, Ty::Float, Ty::Float) => mir::BinaryOp::Mulf,
+                    (BinaryOp::Div, Ty::Int, Ty::Int) => mir::BinaryOp::Divi,
+                    (BinaryOp::Div, Ty::Float, Ty::Float) => mir::BinaryOp::Divf,
+                    (BinaryOp::Mod, Ty::Int, Ty::Int) => mir::BinaryOp::Modi,
+                    (BinaryOp::Mod, Ty::Float, Ty::Float) => mir::BinaryOp::Modf,
+                    (BinaryOp::Eq, Ty::Int, Ty::Int) => mir::BinaryOp::Eqi,
+                    (BinaryOp::Eq, Ty::Float, Ty::Float) => mir::BinaryOp::Eqf,
+                    (BinaryOp::Ne, Ty::Int, Ty::Int) => mir::BinaryOp::Nei,
+                    (BinaryOp::Ne, Ty::Float, Ty::Float) => mir::BinaryOp::Nef,
+                    (BinaryOp::Lt, Ty::Int, Ty::Int) => mir::BinaryOp::Lti,
+                    (BinaryOp::Lt, Ty::Float, Ty::Float) => mir::BinaryOp::Ltf,
+                    (BinaryOp::Le, Ty::Int, Ty::Int) => mir::BinaryOp::Lei,
+                    (BinaryOp::Le, Ty::Float, Ty::Float) => mir::BinaryOp::Lef,
+                    (BinaryOp::Gt, Ty::Int, Ty::Int) => mir::BinaryOp::Gti,
+                    (BinaryOp::Gt, Ty::Float, Ty::Float) => mir::BinaryOp::Gtf,
+                    (BinaryOp::Ge, Ty::Int, Ty::Int) => mir::BinaryOp::Gei,
+                    (BinaryOp::Ge, Ty::Float, Ty::Float) => mir::BinaryOp::Gef,
+                    (BinaryOp::And, _, _) => todo!(),
+                    (BinaryOp::Or, _, _) => todo!(),
+                    (_, lhs_ty, rhs_ty) => {
+                        return Err(Diagnostic::error("invalid::type::operator")
+                            .message(format!(
+                                "Type and operation {:?} {:?} {:?} is not valid",
+                                lhs_ty, op, rhs_ty
+                            ))
+                            .span(expr.span));
+                    }
+                };
+
                 let value = mir::Value::Binary(op, lhs, rhs);
+
                 Ok(BlockAnd::new(block, value))
             }
 
