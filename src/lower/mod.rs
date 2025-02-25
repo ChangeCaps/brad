@@ -329,7 +329,11 @@ impl Lowerer {
 
                 if expr.ty != lowerer.body_mut().output {
                     let diagnostic = Diagnostic::error("unresolved::type")
-                        .message("expected return type to match function output")
+                        .message(format!(
+                            "expected `{}`, found `{}`",
+                            lowerer.format_ty(&lowerer.body().output),
+                            lowerer.format_ty(&expr.ty),
+                        ))
                         .label(decl.span, "found here");
 
                     return Err(diagnostic);

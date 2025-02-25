@@ -81,6 +81,38 @@ impl Types {
         self.alias.push(alias);
         AliasId(id)
     }
+
+    pub fn format(&self, ty: &Ty) -> String {
+        match ty {
+            Ty::Int => String::from("int"),
+            Ty::Float => String::from("float"),
+            Ty::Str => String::from("str"),
+            Ty::True => String::from("true"),
+            Ty::False => String::from("false"),
+            Ty::None => String::from("none"),
+            Ty::Never => String::from("!"),
+            Ty::Generic(generic) => format!("{:?}", generic),
+            Ty::Named(_, _) => String::from("named"),
+            Ty::Ref(ty) => format!("ref {}", self.format(ty)),
+            Ty::List(ty) => format!("[{}]", self.format(ty)),
+            Ty::Func(i, o) => format!("{} -> {}", self.format(i), self.format(o)),
+            Ty::Tuple(tys) => tys
+                .iter()
+                .map(|ty| self.format(ty))
+                .collect::<Vec<_>>()
+                .join(", "),
+            Ty::Union(tys) => tys
+                .iter()
+                .map(|ty| self.format(ty))
+                .collect::<Vec<_>>()
+                .join(" | "),
+            Ty::Record(fields) => fields
+                .iter()
+                .map(|field| format!("{}: {}", field.name, self.format(&field.ty)))
+                .collect::<Vec<_>>()
+                .join("; "),
+        }
+    }
 }
 
 impl Index<NamedId> for Types {

@@ -1,3 +1,5 @@
 fn main -> none {
-    loop break
+    let x = foo
 }
+
+fn foo -> int { 0 }

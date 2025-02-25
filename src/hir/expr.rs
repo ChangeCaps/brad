@@ -1,6 +1,6 @@
 use crate::diagnostic::Span;
 
-use super::{LocalId, Ty};
+use super::{BodyId, LocalId, Ty};
 
 #[derive(Clone, Debug)]
 pub struct Expr {
@@ -21,11 +21,14 @@ impl Expr {
 
 #[derive(Clone, Debug)]
 pub enum ExprKind {
-    None,
     Int(i64),
     Float(f64),
+    True,
+    False,
+    None,
     String(&'static str),
     Local(LocalId),
+    Func(BodyId, Vec<Ty>),
     List(Vec<Expr>),
     Record(Vec<Init>),
     Index(Box<Expr>, Box<Expr>),
@@ -35,8 +38,9 @@ pub enum ExprKind {
     Call(Box<Expr>, Box<Expr>),
     Assign(Box<Expr>, Box<Expr>),
     Ref(Box<Expr>),
+    Match(Box<Expr>, Vec<Arm>),
     Loop(Box<Expr>),
-    Break(Box<Expr>),
+    Break(Option<Box<Expr>>),
     Let(Binding, Box<Expr>),
     Block(Vec<Expr>),
 }
@@ -46,6 +50,22 @@ pub struct Init {
     pub name: &'static str,
     pub value: Expr,
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct Arm {
+    pub pattern: Pattern,
+    pub expr: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum Pattern {
+    Ty {
+        ty: Ty,
+        binding: Binding,
+        span: Span,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
