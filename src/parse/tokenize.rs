@@ -27,6 +27,10 @@ struct Tokenizer<'a> {
     interner: &'a mut Interner,
 }
 
+fn is_digit(c: Option<char>) -> bool {
+    c.map_or(false, |c| c.is_ascii_digit())
+}
+
 impl<'a> Tokenizer<'a> {
     fn new(interner: &'a mut Interner, source: SourceId, input: &'a str) -> Tokenizer<'a> {
         Tokenizer {
@@ -43,6 +47,10 @@ impl<'a> Tokenizer<'a> {
 
     fn peek(&self) -> Option<char> {
         self.remaining().chars().next()
+    }
+
+    fn peek_nth(&self, n: usize) -> Option<char> {
+        self.remaining().chars().nth(n)
     }
 
     fn consume(&mut self) -> Option<char> {
@@ -90,9 +98,16 @@ impl<'a> Tokenizer<'a> {
 
     fn number(&mut self) -> Result<(Token, Span), Diagnostic> {
         let start = self.index;
+        let mut is_floating = false;
 
-        while self.peek().map_or(false, |c| c.is_ascii_digit()) {
+        while is_digit(self.peek()) {
             self.consume();
+
+            // Allow one dot in the number for floating points
+            if !is_floating && self.peek_nth(0) == Some('.') && is_digit(self.peek_nth(1)) {
+                is_floating = true;
+                self.consume();
+            }
         }
 
         let end = self.index;
@@ -104,9 +119,11 @@ impl<'a> Tokenizer<'a> {
         };
 
         let number = &self.input[start..end];
-        let n = number.parse().unwrap();
 
-        Ok((Token::Integer(n), span))
+        match is_floating {
+            true => Ok((Token::Floating(number.parse().unwrap()), span)),
+            false => Ok((Token::Integer(number.parse().unwrap()), span)),
+        }
     }
 
     fn string(&mut self) -> Result<(Token, Span), Diagnostic> {
