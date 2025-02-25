@@ -1,5 +1,3 @@
 fn main -> none {
-    let x = foo
+    let x = 2
 }
-
-fn foo -> int { 0 }

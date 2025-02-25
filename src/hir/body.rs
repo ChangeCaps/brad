@@ -28,7 +28,7 @@ impl Index<LocalId> for Body {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BodyId(usize);
 
 #[derive(Clone, Debug, Default)]
@@ -45,6 +45,13 @@ impl Bodies {
         let id = self.bodies.len();
         self.bodies.push(body);
         BodyId(id)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (BodyId, &Body)> {
+        self.bodies
+            .iter()
+            .enumerate()
+            .map(|(id, body)| (BodyId(id), body))
     }
 }
 

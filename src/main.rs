@@ -7,6 +7,7 @@ mod compiler;
 mod diagnostic;
 mod hir;
 mod lower;
+mod mir;
 mod parse;
 
 fn main() {

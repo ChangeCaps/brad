@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use super::{Generic, Generics};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Ty {
     Int,
 
@@ -35,7 +35,7 @@ pub enum Ty {
     Record(Vec<Field>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Field {
     pub name: &'static str,
     pub ty: Ty,

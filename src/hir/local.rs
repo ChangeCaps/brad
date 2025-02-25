@@ -12,7 +12,7 @@ pub struct Local {
     pub span: Span,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LocalId(usize);
 
 #[derive(Clone, Debug, Default)]

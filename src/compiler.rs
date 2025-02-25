@@ -3,6 +3,7 @@ use std::{fs, io, path::Path};
 use crate::{
     diagnostic::{Diagnostic, Source, SourceId, Sources},
     lower::Lowerer,
+    mir,
     parse::{self, Interner, Tokens},
 };
 
@@ -81,8 +82,9 @@ impl Compiler {
         }
 
         let hir = lowerer.lower()?;
+        let mir = mir::build(&hir)?;
 
-        println!("{:#?}", hir);
+        println!("{:#?}", mir);
 
         Ok(())
     }
