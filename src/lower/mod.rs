@@ -73,6 +73,7 @@ impl Lowerer {
                         }
 
                         let body = hir::Body {
+                            name: decl.name,
                             generics: hir::Generics::new(),
                             locals: hir::Locals::new(),
                             input: Vec::new(),

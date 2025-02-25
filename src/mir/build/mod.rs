@@ -2,41 +2,6 @@ use std::collections::HashMap;
 
 use crate::{diagnostic::Diagnostic, hir, mir};
 
-pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
-    let mut bodies = HashMap::new();
-    let mut types = HashMap::new();
-    let mut mir = mir::Program::new();
-
-    for (hir_id, _) in hir.bodies.iter() {
-        let mir_id = mir.bodies.push(mir::Body {
-            locals: mir::Locals::new(),
-            block: mir::Block {
-                stmts: Vec::new(),
-                term: mir::Term::Exit,
-            },
-        });
-
-        bodies.insert(hir_id, mir_id);
-    }
-
-    for (hir_id, hir_body) in hir.bodies.iter() {
-        let mut builder = Builder::new(&mut bodies, &mut types, &mut mir, hir, hir_body);
-
-        let (mut block, value) = builder
-            .build_value(mir::Block::new(), hir_body.expr.clone())?
-            .unpack();
-
-        block.term = mir::Term::Return(value);
-
-        mir.bodies[bodies[&hir_id]] = mir::Body {
-            locals: builder.locals,
-            block,
-        };
-    }
-
-    Ok(mir)
-}
-
 macro_rules! unpack {
     ($block:ident = $block_and:expr) => {{
         let block_and = $block_and;
@@ -48,6 +13,97 @@ macro_rules! unpack {
 struct BlockAnd<T> {
     block: mir::Block,
     value: T,
+}
+
+pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnostic> {
+    let mut bodies = HashMap::new();
+    let mut types = HashMap::new();
+    let mut mir = mir::Program::new();
+
+    for (hir_id, _) in hir.bodies.iter() {
+        let mir_id = mir.bodies.push(mir::Body {
+            captures: Vec::new(),
+            locals: mir::Locals::new(),
+            block: mir::Block::new(),
+        });
+
+        bodies.insert(hir_id, mir_id);
+    }
+
+    for (hir_id, hir_body) in hir.bodies.iter() {
+        let mut builder = Builder::new(&mut bodies, &mut types, &mut mir, hir, hir_body);
+        let mut inputs = Vec::new();
+        let mut block = mir::Block::new();
+
+        for input in hir_body.input.iter() {
+            let ty = builder.build_tid(input.ty.clone());
+            let local = builder.locals.push(ty);
+            inputs.push(local);
+        }
+
+        for (input, local) in hir_body.input.iter().zip(inputs) {
+            let place = mir::Place {
+                local,
+                proj: Vec::new(),
+            };
+
+            unpack!(block = builder.build_binding(block, input.binding.clone(), place)?);
+        }
+
+        let value = unpack!(block = builder.build_value(block, hir_body.expr.clone())?);
+
+        block.term = mir::Term::Return(value);
+
+        let mut body = mir::Body {
+            captures: Vec::new(),
+            locals: builder.locals.clone(),
+            block,
+        };
+
+        // generate nested closures to capture outer arguments
+        for (i, _) in hir_body.input.iter().enumerate().rev().skip(1) {
+            let mut locals = mir::Locals::new();
+            let mut captures = Vec::new();
+
+            for input in hir_body.input[..=i].iter() {
+                let tid = builder.build_tid(input.ty.clone());
+                body.captures.push(tid);
+                let local = locals.push(tid);
+
+                captures.push(mir::Operand::Place(mir::Place {
+                    local,
+                    proj: Vec::new(),
+                }));
+            }
+
+            let id = builder.mir.bodies.push(body.clone());
+
+            let generics = hir_body
+                .generics
+                .params
+                .iter()
+                .map(|param| builder.build_tid(hir::Ty::Generic(param.generic)))
+                .collect();
+
+            body = mir::Body {
+                captures: Vec::new(),
+                locals,
+                block: mir::Block {
+                    stmts: Vec::new(),
+                    term: mir::Term::Return(mir::Value::Closure(id, captures, generics)),
+                },
+            };
+        }
+
+        mir.bodies[bodies[&hir_id]] = body;
+    }
+
+    let (_, &main) = bodies
+        .iter()
+        .find(|(&id, _)| hir[id].name == "main")
+        .unwrap();
+
+    Ok((mir, main))
 }
 
 impl<T> BlockAnd<T> {
@@ -182,14 +238,6 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, operand))
             }
 
-            hir::ExprKind::Func(body, tys) => {
-                let body = self.bodies[&body];
-                let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
-
-                let operand = mir::Operand::Const(mir::Const::Func(body, tys));
-                Ok(BlockAnd::new(block, operand))
-            }
-
             hir::ExprKind::Assign(lhs, rhs) => {
                 let l = unpack!(block = self.build_place(block, lhs.as_ref().clone())?);
                 let r = unpack!(block = self.build_value(block, rhs.as_ref().clone())?);
@@ -211,6 +259,7 @@ impl<'a> Builder<'a> {
             hir::ExprKind::Local(_)
             | hir::ExprKind::List(_)
             | hir::ExprKind::Record(_)
+            | hir::ExprKind::Func(_, _)
             | hir::ExprKind::Index(_, _)
             | hir::ExprKind::Field(_, _)
             | hir::ExprKind::Unary(_, _)
@@ -249,6 +298,14 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, mir::Value::Record(values)))
             }
 
+            hir::ExprKind::Func(body, tys) => {
+                let body = self.bodies[&body];
+                let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
+
+                let value = mir::Value::Closure(body, Vec::new(), tys);
+                Ok(BlockAnd::new(block, value))
+            }
+
             hir::ExprKind::Unary(op, expr) => {
                 let operand = unpack!(block = self.build_operand(block, *expr)?);
                 let value = mir::Value::Unary(op, operand);
@@ -283,7 +340,6 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::None
             | hir::ExprKind::String(_)
             | hir::ExprKind::Local(_)
-            | hir::ExprKind::Func(_, _)
             | hir::ExprKind::List(_)
             | hir::ExprKind::Index(_, _)
             | hir::ExprKind::Field(_, _)

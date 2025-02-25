@@ -4,6 +4,7 @@ use super::{stmt::Block, ty::Tid};
 
 #[derive(Clone, Debug)]
 pub struct Body {
+    pub captures: Vec<Tid>,
     pub locals: Locals,
     pub block: Block,
 }
@@ -18,6 +19,14 @@ impl Locals {
         Self::default()
     }
 
+    pub fn len(&self) -> usize {
+        self.locals.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.locals.is_empty()
+    }
+
     pub fn push(&mut self, ty: Tid) -> Local {
         let local = self.locals.len();
         self.locals.push(ty);
@@ -27,6 +36,12 @@ impl Locals {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Local(usize);
+
+impl Local {
+    pub fn index(self) -> usize {
+        self.0
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BodyId(usize);

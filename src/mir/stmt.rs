@@ -37,6 +37,7 @@ pub enum Value {
     Call(Operand, Operand),
     Binary(BinaryOp, Operand, Operand),
     Unary(UnaryOp, Operand),
+    Closure(BodyId, Vec<Operand>, Vec<Tid>),
 }
 
 impl Value {
@@ -50,16 +51,15 @@ pub enum Operand {
 }
 
 impl Operand {
-    pub const ZST: Operand = Operand::Const(Const::Zst);
+    pub const ZST: Operand = Operand::Const(Const::None);
 }
 
 #[derive(Clone, Debug)]
 pub enum Const {
-    Zst,
+    None,
     Int(i64),
     Float(f64),
     String(&'static str),
-    Func(BodyId, Vec<Tid>),
 }
 
 /// Represents a place in memory.

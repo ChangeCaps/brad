@@ -6,6 +6,7 @@ mod ast;
 mod compiler;
 mod diagnostic;
 mod hir;
+mod interpret;
 mod lower;
 mod mir;
 mod parse;
