@@ -30,6 +30,10 @@ impl Locals {
         self.locals.push(local);
         LocalId(id)
     }
+
+    pub fn ids(&self) -> impl Iterator<Item = LocalId> {
+        (0..self.locals.len()).map(LocalId)
+    }
 }
 
 impl Index<LocalId> for Locals {

@@ -37,7 +37,7 @@ pub enum ExprKind {
     Ref(Box<Expr>),
     Loop(Box<Expr>),
     Break(Box<Expr>),
-    Let(LocalId, Box<Expr>),
+    Let(Binding, Box<Expr>),
     Block(Vec<Expr>),
 }
 

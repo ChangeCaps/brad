@@ -80,7 +80,9 @@ impl Compiler {
             lowerer.add_module(&file.path, ast);
         }
 
-        let _hir = lowerer.lower()?;
+        let hir = lowerer.lower()?;
+
+        println!("{:#?}", hir);
 
         Ok(())
     }

@@ -1,6 +1,10 @@
 use std::collections::{hash_map::Entry, HashMap};
 
+use expr::BodyLowerer;
+
 use crate::{ast, diagnostic::Diagnostic, hir};
+
+mod expr;
 
 pub struct Lowerer {
     program: hir::Program,
@@ -27,11 +31,11 @@ impl Lowerer {
         let mut current = self.root;
 
         for module in path {
-            match self.program.modules[current].modules.entry(module) {
+            match self.program[current].modules.entry(module) {
                 Entry::Occupied(entry) => current = *entry.get(),
                 Entry::Vacant(_) => {
                     let new = self.program.modules.insert(hir::Module::new());
-                    self.program.modules[current].modules.insert(module, new);
+                    self.program[current].modules.insert(module, new);
                     current = new;
                 }
             }
@@ -45,6 +49,7 @@ impl Lowerer {
         self.lower_aliases()?;
         self.lower_types()?;
         self.prepare_functions()?;
+        self.lower_functions()?;
 
         Ok(self.program)
     }
@@ -59,6 +64,14 @@ impl Lowerer {
             for decl in &ast.decls {
                 match decl {
                     ast::Decl::Func(decl) => {
+                        if self.program[m].items.contains_key(decl.name) {
+                            let diagnostic = Diagnostic::error("unresolved::func")
+                                .message(format!("function `{}` is already defined", decl.name))
+                                .label(decl.span, "previously defined here");
+
+                            return Err(diagnostic);
+                        }
+
                         let body = hir::Body {
                             generics: hir::Generics::new(),
                             locals: hir::Locals::new(),
@@ -70,27 +83,49 @@ impl Lowerer {
 
                         let body_id = self.program.bodies.insert(body);
                         let item = hir::Item::Func(body_id);
-                        self.program.modules[m].items.insert(decl.name, item);
+                        self.program[m].items.insert(decl.name, item);
                     }
 
                     ast::Decl::Type(decl) => {
+                        if self.program[m].items.contains_key(decl.name) {
+                            let diagnostic = Diagnostic::error("unresolved::type")
+                                .message(format!("type `{}` is already defined", decl.name))
+                                .label(decl.span, "previously defined here");
+
+                            return Err(diagnostic);
+                        }
+
                         let named = hir::Named {
                             generics: hir::Generics::new(),
                             ty: None,
                         };
 
-                        let named_id = self.program.types.insert(named);
+                        let named_id = self.program.types.insert_named(named);
                         let item = hir::Item::Type(named_id);
-                        self.program.modules[m].items.insert(decl.name, item);
+                        self.program[m].items.insert(decl.name, item);
                     }
 
-                    ast::Decl::Alias(alias) => {
-                        let item = hir::Item::Alias(hir::Ty::None);
-                        self.program.modules[m].items.insert(alias.name, item);
+                    ast::Decl::Alias(decl) => {
+                        if self.program[m].items.contains_key(decl.name) {
+                            let diagnostic = Diagnostic::error("unresolved::alias")
+                                .message(format!("alias `{}` is already defined", decl.name))
+                                .label(decl.span, "previously defined here");
+
+                            return Err(diagnostic);
+                        }
+
+                        let alias = hir::Alias {
+                            generics: hir::Generics::new(),
+                            ty: hir::Ty::None,
+                        };
+
+                        let alias_id = self.program.types.insert_alias(alias);
+                        let item = hir::Item::Alias(alias_id);
+                        self.program[m].items.insert(decl.name, item);
                     }
 
                     ast::Decl::Import(import) => {
-                        let ast::PathSegment::Item(item) = import.path.segments.last().unwrap();
+                        let item = import.path.segments.last().unwrap();
                         imports.insert((m, item.name), import.path.clone());
                     }
                 }
@@ -112,11 +147,11 @@ impl Lowerer {
             }
 
             if let Some(found) = found_module {
-                self.program.modules[module].modules.insert(name, found);
+                self.program[module].modules.insert(name, found);
             }
 
             if let Some(found) = found_item {
-                self.program.modules[module].items.insert(name, found);
+                self.program[module].items.insert(name, found);
             }
         }
 
@@ -129,6 +164,12 @@ impl Lowerer {
             for decl in &ast.decls {
                 let ast::Decl::Alias(decl) = decl else {
                     continue;
+                };
+
+                let item = self.program[m].items.get(decl.name);
+                let alias_id = match item {
+                    Some(hir::Item::Alias(alias_id)) => *alias_id,
+                    _ => panic!("expected alias body"),
                 };
 
                 let mut generics = hir::Generics::new();
@@ -150,8 +191,8 @@ impl Lowerer {
                     lower_ty(&self.program, &mut generics, m, &decl.ty)?
                 };
 
-                let item = hir::Item::Alias(ty);
-                self.program.modules[m].items.insert(decl.name, item);
+                self.program[alias_id].generics = generics;
+                self.program[alias_id].ty = ty;
             }
         }
 
@@ -164,6 +205,12 @@ impl Lowerer {
             for decl in &ast.decls {
                 let ast::Decl::Type(decl) = decl else {
                     continue;
+                };
+
+                let item = self.program[m].items.get(decl.name);
+                let named_id = match item {
+                    Some(hir::Item::Type(named_id)) => *named_id,
+                    _ => panic!("expected type body"),
                 };
 
                 let mut generics = hir::Generics::new();
@@ -183,10 +230,8 @@ impl Lowerer {
                     lower_ty(&self.program, &mut generics, m, ty)?
                 };
 
-                self.program.types.insert(hir::Named {
-                    generics,
-                    ty: Some(ty),
-                });
+                self.program[named_id].ty = Some(ty);
+                self.program[named_id].generics = generics;
             }
         }
 
@@ -200,114 +245,101 @@ impl Lowerer {
                     continue;
                 };
 
-                let item = self.program.modules[m].items.get(decl.name);
-                let body_id = match item {
-                    Some(hir::Item::Func(body_id)) => *body_id,
-                    _ => panic!("expected function body"),
-                };
-
-                let mut generics = hir::Generics::new();
-                let generic_ctx: &mut dyn GenericContext = if let Some(ref params) = decl.generics {
-                    for param in params.generics.iter() {
-                        let _ = (&mut generics).resolve_generic(param);
-                    }
-
-                    &mut &generics
-                } else {
-                    &mut &mut generics
-                };
-
-                for input in &decl.args {
-                    let Some(ref ty) = input.ty else {
-                        let diagnostic = Diagnostic::error("unresolved::type")
-                            .message("missing type in function argument")
-                            .label(input.span, "found here");
-
-                        return Err(diagnostic);
-                    };
-
-                    let ty = lower_ty(&self.program, &mut *generic_ctx, m, ty)?;
-                    let body = &mut self.program.bodies[body_id];
-
-                    let binding = lower_binding(body, input.binding.clone(), ty.clone())?;
-                    body.input.push(hir::Argument { ty, binding });
-                }
-
-                let output = if let Some(ref ty) = decl.output {
-                    lower_ty(&self.program, &mut *generic_ctx, m, ty)?
-                } else {
-                    let diagnostic = Diagnostic::error("unresolved::type")
-                        .message("missing return type in function")
-                        .label(decl.span, "found here");
-
-                    return Err(diagnostic);
-                };
-
-                self.program.bodies[body_id].output = output;
-                self.program.bodies[body_id].generics = generics;
+                Self::prepare_function(&mut self.program, m, decl)?;
             }
         }
 
         Ok(())
     }
-}
 
-fn lower_binding(
-    body: &mut hir::Body,
-    binding: ast::Binding,
-    ty: hir::Ty,
-) -> Result<hir::Binding, Diagnostic> {
-    match binding {
-        ast::Binding::Wild { span } => Ok(hir::Binding::Wild { span }),
+    fn prepare_function(
+        program: &mut hir::Program,
+        m: hir::ModuleId,
+        decl: &ast::Func,
+    ) -> Result<(), Diagnostic> {
+        let item = program[m].items.get(decl.name);
+        let body_id = match item {
+            Some(hir::Item::Func(body_id)) => *body_id,
+            _ => panic!("expected function body"),
+        };
 
-        ast::Binding::Bind {
-            mutable,
-            name,
-            span,
-        } => {
-            let local = hir::Local {
-                mutable,
-                ty,
-                name,
-                span,
+        let mut generics = hir::Generics::new();
+        let generic_ctx: &mut dyn GenericContext = if let Some(ref params) = decl.generics {
+            for param in params.generics.iter() {
+                let _ = (&mut generics).resolve_generic(param);
+            }
+
+            &mut &generics
+        } else {
+            &mut &mut generics
+        };
+
+        for input in &decl.args {
+            let Some(ref ty) = input.ty else {
+                let diagnostic = Diagnostic::error("unresolved::type")
+                    .message("missing type in function argument")
+                    .label(input.span, "found here");
+
+                return Err(diagnostic);
             };
 
-            let local_id = body.locals.insert(local);
-            Ok(hir::Binding::Bind {
-                local: local_id,
-                span,
-            })
+            let ty = lower_ty(program, &mut *generic_ctx, m, ty)?;
+
+            let mut lowerer = BodyLowerer::new(program, m, body_id);
+            let binding = lowerer.lower_binding(input.binding.clone(), ty.clone())?;
+            lowerer.body_mut().input.push(hir::Argument { ty, binding });
         }
 
-        ast::Binding::Tuple { bindings, span } => {
-            if let hir::Ty::Tuple(tys) = ty {
-                if bindings.len() != tys.len() {
+        let output = if let Some(ref ty) = decl.output {
+            lower_ty(program, &mut *generic_ctx, m, ty)?
+        } else {
+            let diagnostic = Diagnostic::error("unresolved::type")
+                .message("missing return type in function")
+                .label(decl.span, "found here");
+
+            return Err(diagnostic);
+        };
+
+        program[body_id].output = output;
+        program[body_id].generics = generics;
+
+        Ok(())
+    }
+
+    fn lower_functions(&mut self) -> Result<(), Diagnostic> {
+        for &(m, ref ast) in &self.modules {
+            for decl in &ast.decls {
+                let ast::Decl::Func(decl) = decl else {
+                    continue;
+                };
+
+                let item = self.program[m].items.get(decl.name);
+                let body_id = match item {
+                    Some(hir::Item::Func(body_id)) => *body_id,
+                    _ => panic!("expected function body"),
+                };
+
+                let mut lowerer = BodyLowerer::new(&mut self.program, m, body_id);
+
+                for local in lowerer.body_mut().locals.ids() {
+                    lowerer.push_scope(local);
+                }
+
+                let expr = lowerer.lower_expr(decl.body.clone())?;
+
+                if expr.ty != lowerer.body_mut().output {
                     let diagnostic = Diagnostic::error("unresolved::type")
-                        .message("expected tuple type in binding")
-                        .label(span, "found here");
+                        .message("expected return type to match function output")
+                        .label(decl.span, "found here");
 
                     return Err(diagnostic);
                 }
 
-                let mut result = Vec::new();
-
-                for (binding, ty) in bindings.into_iter().zip(tys) {
-                    let binding = lower_binding(body, binding, ty)?;
-                    result.push(binding);
-                }
-
-                Ok(hir::Binding::Tuple {
-                    bindings: result,
-                    span,
-                })
-            } else {
-                let diagnostic = Diagnostic::error("unresolved::type")
-                    .message("expected tuple type in binding")
-                    .label(span, "found here");
-
-                Err(diagnostic)
+                lowerer.body_mut().expr = expr;
             }
         }
+
+        Ok(())
     }
 }
 
@@ -362,10 +394,8 @@ fn resolve_import(
     mut module: hir::ModuleId,
     path: ast::Path,
 ) -> Result<(Option<hir::ModuleId>, Option<hir::Item>), Diagnostic> {
-    for segment in &path.segments[..path.segments.len() - 1] {
-        let ast::PathSegment::Item(item) = segment;
-
-        if let Some(next) = lowerer.program.modules[module].modules.get(item.name) {
+    for item in &path.segments[..path.segments.len() - 1] {
+        if let Some(next) = lowerer.program[module].modules.get(item.name) {
             module = *next;
             continue;
         }
@@ -386,10 +416,10 @@ fn resolve_import(
         }
     }
 
-    let ast::PathSegment::Item(item) = path.segments.last().unwrap();
+    let item = path.segments.last().unwrap();
 
-    let found_item = lowerer.program.modules[module].items.get(item.name);
-    let found_module = lowerer.program.modules[module].modules.get(item.name);
+    let found_item = lowerer.program[module].items.get(item.name);
+    let found_module = lowerer.program[module].modules.get(item.name);
 
     Ok((found_module.cloned(), found_item.cloned()))
 }
@@ -486,22 +516,25 @@ fn lower_ty_inner(
     })
 }
 
-fn resolve_ty(
-    hir: &hir::Program,
-    ctx: &mut impl GenericContext,
+enum Resolved {
+    Type(hir::Ty),
+    Func(hir::BodyId, Vec<hir::Ty>),
+}
+
+fn resolve_item(
+    program: &hir::Program,
+    mut ctx: impl GenericContext,
     mut module: hir::ModuleId,
     path: ast::Path,
-) -> Result<hir::Ty, Diagnostic> {
-    let mut spec = Vec::new();
+) -> Result<Resolved, Diagnostic> {
+    let mut generics = Vec::new();
 
     for ty in path.spec.iter().flatten() {
-        spec.push(lower_ty_inner(hir, ctx, module, ty)?);
+        generics.push(lower_ty_inner(program, &mut ctx, module, ty)?);
     }
 
-    for segment in &path.segments[..path.segments.len() - 1] {
-        let ast::PathSegment::Item(item) = segment;
-
-        if let Some(next) = hir.modules[module].modules.get(item.name) {
+    for item in &path.segments[..path.segments.len() - 1] {
+        if let Some(next) = program[module].modules.get(item.name) {
             module = *next;
             continue;
         }
@@ -512,16 +545,58 @@ fn resolve_ty(
         return Err(diagnostic);
     }
 
-    let ast::PathSegment::Item(item) = path.segments.last().unwrap();
+    let item = path.segments.last().unwrap();
 
-    match hir.modules[module].items.get(item.name) {
-        Some(hir::Item::Type(named_id)) => Ok(hir::Ty::Named(*named_id, spec)),
+    match program[module].items.get(item.name) {
+        Some(hir::Item::Type(named_id)) => Ok(Resolved::Type(hir::Ty::Named(*named_id, generics))),
 
-        Some(hir::Item::Alias(ty)) => Ok(ty.clone()),
+        Some(hir::Item::Alias(alias_id)) => {
+            if program[*alias_id].generics.params.len() != generics.len() {
+                let diagnostic = Diagnostic::error("unresolved::type")
+                    .message("expected generic arguments in alias")
+                    .label(path.span, "found here");
+
+                return Err(diagnostic);
+            }
+
+            let spec = hir::Spec::new(&program[*alias_id].generics, &generics)?;
+            let ty = spec.apply(program[*alias_id].ty.clone())?;
+            Ok(Resolved::Type(ty))
+        }
+
+        Some(hir::Item::Func(body_id)) => {
+            if program[*body_id].generics.params.len() != generics.len() {
+                let diagnostic = Diagnostic::error("unresolved::type")
+                    .message("expected generic arguments in function")
+                    .label(path.span, "found here");
+
+                return Err(diagnostic);
+            }
+
+            Ok(Resolved::Func(*body_id, generics))
+        }
 
         _ => {
             let diagnostic = Diagnostic::error("unresolved::type")
                 .message(format!("module does not contain type `{}`", item.name));
+
+            Err(diagnostic)
+        }
+    }
+}
+
+fn resolve_ty(
+    program: &hir::Program,
+    ctx: &mut dyn GenericContext,
+    module: hir::ModuleId,
+    path: ast::Path,
+) -> Result<hir::Ty, Diagnostic> {
+    match resolve_item(program, ctx, module, path.clone())? {
+        Resolved::Type(ty) => Ok(ty),
+        Resolved::Func(_, _) => {
+            let diagnostic = Diagnostic::error("unresolved::type")
+                .message("expected type, found function")
+                .label(path.span, "found here");
 
             Err(diagnostic)
         }

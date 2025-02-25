@@ -3,7 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use super::{BodyId, NamedId, Ty};
+use super::{AliasId, BodyId, NamedId};
 
 #[derive(Clone, Debug, Default)]
 pub struct Module {
@@ -21,7 +21,7 @@ impl Module {
 pub enum Item {
     Func(BodyId),
     Type(NamedId),
-    Alias(Ty),
+    Alias(AliasId),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

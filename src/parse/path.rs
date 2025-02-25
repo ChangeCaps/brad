@@ -12,7 +12,7 @@ pub fn path(input: &mut Tokens) -> Result<ast::Path, Diagnostic> {
     loop {
         let (name, span) = ident(input)?;
 
-        segments.push(ast::PathSegment::Item(ast::PathItem { name, span }));
+        segments.push(ast::PathSegment { name, span });
 
         if input.is(Token::ColonColon) {
             input.consume();
@@ -25,7 +25,7 @@ pub fn path(input: &mut Tokens) -> Result<ast::Path, Diagnostic> {
         panic!("segments.first() and segments.last() should always return Some");
     };
 
-    let mut span = first.span().join(last.span());
+    let mut span = first.span.join(last.span);
 
     let spec = if input.is(Token::Lt) {
         let spec = spec(input)?;

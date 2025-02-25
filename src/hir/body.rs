@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use crate::diagnostic::Span;
 
-use super::{Binding, Expr, Generics, Locals, Ty};
+use super::{Binding, Expr, Generics, Local, LocalId, Locals, Ty};
 
 #[derive(Clone, Debug)]
 pub struct Body {
@@ -18,6 +18,14 @@ pub struct Body {
 pub struct Argument {
     pub binding: Binding,
     pub ty: Ty,
+}
+
+impl Index<LocalId> for Body {
+    type Output = Local;
+
+    fn index(&self, index: LocalId) -> &Self::Output {
+        &self.locals[index]
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

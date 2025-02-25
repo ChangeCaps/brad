@@ -12,35 +12,14 @@ pub struct Path {
 }
 
 #[derive(Clone, Debug)]
-pub enum PathSegment {
-    Item(PathItem),
-}
-
-impl PathSegment {
-    pub fn span(&self) -> Span {
-        match self {
-            PathSegment::Item(item) => item.span,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct PathItem {
+pub struct PathSegment {
     pub name: &'static str,
     pub span: Span,
 }
 
-impl fmt::Display for PathItem {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
-
 impl fmt::Display for PathSegment {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            PathSegment::Item(item) => write!(f, "{}", item),
-        }
+        write!(f, "{}", self.name)
     }
 }
 
