@@ -1,4 +1,5 @@
-use super::{body::Local, ty::Tid, BodyId};
+use super::{BodyId, Local, Tid};
+use crate::hir::{BinaryOp, UnaryOp};
 
 #[derive(Clone, Debug)]
 pub struct Block {
@@ -33,6 +34,8 @@ pub enum Value {
     Record(Vec<Operand>),
     Promote(Tid, Operand),
     Call(Operand, Operand),
+    Binary(BinaryOp, Operand, Operand),
+    Unary(UnaryOp, Operand),
 }
 
 impl Value {

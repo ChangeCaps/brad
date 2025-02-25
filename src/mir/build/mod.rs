@@ -96,13 +96,22 @@ impl<'a> Builder<'a> {
 
     fn build_place(&mut self, mut block: mir::Block, expr: hir::Expr) -> BuildResult<mir::Place> {
         match expr.kind {
+            hir::ExprKind::Local(local) => {
+                let local = self.build_local(local);
+                let place = mir::Place {
+                    local,
+                    proj: Vec::new(),
+                };
+
+                Ok(BlockAnd::new(block, place))
+            }
+
             hir::ExprKind::Int(_)
             | hir::ExprKind::Float(_)
             | hir::ExprKind::True
             | hir::ExprKind::False
             | hir::ExprKind::None
             | hir::ExprKind::String(_)
-            | hir::ExprKind::Local(_)
             | hir::ExprKind::Func(_, _)
             | hir::ExprKind::List(_)
             | hir::ExprKind::Record(_)
@@ -209,6 +218,20 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, value))
             }
 
+            hir::ExprKind::Unary(op, expr) => {
+                let operand = unpack!(block = self.build_operand(block, *expr)?);
+                let value = mir::Value::Unary(op, operand);
+                Ok(BlockAnd::new(block, value))
+            }
+
+            hir::ExprKind::Binary(op, lhs, rhs) => {
+                let lhs = unpack!(block = self.build_operand(block, *lhs)?);
+                let rhs = unpack!(block = self.build_operand(block, *rhs)?);
+
+                let value = mir::Value::Binary(op, lhs, rhs);
+                Ok(BlockAnd::new(block, value))
+            }
+
             hir::ExprKind::Int(_)
             | hir::ExprKind::Float(_)
             | hir::ExprKind::True
@@ -221,8 +244,6 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Record(_)
             | hir::ExprKind::Index(_, _)
             | hir::ExprKind::Field(_, _)
-            | hir::ExprKind::Unary(_, _)
-            | hir::ExprKind::Binary(_, _, _)
             | hir::ExprKind::Call(_, _)
             | hir::ExprKind::Assign(_, _)
             | hir::ExprKind::Ref(_)
