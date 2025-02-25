@@ -109,7 +109,7 @@ impl<'a> BodyLowerer<'a> {
     }
 
     /// Asserts that a type is a subtype of another type.
-    pub fn is_subty(&mut self, ty: &hir::Ty, sub: &hir::Ty) -> bool {
+    pub fn is_subty(&self, ty: &hir::Ty, sub: &hir::Ty) -> bool {
         match (ty, sub) {
             (hir::Ty::Int, hir::Ty::Int)
             | (hir::Ty::Float, hir::Ty::Float)
