@@ -167,10 +167,6 @@ impl<'a> BodyLowerer<'a> {
             }
 
             (hir::Ty::Union(tys), hir::Ty::Union(subs)) => {
-                if tys.len() != subs.len() {
-                    return false;
-                }
-
                 for sub in subs {
                     if !tys.contains(sub) {
                         return false;

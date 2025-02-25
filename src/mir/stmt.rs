@@ -32,7 +32,8 @@ pub enum Term {
 pub enum Value {
     Use(Operand),
     Record(Vec<Operand>),
-    Promote(Tid, Operand),
+    Promote(Tid, Vec<Tid>, Operand),
+    Coerce(Vec<Tid>, Vec<Tid>, Operand),
     Call(Operand, Operand),
     Binary(BinaryOp, Operand, Operand),
     Unary(UnaryOp, Operand),

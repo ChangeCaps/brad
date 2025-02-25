@@ -1,3 +1,5 @@
 fn main -> none {
-    let x: true | false = true
+    let x: true | int = 0
+    let y: true | false | int = x
 }
+

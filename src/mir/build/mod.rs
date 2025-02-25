@@ -106,6 +106,19 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, place))
             }
 
+            hir::ExprKind::Field(target, field) => {
+                let hir::Ty::Record(fields) = target.ty.clone() else {
+                    panic!()
+                };
+
+                let mut target = unpack!(block = self.build_place(block, *target)?);
+
+                let index = fields.iter().position(|f| f.name == field).unwrap();
+
+                target.proj.push(mir::Proj::Field(index));
+                Ok(BlockAnd::new(block, target))
+            }
+
             hir::ExprKind::Int(_)
             | hir::ExprKind::Float(_)
             | hir::ExprKind::True
@@ -116,7 +129,6 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::List(_)
             | hir::ExprKind::Record(_)
             | hir::ExprKind::Index(_, _)
-            | hir::ExprKind::Field(_, _)
             | hir::ExprKind::Unary(_, _)
             | hir::ExprKind::Binary(_, _, _)
             | hir::ExprKind::Call(_, _)
@@ -178,9 +190,19 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, operand))
             }
 
+            hir::ExprKind::Assign(lhs, rhs) => {
+                let l = unpack!(block = self.build_place(block, lhs.as_ref().clone())?);
+                let r = unpack!(block = self.build_value(block, rhs.as_ref().clone())?);
+                let r = unpack!(block = self.coerce_value(block, r, rhs.ty, lhs.ty)?);
+
+                block.stmts.push(mir::Stmt::Assign(l, r));
+
+                Ok(BlockAnd::new(block, mir::Operand::ZST))
+            }
+
             hir::ExprKind::Let(binding, ty, value) => {
                 let place = unpack!(block = self.build_place(block, value.as_ref().clone())?);
-                let place = unpack!(block = self.build_place_coercion(block, place, value.ty, ty)?);
+                let place = unpack!(block = self.coerce_place(block, place, value.ty, ty)?);
                 unpack!(block = self.build_binding(block, binding, place)?);
 
                 Ok(BlockAnd::new(block, mir::Operand::ZST))
@@ -194,7 +216,6 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Unary(_, _)
             | hir::ExprKind::Binary(_, _, _)
             | hir::ExprKind::Call(_, _)
-            | hir::ExprKind::Assign(_, _)
             | hir::ExprKind::Ref(_)
             | hir::ExprKind::Match(_, _)
             | hir::ExprKind::Loop(_)
@@ -218,6 +239,16 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, value))
             }
 
+            hir::ExprKind::Record(fields) => {
+                let mut values = Vec::new();
+
+                for field in fields {
+                    values.push(unpack!(block = self.build_operand(block, field.value)?));
+                }
+
+                Ok(BlockAnd::new(block, mir::Value::Record(values)))
+            }
+
             hir::ExprKind::Unary(op, expr) => {
                 let operand = unpack!(block = self.build_operand(block, *expr)?);
                 let value = mir::Value::Unary(op, operand);
@@ -232,6 +263,19 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, value))
             }
 
+            hir::ExprKind::Call(func, input) => {
+                let hir::Ty::Func(i_ty, _) = func.ty.clone() else {
+                    panic!()
+                };
+
+                let f = unpack!(block = self.build_operand(block, func.as_ref().clone())?);
+                let i = unpack!(block = self.build_operand(block, input.as_ref().clone())?);
+                let i = unpack!(block = self.coerce_operand(block, i, input.ty, *i_ty)?);
+
+                let value = mir::Value::Call(f, i);
+                Ok(BlockAnd::new(block, value))
+            }
+
             hir::ExprKind::Int(_)
             | hir::ExprKind::Float(_)
             | hir::ExprKind::True
@@ -241,10 +285,8 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Local(_)
             | hir::ExprKind::Func(_, _)
             | hir::ExprKind::List(_)
-            | hir::ExprKind::Record(_)
             | hir::ExprKind::Index(_, _)
             | hir::ExprKind::Field(_, _)
-            | hir::ExprKind::Call(_, _)
             | hir::ExprKind::Assign(_, _)
             | hir::ExprKind::Ref(_)
             | hir::ExprKind::Match(_, _)
@@ -292,7 +334,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn build_place_coercion(
+    fn coerce_place(
         &mut self,
         mut block: mir::Block,
         place: mir::Place,
@@ -307,7 +349,7 @@ impl<'a> Builder<'a> {
 
         let operand = mir::Operand::Place(place.clone());
         let value = mir::Value::Use(operand);
-        let value = unpack!(block = self.build_value_coercion(block, value, from, to)?);
+        let value = unpack!(block = self.coerce_value(block, value, from, to)?);
 
         let local = self.locals.push(tid);
         let place = mir::Place {
@@ -320,7 +362,7 @@ impl<'a> Builder<'a> {
         Ok(BlockAnd::new(block, place))
     }
 
-    fn build_operand_coercion(
+    fn coerce_operand(
         &mut self,
         mut block: mir::Block,
         operand: mir::Operand,
@@ -334,7 +376,7 @@ impl<'a> Builder<'a> {
         let tid = self.build_tid(to.clone());
 
         let value = mir::Value::Use(operand);
-        let value = unpack!(block = self.build_value_coercion(block, value, from, to)?);
+        let value = unpack!(block = self.coerce_value(block, value, from, to)?);
 
         let local = self.locals.push(tid);
         let place = mir::Place {
@@ -347,7 +389,7 @@ impl<'a> Builder<'a> {
         Ok(BlockAnd::new(block, mir::Operand::Place(place)))
     }
 
-    fn build_value_coercion(
+    fn coerce_value(
         &mut self,
         mut block: mir::Block,
         value: mir::Value,
@@ -371,6 +413,20 @@ impl<'a> Builder<'a> {
             | mir::Ty::Record(_) => todo!(),
 
             mir::Ty::Union(tys) => {
+                if let mir::Ty::Union(from_tys) = self.mir.types[from].clone() {
+                    let local = self.locals.push(from);
+                    let place = mir::Place {
+                        local,
+                        proj: Vec::new(),
+                    };
+
+                    block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+
+                    let operand = mir::Operand::Place(place);
+                    let value = mir::Value::Coerce(from_tys, tys, operand);
+                    return Ok(BlockAnd::new(block, value));
+                }
+
                 if !tys.contains(&from) {
                     panic!();
                 }
@@ -384,7 +440,7 @@ impl<'a> Builder<'a> {
                 block.stmts.push(mir::Stmt::Assign(place.clone(), value));
 
                 let operand = mir::Operand::Place(place);
-                let value = mir::Value::Promote(from, operand);
+                let value = mir::Value::Promote(from, tys, operand);
                 Ok(BlockAnd::new(block, value))
             }
         }
@@ -453,16 +509,19 @@ impl<'a> Builder<'a> {
 
                 mir::Ty::Func(i, o)
             }
+
             hir::Ty::Tuple(ref tys) => {
                 let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
 
                 mir::Ty::Record(tys)
             }
+
             hir::Ty::Union(ref tys) => {
                 let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
 
                 mir::Ty::Union(tys)
             }
+
             hir::Ty::Record(ref fields) => {
                 let fields = fields
                     .iter()
