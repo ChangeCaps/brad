@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use crate::hir::BinaryOp;
-use crate::mir::Ty;
 use crate::{diagnostic::Diagnostic, hir, mir};
 
 macro_rules! unpack {
@@ -309,15 +308,18 @@ impl<'a> Builder<'a> {
             }
 
             hir::ExprKind::Unary(op, expr) => {
-                let expr_ty = self.build_ty(expr.ty.clone());
+                let hir_ty = expr.ty.clone();
+                let mir_ty = self.build_ty(hir_ty.clone());
 
-                let op = match (op, expr_ty) {
-                    (hir::UnaryOp::Neg, Ty::Int) => mir::UnaryOp::Negi,
-                    (hir::UnaryOp::Neg, Ty::Float) => mir::UnaryOp::Negf,
-                    (hir::UnaryOp::BitNot, Ty::Int) => mir::UnaryOp::BitNoti,
-                    (hir::UnaryOp::Deref, Ty::Ref(_)) => mir::UnaryOp::Deref,
-                    (hir::UnaryOp::Not, _) => todo!(),
-                    (_, expr_ty) => {
+                let op = match (op, mir_ty, hir_ty) {
+                    (hir::UnaryOp::Neg, mir::Ty::Int, _) => mir::UnaryOp::Negi,
+                    (hir::UnaryOp::Neg, mir::Ty::Float, _) => mir::UnaryOp::Negf,
+                    (hir::UnaryOp::BitNot, mir::Ty::Int, _) => mir::UnaryOp::BitNoti,
+                    (hir::UnaryOp::Deref, mir::Ty::Ref(_), _) => mir::UnaryOp::Deref,
+                    (hir::UnaryOp::Not, _, hir::Ty::True | hir::Ty::False | hir::Ty::None) => {
+                        mir::UnaryOp::Not
+                    }
+                    (_, expr_ty, _) => {
                         return Err(Diagnostic::error("invalid::type::operator")
                             .message(format!("Type {:?} is not valid for {:?}", expr_ty, op))
                             .span(expr.span));
@@ -338,28 +340,28 @@ impl<'a> Builder<'a> {
                 let rhs = unpack!(block = self.build_operand(block, *rhs)?);
 
                 let op = match (op, rhs_ty, lhs_ty) {
-                    (BinaryOp::Add, Ty::Int, Ty::Int) => mir::BinaryOp::Addi,
-                    (BinaryOp::Add, Ty::Float, Ty::Float) => mir::BinaryOp::Addf,
-                    (BinaryOp::Sub, Ty::Int, Ty::Int) => mir::BinaryOp::Subi,
-                    (BinaryOp::Sub, Ty::Float, Ty::Float) => mir::BinaryOp::Subf,
-                    (BinaryOp::Mul, Ty::Int, Ty::Int) => mir::BinaryOp::Muli,
-                    (BinaryOp::Mul, Ty::Float, Ty::Float) => mir::BinaryOp::Mulf,
-                    (BinaryOp::Div, Ty::Int, Ty::Int) => mir::BinaryOp::Divi,
-                    (BinaryOp::Div, Ty::Float, Ty::Float) => mir::BinaryOp::Divf,
-                    (BinaryOp::Mod, Ty::Int, Ty::Int) => mir::BinaryOp::Modi,
-                    (BinaryOp::Mod, Ty::Float, Ty::Float) => mir::BinaryOp::Modf,
-                    (BinaryOp::Eq, Ty::Int, Ty::Int) => mir::BinaryOp::Eqi,
-                    (BinaryOp::Eq, Ty::Float, Ty::Float) => mir::BinaryOp::Eqf,
-                    (BinaryOp::Ne, Ty::Int, Ty::Int) => mir::BinaryOp::Nei,
-                    (BinaryOp::Ne, Ty::Float, Ty::Float) => mir::BinaryOp::Nef,
-                    (BinaryOp::Lt, Ty::Int, Ty::Int) => mir::BinaryOp::Lti,
-                    (BinaryOp::Lt, Ty::Float, Ty::Float) => mir::BinaryOp::Ltf,
-                    (BinaryOp::Le, Ty::Int, Ty::Int) => mir::BinaryOp::Lei,
-                    (BinaryOp::Le, Ty::Float, Ty::Float) => mir::BinaryOp::Lef,
-                    (BinaryOp::Gt, Ty::Int, Ty::Int) => mir::BinaryOp::Gti,
-                    (BinaryOp::Gt, Ty::Float, Ty::Float) => mir::BinaryOp::Gtf,
-                    (BinaryOp::Ge, Ty::Int, Ty::Int) => mir::BinaryOp::Gei,
-                    (BinaryOp::Ge, Ty::Float, Ty::Float) => mir::BinaryOp::Gef,
+                    (BinaryOp::Add, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Addi,
+                    (BinaryOp::Add, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Addf,
+                    (BinaryOp::Sub, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Subi,
+                    (BinaryOp::Sub, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Subf,
+                    (BinaryOp::Mul, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Muli,
+                    (BinaryOp::Mul, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Mulf,
+                    (BinaryOp::Div, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Divi,
+                    (BinaryOp::Div, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Divf,
+                    (BinaryOp::Mod, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Modi,
+                    (BinaryOp::Mod, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Modf,
+                    (BinaryOp::Eq, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Eqi,
+                    (BinaryOp::Eq, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Eqf,
+                    (BinaryOp::Ne, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Nei,
+                    (BinaryOp::Ne, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Nef,
+                    (BinaryOp::Lt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Lti,
+                    (BinaryOp::Lt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Ltf,
+                    (BinaryOp::Le, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Lei,
+                    (BinaryOp::Le, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Lef,
+                    (BinaryOp::Gt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Gti,
+                    (BinaryOp::Gt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Gtf,
+                    (BinaryOp::Ge, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Gei,
+                    (BinaryOp::Ge, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Gef,
                     (BinaryOp::And, _, _) => todo!(),
                     (BinaryOp::Or, _, _) => todo!(),
                     (_, lhs_ty, rhs_ty) => {
@@ -570,7 +572,17 @@ impl<'a> Builder<'a> {
         local
     }
 
-    fn build_tid(&mut self, hir: hir::Ty) -> mir::Tid {
+    fn build_tid(&mut self, mut hir: hir::Ty) -> mir::Tid {
+        match hir {
+            hir::Ty::Union(ref mut tys) => {
+                tys.sort_by(|a, b| a.cmp(b));
+            }
+            hir::Ty::Record(ref mut tys) => {
+                tys.sort_by(|a, b| a.cmp(b));
+            }
+            _ => {}
+        }
+
         if let Some(&tid) = self.types.get(&hir) {
             return tid;
         }

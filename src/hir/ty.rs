@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use super::{Generic, Generics};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Ty {
     Int,
 
@@ -35,7 +35,7 @@ pub enum Ty {
     Record(Vec<Field>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Field {
     pub name: &'static str,
     pub ty: Ty,
@@ -53,10 +53,10 @@ pub struct Alias {
     pub ty: Ty,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NamedId(usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AliasId(usize);
 
 #[derive(Clone, Debug, Default)]

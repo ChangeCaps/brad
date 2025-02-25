@@ -21,7 +21,7 @@ pub struct Param {
     pub generic: Generic,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Generic {
     index: usize,
 }
