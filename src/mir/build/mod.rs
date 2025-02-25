@@ -116,9 +116,9 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Match(_, _)
             | hir::ExprKind::Loop(_)
             | hir::ExprKind::Break(_)
-            | hir::ExprKind::Let(_, _)
+            | hir::ExprKind::Let(_, _, _)
             | hir::ExprKind::Block(_) => {
-                let ty = self.build_ty(expr.ty.clone());
+                let ty = self.build_tid(expr.ty.clone());
                 let local = self.locals.push(ty);
 
                 let value = unpack!(block = self.build_value(block, expr)?);
@@ -161,15 +161,23 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, operand))
             }
 
-            hir::ExprKind::Let(binding, value) => {
-                let place = unpack!(block = self.build_place(block, *value)?);
+            hir::ExprKind::Func(body, tys) => {
+                let body = self.bodies[&body];
+                let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
+
+                let operand = mir::Operand::Const(mir::Const::Func(body, tys));
+                Ok(BlockAnd::new(block, operand))
+            }
+
+            hir::ExprKind::Let(binding, ty, value) => {
+                let place = unpack!(block = self.build_place(block, value.as_ref().clone())?);
+                let place = unpack!(block = self.build_place_coercion(block, place, value.ty, ty)?);
                 unpack!(block = self.build_binding(block, binding, place)?);
 
                 Ok(BlockAnd::new(block, mir::Operand::ZST))
             }
 
             hir::ExprKind::Local(_)
-            | hir::ExprKind::Func(_, _)
             | hir::ExprKind::List(_)
             | hir::ExprKind::Record(_)
             | hir::ExprKind::Index(_, _)
@@ -221,7 +229,7 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Match(_, _)
             | hir::ExprKind::Loop(_)
             | hir::ExprKind::Break(_)
-            | hir::ExprKind::Let(_, _) => {
+            | hir::ExprKind::Let(_, _, _) => {
                 let operand = unpack!(block = self.build_operand(block, expr)?);
                 Ok(BlockAnd::new(block, mir::Value::Use(operand)))
             }
@@ -263,23 +271,128 @@ impl<'a> Builder<'a> {
         }
     }
 
+    fn build_place_coercion(
+        &mut self,
+        mut block: mir::Block,
+        place: mir::Place,
+        from: hir::Ty,
+        to: hir::Ty,
+    ) -> BuildResult<mir::Place> {
+        if from == to {
+            return Ok(BlockAnd::new(block, place));
+        }
+
+        let tid = self.build_tid(to.clone());
+
+        let operand = mir::Operand::Place(place.clone());
+        let value = mir::Value::Use(operand);
+        let value = unpack!(block = self.build_value_coercion(block, value, from, to)?);
+
+        let local = self.locals.push(tid);
+        let place = mir::Place {
+            local,
+            proj: Vec::new(),
+        };
+
+        block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+
+        Ok(BlockAnd::new(block, place))
+    }
+
+    fn build_operand_coercion(
+        &mut self,
+        mut block: mir::Block,
+        operand: mir::Operand,
+        from: hir::Ty,
+        to: hir::Ty,
+    ) -> BuildResult<mir::Operand> {
+        if from == to {
+            return Ok(BlockAnd::new(block, operand));
+        }
+
+        let tid = self.build_tid(to.clone());
+
+        let value = mir::Value::Use(operand);
+        let value = unpack!(block = self.build_value_coercion(block, value, from, to)?);
+
+        let local = self.locals.push(tid);
+        let place = mir::Place {
+            local,
+            proj: Vec::new(),
+        };
+
+        block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+
+        Ok(BlockAnd::new(block, mir::Operand::Place(place)))
+    }
+
+    fn build_value_coercion(
+        &mut self,
+        mut block: mir::Block,
+        value: mir::Value,
+        from: hir::Ty,
+        to: hir::Ty,
+    ) -> BuildResult<mir::Value> {
+        if from == to {
+            return Ok(BlockAnd::new(block, value));
+        }
+
+        let from = self.build_tid(from);
+
+        match self.build_ty(to.clone()) {
+            mir::Ty::Int
+            | mir::Ty::Float
+            | mir::Ty::Str
+            | mir::Ty::Generic(_)
+            | mir::Ty::Ref(_)
+            | mir::Ty::List(_)
+            | mir::Ty::Func(_, _)
+            | mir::Ty::Record(_) => todo!(),
+
+            mir::Ty::Union(tys) => {
+                if !tys.contains(&from) {
+                    panic!();
+                }
+
+                let local = self.locals.push(from);
+                let place = mir::Place {
+                    local,
+                    proj: Vec::new(),
+                };
+
+                block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+
+                let operand = mir::Operand::Place(place);
+                let value = mir::Value::Promote(from, operand);
+                Ok(BlockAnd::new(block, value))
+            }
+        }
+    }
+
     fn build_local(&mut self, hir: hir::LocalId) -> mir::Local {
         if let Some(&local) = self.local_map.get(&hir) {
             return local;
         }
 
-        let ty = self.build_ty(self.body.locals[hir].ty.clone());
+        let ty = self.build_tid(self.body.locals[hir].ty.clone());
         let local = self.locals.push(ty);
         self.local_map.insert(hir, local);
         local
     }
 
-    fn build_ty(&mut self, hir: hir::Ty) -> mir::Tid {
+    fn build_tid(&mut self, hir: hir::Ty) -> mir::Tid {
         if let Some(&tid) = self.types.get(&hir) {
             return tid;
         }
 
-        let mir = match hir {
+        let ty = self.build_ty(hir.clone());
+        let tid = self.mir.types.push(ty);
+        self.types.insert(hir, tid);
+        tid
+    }
+
+    fn build_ty(&mut self, hir: hir::Ty) -> mir::Ty {
+        match hir {
             hir::Ty::Int => mir::Ty::Int,
             hir::Ty::Float => mir::Ty::Float,
             hir::Ty::Str => mir::Ty::Str,
@@ -303,42 +416,40 @@ impl<'a> Builder<'a> {
                 match self.hir[id].ty {
                     Some(ref ty) => {
                         let ty = spec.apply(ty.clone()).unwrap();
-                        let tid = self.build_ty(ty);
-                        self.mir.types[tid].clone()
+                        self.build_ty(ty)
                     }
                     None => mir::Ty::ZST,
                 }
             }
 
-            hir::Ty::Ref(ref ty) => mir::Ty::Ref(self.build_ty(ty.as_ref().clone())),
+            hir::Ty::Ref(ref ty) => mir::Ty::Ref(self.build_tid(ty.as_ref().clone())),
 
-            hir::Ty::List(ref ty) => mir::Ty::List(self.build_ty(ty.as_ref().clone())),
+            hir::Ty::List(ref ty) => mir::Ty::List(self.build_tid(ty.as_ref().clone())),
 
             hir::Ty::Func(ref i, ref o) => {
-                let i = self.build_ty(i.as_ref().clone());
-                let o = self.build_ty(o.as_ref().clone());
+                let i = self.build_tid(i.as_ref().clone());
+                let o = self.build_tid(o.as_ref().clone());
 
                 mir::Ty::Func(i, o)
             }
             hir::Ty::Tuple(ref tys) => {
-                let tys = tys.iter().map(|ty| self.build_ty(ty.clone())).collect();
+                let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
 
                 mir::Ty::Record(tys)
             }
             hir::Ty::Union(ref tys) => {
-                let tys = tys.iter().map(|ty| self.build_ty(ty.clone())).collect();
+                let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
 
                 mir::Ty::Union(tys)
             }
             hir::Ty::Record(ref fields) => {
-                let fields = fields.iter().map(|f| self.build_ty(f.ty.clone())).collect();
+                let fields = fields
+                    .iter()
+                    .map(|f| self.build_tid(f.ty.clone()))
+                    .collect();
 
                 mir::Ty::Record(fields)
             }
-        };
-
-        let tid = self.mir.types.push(mir);
-        self.types.insert(hir, tid);
-        tid
+        }
     }
 }

@@ -662,7 +662,7 @@ impl<'a> BodyLowerer<'a> {
     fn lower_let(&mut self, ast: ast::LetExpr) -> Result<hir::Expr, Diagnostic> {
         let value = self.lower_expr(*ast.value)?;
 
-        let binding = if let Some(ty) = ast.ty {
+        let (binding, ty) = if let Some(ty) = ast.ty {
             let ty = self.lower_ty(&ty)?;
 
             if !self.is_subty(&ty, &value.ty) {
@@ -673,13 +673,17 @@ impl<'a> BodyLowerer<'a> {
                 return Err(diagnostic);
             }
 
-            self.lower_binding(ast.binding, ty)?
+            let binding = self.lower_binding(ast.binding, ty.clone())?;
+
+            (binding, ty)
         } else {
-            self.lower_binding(ast.binding, value.ty.clone())?
+            let binding = self.lower_binding(ast.binding, value.ty.clone())?;
+
+            (binding, value.ty.clone())
         };
 
         Ok(hir::Expr {
-            kind: hir::ExprKind::Let(binding, Box::new(value)),
+            kind: hir::ExprKind::Let(binding, ty, Box::new(value)),
             ty: hir::Ty::None,
             span: ast.span,
         })

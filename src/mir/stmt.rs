@@ -1,4 +1,4 @@
-use super::{body::Local, ty::Tid};
+use super::{body::Local, ty::Tid, BodyId};
 
 #[derive(Clone, Debug)]
 pub struct Block {
@@ -31,6 +31,7 @@ pub enum Term {
 pub enum Value {
     Use(Operand),
     Record(Vec<Operand>),
+    Promote(Tid, Operand),
     Call(Operand, Operand),
 }
 
@@ -54,6 +55,7 @@ pub enum Const {
     Int(i64),
     Float(f64),
     String(&'static str),
+    Func(BodyId, Vec<Tid>),
 }
 
 /// Represents a place in memory.

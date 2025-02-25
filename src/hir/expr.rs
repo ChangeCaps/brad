@@ -41,7 +41,7 @@ pub enum ExprKind {
     Match(Box<Expr>, Vec<Arm>),
     Loop(Box<Expr>),
     Break(Option<Box<Expr>>),
-    Let(Binding, Box<Expr>),
+    Let(Binding, Ty, Box<Expr>),
     Block(Vec<Expr>),
 }
 
