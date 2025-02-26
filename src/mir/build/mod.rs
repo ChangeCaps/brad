@@ -574,12 +574,8 @@ impl<'a> Builder<'a> {
 
     fn build_tid(&mut self, mut hir: hir::Ty) -> mir::Tid {
         match hir {
-            hir::Ty::Union(ref mut tys) => {
-                tys.sort_by(|a, b| a.cmp(b));
-            }
-            hir::Ty::Record(ref mut tys) => {
-                tys.sort_by(|a, b| a.cmp(b));
-            }
+            hir::Ty::Union(ref mut tys) => tys.sort(),
+            hir::Ty::Record(ref mut tys) => tys.sort(),
             _ => {}
         }
 
