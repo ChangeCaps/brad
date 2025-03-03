@@ -23,8 +23,11 @@ pub enum Ty {
     /// Represents a function type.
     Func(Tid, Tid),
 
+    /// Represents a tuple type.
+    Tuple(Vec<Tid>),
+
     /// Represents a record type.
-    Record(Vec<Tid>),
+    Record(Vec<(&'static str, Tid)>),
 
     /// Represents a union type.
     Union(Vec<Tid>),

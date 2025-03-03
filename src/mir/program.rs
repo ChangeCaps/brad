@@ -1,13 +1,14 @@
-use super::{body::Bodies, ty::Types};
+use super::{body::Bodies, ty::Types, Tid};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Program {
     pub bodies: Bodies,
     pub types: Types,
+    pub builtins: Builtins,
 }
 
-impl Program {
-    pub fn new() -> Self {
-        Self::default()
-    }
+#[derive(Clone, Debug)]
+pub struct Builtins {
+    pub true_tid: Tid,
+    pub false_tid: Tid,
 }

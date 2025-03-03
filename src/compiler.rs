@@ -85,8 +85,6 @@ impl Compiler {
         let hir = lowerer.lower()?;
         let (mir, main) = mir::build(&hir)?;
 
-        println!("{:#?}", mir);
-
         let interpreter = Interpreter::new(mir);
         interpreter.run(main);
 

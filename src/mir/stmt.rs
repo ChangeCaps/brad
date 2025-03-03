@@ -18,7 +18,11 @@ impl Block {
 #[derive(Clone, Debug)]
 pub enum Stmt {
     Assign(Place, Value),
-    Match(Place, Block, Vec<(Tid, Block)>),
+    Match {
+        target: Place,
+        default: Block,
+        cases: Vec<(Tid, Local, Block)>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -30,7 +34,8 @@ pub enum Term {
 #[derive(Clone, Debug)]
 pub enum Value {
     Use(Operand),
-    Record(Vec<Operand>),
+    Tuple(Vec<Operand>),
+    Record(Vec<(&'static str, Operand)>),
     Promote(Tid, Vec<Tid>, Operand),
     Coerce(Vec<Tid>, Vec<Tid>, Operand),
     Call(Operand, Operand),
@@ -113,11 +118,13 @@ pub enum Const {
 pub struct Place {
     pub local: Local,
     pub proj: Vec<Proj>,
+    pub is_mutable: bool,
 }
 
 #[derive(Clone, Debug)]
 pub enum Proj {
-    Field(usize),
+    Field(&'static str),
+    Tuple(usize),
     Index(Local),
     Deref,
 }

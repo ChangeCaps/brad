@@ -1,5 +1,9 @@
-fn main -> none {
-    let x: true | int = 0
-    let y: true | false | int = x
+fn main -> int {
+    fib 10
 }
 
+fn fib (n: int) -> int {
+    match n <= 1
+    | true => n
+    | false => (fib n - 1) + (fib n - 2)
+}

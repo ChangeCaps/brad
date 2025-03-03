@@ -57,7 +57,7 @@ impl<'a> BodyLowerer<'a> {
                 span,
             } => {
                 let local = hir::Local {
-                    mutable,
+                    is_mutable: mutable,
                     ty,
                     name,
                     span,
@@ -298,7 +298,7 @@ impl<'a> BodyLowerer<'a> {
         }
 
         let ty = hir::Ty::Tuple(tys);
-        let kind = hir::ExprKind::List(exprs);
+        let kind = hir::ExprKind::Tuple(exprs);
         let span = ast.span;
 
         Ok(hir::Expr { kind, ty, span })
@@ -477,17 +477,16 @@ impl<'a> BodyLowerer<'a> {
             | hir::BinaryOp::BitOr
             | hir::BinaryOp::BitXor
             | hir::BinaryOp::Shl
-            | hir::BinaryOp::Shr
-            | hir::BinaryOp::Eq
+            | hir::BinaryOp::Shr => lhs.ty.clone(),
+
+            hir::BinaryOp::Eq
             | hir::BinaryOp::Ne
             | hir::BinaryOp::Lt
             | hir::BinaryOp::Le
             | hir::BinaryOp::Gt
-            | hir::BinaryOp::Ge => lhs.ty.clone(),
-
-            hir::BinaryOp::And | hir::BinaryOp::Or => {
-                hir::Ty::Union(vec![hir::Ty::True, hir::Ty::False])
-            }
+            | hir::BinaryOp::Ge
+            | hir::BinaryOp::And
+            | hir::BinaryOp::Or => hir::Ty::Union(vec![hir::Ty::True, hir::Ty::False]),
         };
 
         let kind = hir::ExprKind::Binary(op, Box::new(lhs), Box::new(rhs));

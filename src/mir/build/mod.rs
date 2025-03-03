@@ -19,7 +19,23 @@ struct BlockAnd<T> {
 pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnostic> {
     let mut bodies = HashMap::new();
     let mut types = HashMap::new();
-    let mut mir = mir::Program::new();
+
+    let mut mir_types = mir::Types::new();
+
+    let true_tid = mir_types.push(mir::Ty::ZST);
+    let false_tid = mir_types.push(mir::Ty::ZST);
+
+    types.insert(hir::Ty::True, true_tid);
+    types.insert(hir::Ty::False, false_tid);
+
+    let mut mir = mir::Program {
+        bodies: mir::Bodies::new(),
+        types: mir_types,
+        builtins: mir::Builtins {
+            true_tid,
+            false_tid,
+        },
+    };
 
     for (hir_id, _) in hir.bodies.iter() {
         let mir_id = mir.bodies.push(mir::Body {
@@ -46,6 +62,7 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnost
             let place = mir::Place {
                 local,
                 proj: Vec::new(),
+                is_mutable: false,
             };
 
             unpack!(block = builder.build_binding(block, input.binding.clone(), place)?);
@@ -74,6 +91,7 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnost
                 captures.push(mir::Operand::Place(mir::Place {
                     local,
                     proj: Vec::new(),
+                    is_mutable: false,
                 }));
             }
 
@@ -154,26 +172,77 @@ impl<'a> Builder<'a> {
     fn build_place(&mut self, mut block: mir::Block, expr: hir::Expr) -> BuildResult<mir::Place> {
         match expr.kind {
             hir::ExprKind::Local(local) => {
-                let local = self.build_local(local);
                 let place = mir::Place {
-                    local,
+                    local: self.build_local(local),
                     proj: Vec::new(),
+                    is_mutable: self.body.locals[local].is_mutable,
                 };
 
                 Ok(BlockAnd::new(block, place))
             }
 
             hir::ExprKind::Field(target, field) => {
-                let hir::Ty::Record(fields) = target.ty.clone() else {
-                    panic!()
-                };
-
                 let mut target = unpack!(block = self.build_place(block, *target)?);
 
-                let index = fields.iter().position(|f| f.name == field).unwrap();
-
-                target.proj.push(mir::Proj::Field(index));
+                target.proj.push(mir::Proj::Field(field));
                 Ok(BlockAnd::new(block, target))
+            }
+
+            hir::ExprKind::Match(target, arms) => {
+                if !matches!(target.ty, hir::Ty::Union(_)) {
+                    panic!("Match target must be a union type");
+                }
+
+                let target = unpack!(block = self.build_place(block, *target)?);
+
+                let tid = self.build_tid(expr.ty.clone());
+                let output = self.locals.push(tid);
+                let mut cases = Vec::new();
+
+                for arm in arms {
+                    match arm.pattern {
+                        hir::Pattern::Ty { ty, binding, .. } => {
+                            let tid = self.build_tid(ty.clone());
+                            let local = self.locals.push(tid);
+
+                            let place = mir::Place {
+                                local,
+                                proj: Vec::new(),
+                                is_mutable: false,
+                            };
+
+                            let BlockAnd { mut block, .. } =
+                                self.build_binding(mir::Block::new(), binding, place.clone())?;
+
+                            let value = unpack!(block = self.build_value(block, arm.expr)?);
+
+                            let output = mir::Place {
+                                local: output,
+                                proj: Vec::new(),
+                                is_mutable: false,
+                            };
+
+                            block.stmts.push(mir::Stmt::Assign(output, value));
+                            block.term = mir::Term::Exit;
+
+                            cases.push((tid, local, block));
+                        }
+                    }
+                }
+
+                block.stmts.push(mir::Stmt::Match {
+                    target,
+                    default: mir::Block::new(),
+                    cases,
+                });
+
+                let output = mir::Place {
+                    local: output,
+                    proj: Vec::new(),
+                    is_mutable: false,
+                };
+
+                Ok(BlockAnd::new(block, output))
             }
 
             hir::ExprKind::Int(_)
@@ -184,6 +253,7 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::String(_)
             | hir::ExprKind::Func(_, _)
             | hir::ExprKind::List(_)
+            | hir::ExprKind::Tuple(_)
             | hir::ExprKind::Record(_)
             | hir::ExprKind::Index(_, _)
             | hir::ExprKind::Unary(_, _)
@@ -191,7 +261,6 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Call(_, _)
             | hir::ExprKind::Assign(_, _)
             | hir::ExprKind::Ref(_)
-            | hir::ExprKind::Match(_, _)
             | hir::ExprKind::Loop(_)
             | hir::ExprKind::Break(_)
             | hir::ExprKind::Let(_, _, _)
@@ -204,6 +273,7 @@ impl<'a> Builder<'a> {
                 let place = mir::Place {
                     local,
                     proj: Vec::new(),
+                    is_mutable: false,
                 };
 
                 block.stmts.push(mir::Stmt::Assign(place.clone(), value));
@@ -244,6 +314,14 @@ impl<'a> Builder<'a> {
                 let r = unpack!(block = self.build_value(block, rhs.as_ref().clone())?);
                 let r = unpack!(block = self.coerce_value(block, r, rhs.ty, lhs.ty)?);
 
+                if !l.is_mutable {
+                    let diagnostic = Diagnostic::error("invalid::assign::immutable")
+                        .message("Cannot assign to immutable place")
+                        .span(lhs.span);
+
+                    return Err(diagnostic);
+                }
+
                 block.stmts.push(mir::Stmt::Assign(l, r));
 
                 Ok(BlockAnd::new(block, mir::Operand::ZST))
@@ -259,6 +337,7 @@ impl<'a> Builder<'a> {
 
             hir::ExprKind::Local(_)
             | hir::ExprKind::List(_)
+            | hir::ExprKind::Tuple(_)
             | hir::ExprKind::Record(_)
             | hir::ExprKind::Func(_, _)
             | hir::ExprKind::Index(_, _)
@@ -289,11 +368,22 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, value))
             }
 
+            hir::ExprKind::Tuple(exprs) => {
+                let mut values = Vec::new();
+
+                for expr in exprs {
+                    values.push(unpack!(block = self.build_operand(block, expr)?));
+                }
+
+                Ok(BlockAnd::new(block, mir::Value::Tuple(values)))
+            }
+
             hir::ExprKind::Record(fields) => {
                 let mut values = Vec::new();
 
                 for field in fields {
-                    values.push(unpack!(block = self.build_operand(block, field.value)?));
+                    let operand = unpack!(block = self.build_operand(block, field.value)?);
+                    values.push((field.name, operand));
                 }
 
                 Ok(BlockAnd::new(block, mir::Value::Record(values)))
@@ -418,16 +508,16 @@ impl<'a> Builder<'a> {
         &mut self,
         mut block: mir::Block,
         binding: hir::Binding,
-        mut value: mir::Place,
+        value: mir::Place,
     ) -> BuildResult<()> {
         match binding {
             hir::Binding::Wild { .. } => Ok(BlockAnd::new(block, ())),
 
             hir::Binding::Bind { local, .. } => {
-                let local = self.build_local(local);
                 let place = mir::Place {
-                    local,
+                    local: self.build_local(local),
                     proj: Vec::new(),
+                    is_mutable: false,
                 };
 
                 let value = mir::Value::Use(mir::Operand::Place(value));
@@ -438,7 +528,8 @@ impl<'a> Builder<'a> {
 
             hir::Binding::Tuple { bindings, .. } => {
                 for (i, binding) in bindings.iter().enumerate() {
-                    value.proj.push(mir::Proj::Field(i));
+                    let mut value = value.clone();
+                    value.proj.push(mir::Proj::Tuple(i));
 
                     let result = self.build_binding(block, binding.clone(), value.clone())?;
                     unpack!(block = result);
@@ -470,6 +561,7 @@ impl<'a> Builder<'a> {
         let place = mir::Place {
             local,
             proj: Vec::new(),
+            is_mutable: false,
         };
 
         block.stmts.push(mir::Stmt::Assign(place.clone(), value));
@@ -497,6 +589,7 @@ impl<'a> Builder<'a> {
         let place = mir::Place {
             local,
             proj: Vec::new(),
+            is_mutable: false,
         };
 
         block.stmts.push(mir::Stmt::Assign(place.clone(), value));
@@ -525,6 +618,7 @@ impl<'a> Builder<'a> {
             | mir::Ty::Ref(_)
             | mir::Ty::List(_)
             | mir::Ty::Func(_, _)
+            | mir::Ty::Tuple(_)
             | mir::Ty::Record(_) => todo!(),
 
             mir::Ty::Union(tys) => {
@@ -533,6 +627,7 @@ impl<'a> Builder<'a> {
                     let place = mir::Place {
                         local,
                         proj: Vec::new(),
+                        is_mutable: false,
                     };
 
                     block.stmts.push(mir::Stmt::Assign(place.clone(), value));
@@ -550,6 +645,7 @@ impl<'a> Builder<'a> {
                 let place = mir::Place {
                     local,
                     proj: Vec::new(),
+                    is_mutable: false,
                 };
 
                 block.stmts.push(mir::Stmt::Assign(place.clone(), value));
@@ -634,7 +730,7 @@ impl<'a> Builder<'a> {
             hir::Ty::Tuple(ref tys) => {
                 let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
 
-                mir::Ty::Record(tys)
+                mir::Ty::Tuple(tys)
             }
 
             hir::Ty::Union(ref tys) => {
@@ -646,7 +742,7 @@ impl<'a> Builder<'a> {
             hir::Ty::Record(ref fields) => {
                 let fields = fields
                     .iter()
-                    .map(|f| self.build_tid(f.ty.clone()))
+                    .map(|f| (f.name, self.build_tid(f.ty.clone())))
                     .collect();
 
                 mir::Ty::Record(fields)

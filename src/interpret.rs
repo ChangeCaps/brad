@@ -30,7 +30,7 @@ impl Interpreter {
 
     fn eval_block(&self, frame: &mut Frame, block: &mir::Block) -> Result<(), Flow> {
         for stmt in &block.stmts {
-            self.eval_stmt(frame, stmt);
+            self.eval_stmt(frame, stmt)?;
         }
 
         match block.term {
@@ -39,15 +39,34 @@ impl Interpreter {
         }
     }
 
-    fn eval_stmt(&self, frame: &mut Frame, stmt: &mir::Stmt) {
+    fn eval_stmt(&self, frame: &mut Frame, stmt: &mir::Stmt) -> Result<(), Flow> {
         match stmt {
             mir::Stmt::Assign(place, value) => {
                 let value = self.eval_value(frame, value);
                 self.assign(frame, place, value);
+                Ok(())
             }
 
-            mir::Stmt::Match(place, block, vec) => {
-                todo!()
+            mir::Stmt::Match {
+                target,
+                default,
+                cases,
+            } => {
+                let value = self.eval_place(frame, target);
+
+                let Value::Union(tid, value) = value else {
+                    panic!("expected union, got {:?}", value);
+                };
+
+                for (arm_tid, output, block) in cases {
+                    if tid == *arm_tid {
+                        frame.locals[output.index()] = *value;
+
+                        return self.eval_block(frame, block);
+                    }
+                }
+
+                self.eval_block(frame, default)
             }
         }
     }
@@ -56,10 +75,19 @@ impl Interpreter {
         match value {
             mir::Value::Use(operand) => self.eval_operand(frame, operand),
 
-            mir::Value::Record(operands) => {
+            mir::Value::Tuple(operands) => {
                 let values = operands
                     .iter()
                     .map(|operand| self.eval_operand(frame, operand))
+                    .collect();
+
+                Value::Tuple(values)
+            }
+
+            mir::Value::Record(fields) => {
+                let values = fields
+                    .iter()
+                    .map(|(name, operand)| (*name, self.eval_operand(frame, operand)))
                     .collect();
 
                 Value::Record(values)
@@ -98,7 +126,150 @@ impl Interpreter {
                 }
             }
 
-            mir::Value::Binary(binary_op, operand, operand1) => todo!(),
+            mir::Value::Binary(op, lhs, rhs) => {
+                let lhs = self.eval_operand(frame, lhs);
+                let rhs = self.eval_operand(frame, rhs);
+
+                match op {
+                    mir::BinaryOp::Addi => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs + rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Subi => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs - rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Muli => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Divi => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Modi => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::BitAndi => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs & rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::BitOri => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs | rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::BitXori => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs ^ rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Shli => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs << rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Shri => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs >> rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Eqi => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs == rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Nei => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs != rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Lti => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs < rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Lei => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs <= rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Gti => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs > rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Gei => match (lhs, rhs) {
+                        (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs >= rhs),
+                        (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Addf => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => Value::Float(lhs + rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Subf => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => Value::Float(lhs - rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Mulf => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => Value::Float(lhs * rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Divf => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => Value::Float(lhs / rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Modf => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => Value::Float(lhs % rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Eqf => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs == rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Nef => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs != rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Ltf => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs < rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Lef => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs <= rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Gtf => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs > rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::Gef => match (lhs, rhs) {
+                        (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs >= rhs),
+                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
+                    },
+
+                    mir::BinaryOp::And | mir::BinaryOp::Or => todo!(),
+                }
+            }
+
             mir::Value::Unary(unary_op, operand) => todo!(),
 
             mir::Value::Closure(body, captures, _) => {
@@ -109,6 +280,13 @@ impl Interpreter {
 
                 Value::Func(*body, captures)
             }
+        }
+    }
+
+    fn create_bool(&self, value: bool) -> Value {
+        match value {
+            true => Value::Union(self.mir.builtins.true_tid, Box::new(Value::None)),
+            false => Value::Union(self.mir.builtins.false_tid, Box::new(Value::None)),
         }
     }
 
@@ -124,9 +302,35 @@ impl Interpreter {
 
         for proj in &place.proj {
             match proj {
-                mir::Proj::Field(_) => todo!(),
-                mir::Proj::Index(local) => todo!(),
-                mir::Proj::Deref => todo!(),
+                mir::Proj::Field(name) => {
+                    match value {
+                        Value::Record(ref values) => {
+                            for (field_name, field_value) in values {
+                                if field_name == name {
+                                    value = field_value.clone();
+                                    break;
+                                }
+                            }
+                        }
+                        _ => panic!("expected record, got {:?}", value),
+                    };
+                }
+
+                mir::Proj::Tuple(index) => {
+                    match value {
+                        Value::Tuple(values) => value = values[*index].clone(),
+                        _ => panic!("expected tuple, got {:?}", value),
+                    };
+                }
+
+                mir::Proj::Index(_) => todo!(),
+
+                mir::Proj::Deref => {
+                    match value {
+                        Value::Ref(new_value) => value = *new_value,
+                        _ => panic!("expected union, got {:?}", value),
+                    };
+                }
             }
         }
 
@@ -143,15 +347,14 @@ impl Interpreter {
     }
 
     fn assign(&self, frame: &mut Frame, place: &mir::Place, value: Value) {
-        //let mut value = value;
-
-        //for proj in &place.proj {
-        //    match proj {
-        //        mir::Proj::Field(_) => todo!(),
-        //        mir::Proj::Index(local) => todo!(),
-        //        mir::Proj::Deref => todo!(),
-        //    }
-        //}
+        for proj in &place.proj {
+            match proj {
+                mir::Proj::Field(_) => todo!(),
+                mir::Proj::Tuple(_) => todo!(),
+                mir::Proj::Index(_) => todo!(),
+                mir::Proj::Deref => todo!(),
+            }
+        }
 
         frame.locals[place.local.index()] = value;
     }
@@ -168,6 +371,9 @@ enum Value {
     Float(f64),
     String(String),
     Union(mir::Tid, Box<Value>),
-    Record(Vec<Value>),
+    Record(Vec<(&'static str, Value)>),
+    Tuple(Vec<Value>),
+    List(Vec<Value>),
     Func(mir::BodyId, Vec<Value>),
+    Ref(Box<Value>),
 }

@@ -6,7 +6,7 @@ use super::Ty;
 
 #[derive(Clone, Debug)]
 pub struct Local {
-    pub mutable: bool,
+    pub is_mutable: bool,
     pub name: &'static str,
     pub ty: Ty,
     pub span: Span,
