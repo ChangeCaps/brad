@@ -2,7 +2,7 @@ use crate::{ast, diagnostic::Diagnostic};
 
 use super::{binding, consume_newlines, ident, path, ty, Delim, Token, Tokens};
 
-pub fn expr(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
+pub fn expr(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let (token, _) = input.peek();
 
     match token {
@@ -11,7 +11,7 @@ pub fn expr(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic>
         Token::Loop => loop_(input),
         Token::Match => match_(input),
         Token::Break => break_(input),
-        _ => tuple(input, can_call),
+        _ => tuple(input),
     }
 }
 
@@ -27,7 +27,7 @@ fn let_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
 
     input.expect(Token::Eq)?;
 
-    let value = Box::new(expr(input, true)?);
+    let value = Box::new(expr(input)?);
 
     let span = start.join(value.span());
 
@@ -42,7 +42,7 @@ fn let_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
 fn ref_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let start = input.expect(Token::Ref)?;
 
-    let expr = Box::new(expr(input, true)?);
+    let expr = Box::new(expr(input)?);
 
     let span = start.join(expr.span());
 
@@ -52,7 +52,7 @@ fn ref_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
 fn loop_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let start = input.expect(Token::Loop)?;
 
-    let body = Box::new(expr(input, true)?);
+    let body = Box::new(expr(input)?);
 
     let span = start.join(body.span());
 
@@ -62,7 +62,7 @@ fn loop_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
 fn match_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let mut span = input.expect(Token::Match)?;
 
-    let target = Box::new(expr(input, true)?);
+    let target = Box::new(expr(input)?);
 
     let mut arms = Vec::new();
 
@@ -83,7 +83,7 @@ fn break_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let mut span = start;
 
     let value = if is_expr(input) {
-        let value = expr(input, true)?;
+        let value = expr(input)?;
         span = span.join(value.span());
 
         Some(Box::new(value))
@@ -110,7 +110,7 @@ fn match_arm(input: &mut Tokens) -> Result<ast::MatchArm, Diagnostic> {
     let pattern = pattern(input)?;
     input.expect(Token::ThickArrow)?;
 
-    let expr = expr(input, true)?;
+    let expr = expr(input)?;
 
     let span = start.join(expr.span());
 
@@ -159,8 +159,8 @@ fn is_expr(input: &mut Tokens) -> bool {
     }
 }
 
-fn tuple(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
-    let first = binary(input, can_call)?;
+fn tuple(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
+    let first = binary(input)?;
 
     if !input.is(Token::Comma) {
         return Ok(first);
@@ -170,7 +170,7 @@ fn tuple(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
     let mut items = vec![first];
 
     while input.take(Token::Comma) {
-        let expr = binary(input, can_call)?;
+        let expr = binary(input)?;
         span = span.join(expr.span());
         items.push(expr);
     }
@@ -178,11 +178,11 @@ fn tuple(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
     Ok(ast::Expr::Tuple(ast::TupleExpr { items, span }))
 }
 
-fn binary(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
-    let mut lhs = assign(input, can_call)?;
+fn binary(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
+    let mut lhs = assign(input)?;
 
     while let Some(op) = binary_op(input) {
-        let rhs = binary(input, can_call)?;
+        let rhs = binary(input)?;
         let span = lhs.span().join(rhs.span());
 
         match rhs {
@@ -244,11 +244,11 @@ fn binary_op(input: &mut Tokens) -> Option<ast::BinaryOp> {
     Some(op)
 }
 
-fn assign(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
-    let target = unary(input, can_call)?;
+fn assign(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
+    let target = unary(input, true)?;
 
     if input.take(Token::Eq) {
-        let value = expr(input, can_call)?;
+        let value = expr(input)?;
         let span = target.span().join(value.span());
 
         Ok(ast::Expr::Assign(ast::AssignExpr {
@@ -309,7 +309,7 @@ fn call(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
     let mut expr = access(input)?;
 
     while can_call && is_expr(input) {
-        let arg = self::expr(input, false)?;
+        let arg = unary(input, false)?;
         let span = expr.span().join(arg.span());
 
         expr = ast::Expr::Call(ast::CallExpr {
@@ -352,7 +352,7 @@ fn access(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
             Token::Open(Delim::Bracket) if !input.has_whitespace() => {
                 input.expect(Token::Open(Delim::Bracket))?;
 
-                let index = self::expr(input, true)?;
+                let index = self::expr(input)?;
 
                 input.expect(Token::Close(Delim::Bracket))?;
 
@@ -430,7 +430,7 @@ fn term(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
         Token::Open(Delim::Paren) => {
             input.expect(Token::Open(Delim::Paren))?;
 
-            let expr = expr(input, true)?;
+            let expr = expr(input)?;
 
             input.expect(Token::Close(Delim::Paren))?;
 
@@ -466,7 +466,7 @@ fn list(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let mut items = Vec::new();
 
     while !input.is(Token::Close(Delim::Bracket)) {
-        let item = expr(input, true)?;
+        let item = expr(input)?;
         items.push(item);
 
         if input.is(Token::Close(Delim::Bracket)) {
@@ -499,7 +499,7 @@ fn record(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
 
         input.expect(Token::Colon)?;
 
-        let value = expr(input, true)?;
+        let value = expr(input)?;
 
         fields.push(ast::FieldInit { name, value, span });
 
@@ -528,7 +528,7 @@ pub fn block(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let mut exprs = Vec::new();
 
     while !input.is(Token::Close(Delim::Brace)) {
-        let expr = self::expr(input, true)?;
+        let expr = self::expr(input)?;
         exprs.push(expr);
 
         if input.is(Token::Close(Delim::Brace)) {

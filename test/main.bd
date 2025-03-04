@@ -1,11 +1,9 @@
 fn main -> int {
-    let mut x = { foo: 0 }
-    x.foo = 1
-    x.foo
+    fib 10
 }
 
 fn fib (n: int) -> int {
     match n < 2
     | true  => n
-    | false => (fib n - 1) + (fib n - 2)
+    | false => fib (n - 1) + fib (n - 2)
 }
