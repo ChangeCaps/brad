@@ -15,7 +15,7 @@ struct BlockAnd<T> {
     value: T,
 }
 
-pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnostic> {
+pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::Bid), Diagnostic> {
     let mut bodies = HashMap::new();
     let mut types = HashMap::new();
 
@@ -99,7 +99,7 @@ impl<T> BlockAnd<T> {
 type BuildResult<T> = Result<BlockAnd<T>, Diagnostic>;
 
 struct Builder<'a> {
-    bodies: &'a mut HashMap<hir::BodyId, mir::BodyId>,
+    bodies: &'a mut HashMap<hir::BodyId, mir::Bid>,
     types: &'a mut HashMap<hir::NamedId, u32>,
     mir: &'a mut mir::Program,
     hir: &'a hir::Program,
@@ -111,7 +111,7 @@ struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     fn new(
-        bodies: &'a mut HashMap<hir::BodyId, mir::BodyId>,
+        bodies: &'a mut HashMap<hir::BodyId, mir::Bid>,
         types: &'a mut HashMap<hir::NamedId, u32>,
         mir: &'a mut mir::Program,
         hir: &'a hir::Program,

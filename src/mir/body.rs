@@ -52,7 +52,7 @@ impl Locals {
 pub struct Local(pub usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct BodyId(usize);
+pub struct Bid(usize);
 
 #[derive(Clone, Debug, Default)]
 pub struct Bodies {
@@ -64,21 +64,21 @@ impl Bodies {
         Self { bodies: Vec::new() }
     }
 
-    pub fn push(&mut self, body: Body) -> BodyId {
+    pub fn push(&mut self, body: Body) -> Bid {
         let local = self.bodies.len();
         self.bodies.push(body);
-        BodyId(local)
+        Bid(local)
     }
 
-    pub fn insert(&mut self, BodyId(i): BodyId, body: Body) {
+    pub fn insert(&mut self, Bid(i): Bid, body: Body) {
         self.bodies[i] = body;
     }
 }
 
-impl Index<BodyId> for Bodies {
+impl Index<Bid> for Bodies {
     type Output = Body;
 
-    fn index(&self, BodyId(i): BodyId) -> &Self::Output {
+    fn index(&self, Bid(i): Bid) -> &Self::Output {
         &self.bodies[i]
     }
 }
@@ -91,8 +91,8 @@ impl Index<Local> for Locals {
     }
 }
 
-impl IndexMut<BodyId> for Bodies {
-    fn index_mut(&mut self, BodyId(i): BodyId) -> &mut Self::Output {
+impl IndexMut<Bid> for Bodies {
+    fn index_mut(&mut self, Bid(i): Bid) -> &mut Self::Output {
         &mut self.bodies[i]
     }
 }
