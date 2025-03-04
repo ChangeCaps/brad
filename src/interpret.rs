@@ -290,7 +290,29 @@ impl Interpreter {
                 }
             }
 
-            mir::Value::Unary(_unary_op, _operand) => todo!(),
+            mir::Value::Unary(op, operand) => match op {
+                mir::UnaryOp::Negi => match self.eval_operand(frame, operand) {
+                    Value::Int(value) => Value::Int(-value),
+                    value => panic!("expected integer, got {:?}", value),
+                },
+
+                mir::UnaryOp::BitNoti => match self.eval_operand(frame, operand) {
+                    Value::Int(value) => Value::Int(!value),
+                    value => panic!("expected integer, got {:?}", value),
+                },
+
+                mir::UnaryOp::Negf => match self.eval_operand(frame, operand) {
+                    Value::Float(value) => Value::Float(-value),
+                    value => panic!("expected float, got {:?}", value),
+                },
+
+                mir::UnaryOp::Not => todo!(),
+
+                mir::UnaryOp::Deref => match self.eval_operand(frame, operand) {
+                    Value::Ref(value) => *value,
+                    value => panic!("expected reference, got {:?}", value),
+                },
+            },
 
             mir::Value::Closure {
                 body,
