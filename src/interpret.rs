@@ -54,7 +54,7 @@ impl Interpreter {
             } => {
                 let value = self.eval_place(frame, target);
 
-                let Value::Union(ty, value) = value else {
+                let Value::Union { ty, value } = value else {
                     panic!("expected union, got {:?}", value);
                 };
 
@@ -95,7 +95,11 @@ impl Interpreter {
 
             mir::Value::Promote { input, operand, .. } => {
                 let value = self.eval_operand(frame, operand);
-                Value::Union(input.clone(), Box::new(value))
+
+                Value::Union {
+                    ty: input.clone(),
+                    value: Box::new(value),
+                }
             }
 
             mir::Value::Coerce { operand, .. } => self.eval_operand(frame, operand),
@@ -104,25 +108,37 @@ impl Interpreter {
                 let func = self.eval_operand(frame, func);
                 let value = self.eval_operand(frame, value);
 
-                match func {
-                    Value::Func(body, captures) => {
-                        let body = &self.mir.bodies[body];
-                        let mut frame = Frame {
-                            locals: vec![Value::None; body.locals.len()],
-                        };
+                let Value::Func {
+                    body,
+                    mut captures,
+                    missing,
+                } = func
+                else {
+                    panic!("expected function, got {:?}", func);
+                };
 
-                        for (i, capture) in captures.iter().enumerate() {
-                            frame.locals[i] = capture.clone();
-                        }
+                captures.push(value);
 
-                        frame.locals[captures.len()] = value;
+                if missing > 1 {
+                    return Value::Func {
+                        body,
+                        captures,
+                        missing: missing - 1,
+                    };
+                }
 
-                        match self.eval_block(&mut frame, &body.block) {
-                            Err(Flow::Return(value)) => value,
-                            _ => panic!("expected return"),
-                        }
-                    }
-                    _ => panic!("expected function, got {:?}", func),
+                let body = &self.mir.bodies[body];
+                let mut frame = Frame {
+                    locals: vec![Value::None; body.locals.len()],
+                };
+
+                for (i, capture) in captures.iter().enumerate() {
+                    frame.locals[i] = capture.clone();
+                }
+
+                match self.eval_block(&mut frame, &body.block) {
+                    Err(Flow::Return(value)) => value,
+                    _ => panic!("expected return"),
                 }
             }
 
@@ -278,15 +294,26 @@ impl Interpreter {
                     .map(|capture| self.eval_operand(frame, capture))
                     .collect();
 
-                Value::Func(*body, captures)
+                Value::Func {
+                    body: *body,
+                    captures,
+                    missing: self.mir.bodies[*body].arguments,
+                }
             }
         }
     }
 
     fn create_bool(&self, value: bool) -> Value {
         match value {
-            true => Value::Union(mir::Ty::True, Box::new(Value::None)),
-            false => Value::Union(mir::Ty::False, Box::new(Value::None)),
+            true => Value::Union {
+                ty: mir::Ty::True,
+                value: Box::new(Value::None),
+            },
+
+            false => Value::Union {
+                ty: mir::Ty::False,
+                value: Box::new(Value::None),
+            },
         }
     }
 
@@ -347,16 +374,49 @@ impl Interpreter {
     }
 
     fn assign(&self, frame: &mut Frame, place: &mir::Place, value: Value) {
-        for proj in &place.proj {
+        fn recurse<'a>(
+            target: &mut Value,
+            mut projs: impl Iterator<Item = &'a mir::Proj>,
+            value: Value,
+        ) {
+            let Some(proj) = projs.next() else {
+                *target = value;
+                return;
+            };
+
             match proj {
-                mir::Proj::Field(_) => todo!(),
-                mir::Proj::Tuple(_) => todo!(),
+                mir::Proj::Field(name) => {
+                    match target {
+                        Value::Record(ref mut values) => {
+                            for (field_name, field_value) in values {
+                                if field_name == name {
+                                    recurse(field_value, projs, value);
+                                    return;
+                                }
+                            }
+
+                            panic!("field not found: {:?}", name);
+                        }
+                        _ => panic!("expected record, got {:?}", target),
+                    };
+                }
+                mir::Proj::Tuple(idx) => {
+                    match target {
+                        Value::Tuple(ref mut values) => recurse(&mut values[*idx], projs, value),
+                        _ => panic!("expected tuple, got {:?}", target),
+                    };
+                }
                 mir::Proj::Index(_) => todo!(),
-                mir::Proj::Deref => todo!(),
+                mir::Proj::Deref => {
+                    match target {
+                        Value::Ref(target) => recurse(target, projs, value),
+                        _ => panic!("expected reference, got {:?}", target),
+                    };
+                }
             }
         }
 
-        frame.locals[place.local.0] = value;
+        recurse(&mut frame.locals[place.local.0], place.proj.iter(), value);
     }
 }
 
@@ -367,13 +427,29 @@ struct Frame {
 #[derive(Clone, Debug)]
 enum Value {
     None,
+
     Int(i64),
+
     Float(f64),
+
     String(String),
-    Union(mir::Ty, Box<Value>),
+
+    Union {
+        ty: mir::Ty,
+        value: Box<Value>,
+    },
+
     Record(Vec<(&'static str, Value)>),
+
     Tuple(Vec<Value>),
+
     List(Vec<Value>),
-    Func(mir::BodyId, Vec<Value>),
+
+    Func {
+        body: mir::BodyId,
+        captures: Vec<Value>,
+        missing: usize,
+    },
+
     Ref(Box<Value>),
 }

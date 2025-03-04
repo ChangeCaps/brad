@@ -1,5 +1,7 @@
 fn main -> int {
-    fib 10
+    let mut x = { foo: 0 }
+    x.foo = 1
+    x.foo
 }
 
 fn fib (n: int) -> int {
