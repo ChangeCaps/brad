@@ -4,3 +4,5 @@ Cargo.lock
 .venv
 __pycache__/
 *.pyc
+
+.idea/

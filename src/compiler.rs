@@ -1,12 +1,13 @@
-use std::{fs, io, path::Path};
-
 use crate::{
+    ast,
     diagnostic::{Diagnostic, Source, SourceId, Sources},
+    hir,
     interpret::Interpreter,
     lower::Lowerer,
     mir,
     parse::{self, Interner, Tokens},
 };
+use std::{fs, io, path::Path};
 
 pub struct Compiler {
     interner: Interner,
@@ -17,6 +18,8 @@ pub struct Compiler {
 struct File {
     path: Vec<&'static str>,
     source: SourceId,
+    tokens: Option<Tokens>,
+    ast: Option<ast::Module>,
 }
 
 impl Compiler {
@@ -64,6 +67,8 @@ impl Compiler {
                 self.files.push(File {
                     path: modules.clone(),
                     source: self.sources.push(source),
+                    tokens: None,
+                    ast: None,
                 });
             }
         }
@@ -71,20 +76,45 @@ impl Compiler {
         Ok(())
     }
 
-    pub fn compile(&mut self) -> Result<(), Diagnostic> {
-        let mut lowerer = Lowerer::new();
-
-        for file in &self.files {
+    pub fn tokenize(&mut self) -> Result<(), Diagnostic> {
+        for file in &mut self.files {
             let source = &self.sources[file.source];
-            let mut tokens = Tokens::tokenize(&mut self.interner, file.source, &source.content)?;
-            let ast = parse::module(&mut tokens)?;
-
-            lowerer.add_module(&file.path, ast);
+            let tokens = Tokens::tokenize(&mut self.interner, file.source, &source.content)?;
+            file.tokens = Some(tokens);
         }
 
-        let hir = lowerer.lower()?;
-        let (mir, main) = mir::build(&hir)?;
+        Ok(())
+    }
 
+    pub fn parse(&mut self) -> Result<(), Diagnostic> {
+        for file in &mut self.files {
+            let tokens = &mut file.tokens.take().unwrap();
+            let ast = parse::module(tokens)?;
+            file.ast = Some(ast);
+        }
+
+        Ok(())
+    }
+
+    pub fn lower(&mut self) -> Result<hir::Program, Diagnostic> {
+        let mut lowerer = Lowerer::new();
+
+        for file in &mut self.files {
+            lowerer.add_module(&file.path, file.ast.take().unwrap());
+        }
+
+        lowerer.lower()
+    }
+
+    pub fn mir(&self, hir: hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnostic> {
+        mir::build(&hir)
+    }
+
+    pub fn compile(&mut self) -> Result<(), Diagnostic> {
+        self.tokenize()?;
+        self.parse()?;
+        let hir = self.lower()?;
+        let (mir, main) = self.mir(hir)?;
         let interpreter = Interpreter::new(mir);
         interpreter.run(main, Vec::new());
 
