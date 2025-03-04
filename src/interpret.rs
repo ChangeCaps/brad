@@ -14,7 +14,7 @@ impl Interpreter {
         Self { mir }
     }
 
-    pub fn run(&self, body: mir::BodyId, generics: Vec<mir::Ty>) {
+    pub fn run(&self, body: mir::Bid, generics: Vec<mir::Ty>) {
         let body = &self.mir.bodies[body];
 
         let mut frame = Frame {
@@ -479,7 +479,7 @@ enum Value {
     List(Vec<Value>),
 
     Func {
-        body: mir::BodyId,
+        body: mir::Bid,
         generics: Vec<mir::Ty>,
         captures: Vec<Value>,
         missing: usize,
