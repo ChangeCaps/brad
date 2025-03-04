@@ -1,4 +1,6 @@
-use super::{BodyId, Local, Tid};
+use std::collections::BTreeSet;
+
+use super::{BodyId, Local, Ty};
 
 #[derive(Clone, Debug)]
 pub struct Block {
@@ -20,9 +22,21 @@ pub enum Stmt {
     Assign(Place, Value),
     Match {
         target: Place,
+        cases: Vec<Case>,
         default: Block,
-        cases: Vec<(Tid, Local, Block)>,
     },
+}
+
+#[derive(Clone, Debug)]
+pub struct Case {
+    /// The type to match against.
+    pub ty: Ty,
+
+    /// The local to bind the instance to.
+    pub local: Local,
+
+    /// The block to execute if the type matches.
+    pub block: Block,
 }
 
 #[derive(Clone, Debug)]
@@ -33,20 +47,53 @@ pub enum Term {
 
 #[derive(Clone, Debug)]
 pub enum Value {
+    /// Use an operand directly.
     Use(Operand),
+
+    /// Initialize a tuple.
     Tuple(Vec<Operand>),
+
+    /// Initialize a record.
     Record(Vec<(&'static str, Operand)>),
-    Promote(Tid, Vec<Tid>, Operand),
-    Coerce(Vec<Tid>, Vec<Tid>, Operand),
+
+    /// Promote a value to a variant.
+    Promote {
+        input: Ty,
+        variants: BTreeSet<Ty>,
+        operand: Operand,
+    },
+
+    /// Coerce a union to another union.
+    Coerce {
+        inputs: BTreeSet<Ty>,
+        variants: BTreeSet<Ty>,
+        operand: Operand,
+    },
+
+    /// Call a closure with arguments.
     Call(Operand, Operand),
+
+    /// Perform a binary operation.
     Binary(BinaryOp, Operand, Operand),
+
+    /// Perform a unary operation.
     Unary(UnaryOp, Operand),
-    Closure(BodyId, Vec<Operand>, Vec<Tid>),
+
+    /// Create a closure, capturing the given operands.
+    Closure {
+        body: BodyId,
+        captures: Vec<Operand>,
+        generics: Vec<Ty>,
+    },
+}
+
+impl Value {
+    pub const NONE: Value = Value::Use(Operand::NONE);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
-    /// Integer operations
+    /* integer operations */
     Addi,
     Subi,
     Muli,
@@ -63,7 +110,8 @@ pub enum BinaryOp {
     Lei,
     Gti,
     Gei,
-    /// Floating point operations
+
+    /* floating point operations */
     Addf,
     Subf,
     Mulf,
@@ -75,7 +123,8 @@ pub enum BinaryOp {
     Lef,
     Gtf,
     Gef,
-    /// Booleans only
+
+    /* logical operations */
     And,
     Or,
 }
@@ -91,10 +140,6 @@ pub enum UnaryOp {
     Deref,
 }
 
-impl Value {
-    pub const ZST: Value = Value::Use(Operand::ZST);
-}
-
 #[derive(Clone, Debug)]
 pub enum Operand {
     Place(Place),
@@ -102,7 +147,7 @@ pub enum Operand {
 }
 
 impl Operand {
-    pub const ZST: Operand = Operand::Const(Const::None);
+    pub const NONE: Operand = Operand::Const(Const::None);
 }
 
 #[derive(Clone, Debug)]

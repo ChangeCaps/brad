@@ -54,15 +54,15 @@ impl Interpreter {
             } => {
                 let value = self.eval_place(frame, target);
 
-                let Value::Union(tid, value) = value else {
+                let Value::Union(ty, value) = value else {
                     panic!("expected union, got {:?}", value);
                 };
 
-                for (arm_tid, output, block) in cases {
-                    if tid == *arm_tid {
-                        frame.locals[output.index()] = *value;
+                for case in cases {
+                    if ty == case.ty {
+                        frame.locals[case.local.0] = *value;
 
-                        return self.eval_block(frame, block);
+                        return self.eval_block(frame, &case.block);
                     }
                 }
 
@@ -93,12 +93,12 @@ impl Interpreter {
                 Value::Record(values)
             }
 
-            mir::Value::Promote(tid, _, operand) => {
+            mir::Value::Promote { input, operand, .. } => {
                 let value = self.eval_operand(frame, operand);
-                Value::Union(*tid, Box::new(value))
+                Value::Union(input.clone(), Box::new(value))
             }
 
-            mir::Value::Coerce(_, _, operand) => self.eval_operand(frame, operand),
+            mir::Value::Coerce { operand, .. } => self.eval_operand(frame, operand),
 
             mir::Value::Call(func, value) => {
                 let func = self.eval_operand(frame, func);
@@ -270,9 +270,9 @@ impl Interpreter {
                 }
             }
 
-            mir::Value::Unary(unary_op, operand) => todo!(),
+            mir::Value::Unary(_unary_op, _operand) => todo!(),
 
-            mir::Value::Closure(body, captures, _) => {
+            mir::Value::Closure { body, captures, .. } => {
                 let captures = captures
                     .iter()
                     .map(|capture| self.eval_operand(frame, capture))
@@ -285,8 +285,8 @@ impl Interpreter {
 
     fn create_bool(&self, value: bool) -> Value {
         match value {
-            true => Value::Union(self.mir.builtins.true_tid, Box::new(Value::None)),
-            false => Value::Union(self.mir.builtins.false_tid, Box::new(Value::None)),
+            true => Value::Union(mir::Ty::True, Box::new(Value::None)),
+            false => Value::Union(mir::Ty::False, Box::new(Value::None)),
         }
     }
 
@@ -298,7 +298,7 @@ impl Interpreter {
     }
 
     fn eval_place(&self, frame: &mut Frame, place: &mir::Place) -> Value {
-        let mut value = frame.locals[place.local.index()].clone();
+        let mut value = frame.locals[place.local.0].clone();
 
         for proj in &place.proj {
             match proj {
@@ -356,7 +356,7 @@ impl Interpreter {
             }
         }
 
-        frame.locals[place.local.index()] = value;
+        frame.locals[place.local.0] = value;
     }
 }
 
@@ -370,7 +370,7 @@ enum Value {
     Int(i64),
     Float(f64),
     String(String),
-    Union(mir::Tid, Box<Value>),
+    Union(mir::Ty, Box<Value>),
     Record(Vec<(&'static str, Value)>),
     Tuple(Vec<Value>),
     List(Vec<Value>),

@@ -1,8 +1,11 @@
-use std::ops::{Index, IndexMut};
+use std::{
+    collections::BTreeSet,
+    ops::{Index, IndexMut},
+};
 
 use super::{Generic, Generics};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Ty {
     Int,
 
@@ -30,12 +33,74 @@ pub enum Ty {
 
     Tuple(Vec<Ty>),
 
-    Union(Vec<Ty>),
+    Union(BTreeSet<Ty>),
 
     Record(Vec<Field>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+impl Ty {
+    pub fn normalize(self) -> Self {
+        match self {
+            Self::Int
+            | Self::Float
+            | Self::Str
+            | Self::True
+            | Self::False
+            | Self::None
+            | Self::Never
+            | Self::Generic(_) => self,
+
+            Self::Named(id, mut tys) => {
+                tys = tys.into_iter().map(|ty| ty.normalize()).collect();
+
+                Self::Named(id, tys)
+            }
+
+            Self::Ref(ty) => Self::Ref(Box::new(ty.normalize())),
+
+            Self::List(ty) => Self::List(Box::new(ty.normalize())),
+
+            Self::Func(i, o) => Self::Func(Box::new(i.normalize()), Box::new(o.normalize())),
+
+            Self::Tuple(mut tys) => {
+                tys = tys.into_iter().map(|ty| ty.normalize()).collect();
+
+                if tys.len() == 1 {
+                    tys.into_iter().next().unwrap()
+                } else {
+                    Self::Tuple(tys)
+                }
+            }
+
+            Self::Record(mut fields) => {
+                for field in &mut fields {
+                    field.ty = field.ty.clone().normalize();
+                }
+
+                Self::Record(fields)
+            }
+
+            Self::Union(tys) => {
+                let mut new_tys = BTreeSet::new();
+
+                for ty in tys {
+                    match ty.normalize() {
+                        Ty::Union(tys) => new_tys.extend(tys),
+                        ty => _ = new_tys.insert(ty),
+                    }
+                }
+
+                if new_tys.len() == 1 {
+                    new_tys.into_iter().next().unwrap()
+                } else {
+                    Ty::Union(new_tys)
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Field {
     pub name: &'static str,
     pub ty: Ty,
@@ -53,10 +118,10 @@ pub struct Alias {
     pub ty: Ty,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NamedId(usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AliasId(usize);
 
 #[derive(Clone, Debug, Default)]

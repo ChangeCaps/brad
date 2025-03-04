@@ -28,7 +28,7 @@ struct Tokenizer<'a> {
 }
 
 fn is_digit(c: Option<char>) -> bool {
-    c.map_or(false, |c| c.is_ascii_digit())
+    c.is_some_and(|c| c.is_ascii_digit())
 }
 
 impl<'a> Tokenizer<'a> {
@@ -70,7 +70,7 @@ impl<'a> Tokenizer<'a> {
     fn ident(&mut self) -> Result<(Token, Span), Diagnostic> {
         let start = self.index;
 
-        while self.peek().map_or(false, Self::is_ident_continue) {
+        while self.peek().is_some_and(Self::is_ident_continue) {
             self.consume();
         }
 

@@ -112,9 +112,10 @@ impl Spec {
             }
 
             Ty::Union(mut tys) => {
-                for ty in &mut tys {
-                    *ty = self.apply(ty.clone())?;
-                }
+                tys = tys
+                    .into_iter()
+                    .map(|ty| self.apply(ty))
+                    .collect::<Result<_, _>>()?;
 
                 Ty::Union(tys)
             }

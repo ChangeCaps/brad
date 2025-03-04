@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::hir::BinaryOp;
 use crate::{diagnostic::Diagnostic, hir, mir};
 
 macro_rules! unpack {
@@ -20,26 +19,15 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnost
     let mut bodies = HashMap::new();
     let mut types = HashMap::new();
 
-    let mut mir_types = mir::Types::new();
-
-    let true_tid = mir_types.push(mir::Ty::ZST);
-    let false_tid = mir_types.push(mir::Ty::ZST);
-
-    types.insert(hir::Ty::True, true_tid);
-    types.insert(hir::Ty::False, false_tid);
-
     let mut mir = mir::Program {
         bodies: mir::Bodies::new(),
-        types: mir_types,
-        builtins: mir::Builtins {
-            true_tid,
-            false_tid,
-        },
+        types: mir::Types::new(),
     };
 
     for (hir_id, _) in hir.bodies.iter() {
         let mir_id = mir.bodies.push(mir::Body {
-            captures: Vec::new(),
+            captures: 0,
+            arguments: 0,
             locals: mir::Locals::new(),
             block: mir::Block::new(),
         });
@@ -53,14 +41,14 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnost
         let mut block = mir::Block::new();
 
         for input in hir_body.input.iter() {
-            let ty = builder.build_tid(input.ty.clone());
+            let ty = builder.build_ty(input.ty.clone());
             let local = builder.locals.push(ty);
             inputs.push(local);
         }
 
-        for (input, local) in hir_body.input.iter().zip(inputs) {
+        for (input, local) in hir_body.input.iter().zip(inputs.iter()) {
             let place = mir::Place {
-                local,
+                local: *local,
                 proj: Vec::new(),
                 is_mutable: false,
             };
@@ -72,47 +60,12 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnost
 
         block.term = mir::Term::Return(value);
 
-        let mut body = mir::Body {
-            captures: Vec::new(),
+        let body = mir::Body {
+            captures: 0,
+            arguments: inputs.len(),
             locals: builder.locals.clone(),
             block,
         };
-
-        // generate nested closures to capture outer arguments
-        for (i, _) in hir_body.input.iter().enumerate().rev().skip(1) {
-            let mut locals = mir::Locals::new();
-            let mut captures = Vec::new();
-
-            for input in hir_body.input[..=i].iter() {
-                let tid = builder.build_tid(input.ty.clone());
-                body.captures.push(tid);
-                let local = locals.push(tid);
-
-                captures.push(mir::Operand::Place(mir::Place {
-                    local,
-                    proj: Vec::new(),
-                    is_mutable: false,
-                }));
-            }
-
-            let id = builder.mir.bodies.push(body.clone());
-
-            let generics = hir_body
-                .generics
-                .params
-                .iter()
-                .map(|param| builder.build_tid(hir::Ty::Generic(param.generic)))
-                .collect();
-
-            body = mir::Body {
-                captures: Vec::new(),
-                locals,
-                block: mir::Block {
-                    stmts: Vec::new(),
-                    term: mir::Term::Return(mir::Value::Closure(id, captures, generics)),
-                },
-            };
-        }
 
         mir.bodies[bodies[&hir_id]] = body;
     }
@@ -139,7 +92,7 @@ type BuildResult<T> = Result<BlockAnd<T>, Diagnostic>;
 
 struct Builder<'a> {
     bodies: &'a mut HashMap<hir::BodyId, mir::BodyId>,
-    types: &'a mut HashMap<hir::Ty, mir::Tid>,
+    types: &'a mut HashMap<hir::NamedId, u32>,
     mir: &'a mut mir::Program,
     hir: &'a hir::Program,
     body: &'a hir::Body,
@@ -151,7 +104,7 @@ struct Builder<'a> {
 impl<'a> Builder<'a> {
     fn new(
         bodies: &'a mut HashMap<hir::BodyId, mir::BodyId>,
-        types: &'a mut HashMap<hir::Ty, mir::Tid>,
+        types: &'a mut HashMap<hir::NamedId, u32>,
         mir: &'a mut mir::Program,
         hir: &'a hir::Program,
         body: &'a hir::Body,
@@ -195,15 +148,15 @@ impl<'a> Builder<'a> {
 
                 let target = unpack!(block = self.build_place(block, *target)?);
 
-                let tid = self.build_tid(expr.ty.clone());
+                let tid = self.build_ty(expr.ty.clone());
                 let output = self.locals.push(tid);
                 let mut cases = Vec::new();
 
                 for arm in arms {
                     match arm.pattern {
                         hir::Pattern::Ty { ty, binding, .. } => {
-                            let tid = self.build_tid(ty.clone());
-                            let local = self.locals.push(tid);
+                            let ty = self.build_ty(ty.clone());
+                            let local = self.locals.push(ty.clone());
 
                             let place = mir::Place {
                                 local,
@@ -225,7 +178,7 @@ impl<'a> Builder<'a> {
                             block.stmts.push(mir::Stmt::Assign(output, value));
                             block.term = mir::Term::Exit;
 
-                            cases.push((tid, local, block));
+                            cases.push(mir::Case { ty, local, block });
                         }
                     }
                 }
@@ -265,7 +218,7 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Break(_)
             | hir::ExprKind::Let(_, _, _)
             | hir::ExprKind::Block(_) => {
-                let ty = self.build_tid(expr.ty.clone());
+                let ty = self.build_ty(expr.ty.clone());
                 let local = self.locals.push(ty);
 
                 let value = unpack!(block = self.build_value(block, expr)?);
@@ -300,7 +253,7 @@ impl<'a> Builder<'a> {
             }
 
             hir::ExprKind::True | hir::ExprKind::False | hir::ExprKind::None => {
-                let operand = mir::Operand::ZST;
+                let operand = mir::Operand::Const(mir::Const::None);
                 Ok(BlockAnd::new(block, operand))
             }
 
@@ -324,7 +277,7 @@ impl<'a> Builder<'a> {
 
                 block.stmts.push(mir::Stmt::Assign(l, r));
 
-                Ok(BlockAnd::new(block, mir::Operand::ZST))
+                Ok(BlockAnd::new(block, mir::Operand::NONE))
             }
 
             hir::ExprKind::Let(binding, ty, value) => {
@@ -332,7 +285,7 @@ impl<'a> Builder<'a> {
                 let place = unpack!(block = self.coerce_place(block, place, value.ty, ty)?);
                 unpack!(block = self.build_binding(block, binding, place)?);
 
-                Ok(BlockAnd::new(block, mir::Operand::ZST))
+                Ok(BlockAnd::new(block, mir::Operand::NONE))
             }
 
             hir::ExprKind::Local(_)
@@ -359,7 +312,7 @@ impl<'a> Builder<'a> {
     fn build_value(&mut self, mut block: mir::Block, expr: hir::Expr) -> BuildResult<mir::Value> {
         match expr.kind {
             hir::ExprKind::Block(exprs) => {
-                let mut value = mir::Value::ZST;
+                let mut value = mir::Value::NONE;
 
                 for expr in exprs {
                     value = unpack!(block = self.build_value(block, expr)?);
@@ -389,11 +342,16 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, mir::Value::Record(values)))
             }
 
-            hir::ExprKind::Func(body, tys) => {
+            hir::ExprKind::Func(body, generics) => {
                 let body = self.bodies[&body];
-                let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
 
-                let value = mir::Value::Closure(body, Vec::new(), tys);
+                let generics = generics.into_iter().map(|ty| self.build_ty(ty)).collect();
+
+                let value = mir::Value::Closure {
+                    body,
+                    captures: Vec::new(),
+                    generics,
+                };
                 Ok(BlockAnd::new(block, value))
             }
 
@@ -430,30 +388,35 @@ impl<'a> Builder<'a> {
                 let rhs = unpack!(block = self.build_operand(block, *rhs)?);
 
                 let op = match (op, rhs_ty, lhs_ty) {
-                    (BinaryOp::Add, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Addi,
-                    (BinaryOp::Add, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Addf,
-                    (BinaryOp::Sub, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Subi,
-                    (BinaryOp::Sub, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Subf,
-                    (BinaryOp::Mul, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Muli,
-                    (BinaryOp::Mul, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Mulf,
-                    (BinaryOp::Div, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Divi,
-                    (BinaryOp::Div, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Divf,
-                    (BinaryOp::Mod, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Modi,
-                    (BinaryOp::Mod, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Modf,
-                    (BinaryOp::Eq, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Eqi,
-                    (BinaryOp::Eq, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Eqf,
-                    (BinaryOp::Ne, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Nei,
-                    (BinaryOp::Ne, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Nef,
-                    (BinaryOp::Lt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Lti,
-                    (BinaryOp::Lt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Ltf,
-                    (BinaryOp::Le, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Lei,
-                    (BinaryOp::Le, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Lef,
-                    (BinaryOp::Gt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Gti,
-                    (BinaryOp::Gt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Gtf,
-                    (BinaryOp::Ge, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Gei,
-                    (BinaryOp::Ge, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Gef,
-                    (BinaryOp::And, _, _) => todo!(),
-                    (BinaryOp::Or, _, _) => todo!(),
+                    (hir::BinaryOp::Add, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Addi,
+                    (hir::BinaryOp::Sub, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Subi,
+                    (hir::BinaryOp::Mul, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Muli,
+                    (hir::BinaryOp::Div, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Divi,
+                    (hir::BinaryOp::Mod, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Modi,
+
+                    (hir::BinaryOp::Eq, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Eqi,
+                    (hir::BinaryOp::Ne, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Nei,
+                    (hir::BinaryOp::Lt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Lti,
+                    (hir::BinaryOp::Le, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Lei,
+                    (hir::BinaryOp::Gt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Gti,
+                    (hir::BinaryOp::Ge, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Gei,
+
+                    (hir::BinaryOp::Add, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Addf,
+                    (hir::BinaryOp::Sub, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Subf,
+                    (hir::BinaryOp::Mul, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Mulf,
+                    (hir::BinaryOp::Div, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Divf,
+                    (hir::BinaryOp::Mod, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Modf,
+
+                    (hir::BinaryOp::Eq, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Eqf,
+                    (hir::BinaryOp::Ne, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Nef,
+                    (hir::BinaryOp::Lt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Ltf,
+                    (hir::BinaryOp::Le, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Lef,
+                    (hir::BinaryOp::Gt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Gtf,
+                    (hir::BinaryOp::Ge, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Gef,
+
+                    (hir::BinaryOp::And, _, _) => todo!(),
+                    (hir::BinaryOp::Or, _, _) => todo!(),
+
                     (_, lhs_ty, rhs_ty) => {
                         return Err(Diagnostic::error("invalid::type::operator")
                             .message(format!(
@@ -551,7 +514,7 @@ impl<'a> Builder<'a> {
             return Ok(BlockAnd::new(block, place));
         }
 
-        let tid = self.build_tid(to.clone());
+        let tid = self.build_ty(to.clone());
 
         let operand = mir::Operand::Place(place.clone());
         let value = mir::Value::Use(operand);
@@ -580,7 +543,7 @@ impl<'a> Builder<'a> {
             return Ok(BlockAnd::new(block, operand));
         }
 
-        let tid = self.build_tid(to.clone());
+        let tid = self.build_ty(to.clone());
 
         let value = mir::Value::Use(operand);
         let value = unpack!(block = self.coerce_value(block, value, from, to)?);
@@ -608,21 +571,26 @@ impl<'a> Builder<'a> {
             return Ok(BlockAnd::new(block, value));
         }
 
-        let from = self.build_tid(from);
+        let from = self.build_ty(from);
 
         match self.build_ty(to.clone()) {
             mir::Ty::Int
             | mir::Ty::Float
             | mir::Ty::Str
+            | mir::Ty::True
+            | mir::Ty::False
+            | mir::Ty::None
+            | mir::Ty::Never
             | mir::Ty::Generic(_)
             | mir::Ty::Ref(_)
             | mir::Ty::List(_)
             | mir::Ty::Func(_, _)
             | mir::Ty::Tuple(_)
+            | mir::Ty::Named(_, _)
             | mir::Ty::Record(_) => todo!(),
 
             mir::Ty::Union(tys) => {
-                if let mir::Ty::Union(from_tys) = self.mir.types[from].clone() {
+                if let mir::Ty::Union(from_tys) = from.clone() {
                     let local = self.locals.push(from);
                     let place = mir::Place {
                         local,
@@ -633,7 +601,12 @@ impl<'a> Builder<'a> {
                     block.stmts.push(mir::Stmt::Assign(place.clone(), value));
 
                     let operand = mir::Operand::Place(place);
-                    let value = mir::Value::Coerce(from_tys, tys, operand);
+                    let value = mir::Value::Coerce {
+                        inputs: from_tys,
+                        variants: tys,
+                        operand,
+                    };
+
                     return Ok(BlockAnd::new(block, value));
                 }
 
@@ -641,7 +614,7 @@ impl<'a> Builder<'a> {
                     panic!();
                 }
 
-                let local = self.locals.push(from);
+                let local = self.locals.push(from.clone());
                 let place = mir::Place {
                     local,
                     proj: Vec::new(),
@@ -651,7 +624,12 @@ impl<'a> Builder<'a> {
                 block.stmts.push(mir::Stmt::Assign(place.clone(), value));
 
                 let operand = mir::Operand::Place(place);
-                let value = mir::Value::Promote(from, tys, operand);
+                let value = mir::Value::Promote {
+                    input: from,
+                    variants: tys,
+                    operand,
+                };
+
                 Ok(BlockAnd::new(block, value))
             }
         }
@@ -662,27 +640,10 @@ impl<'a> Builder<'a> {
             return local;
         }
 
-        let ty = self.build_tid(self.body.locals[hir].ty.clone());
+        let ty = self.build_ty(self.body.locals[hir].ty.clone());
         let local = self.locals.push(ty);
         self.local_map.insert(hir, local);
         local
-    }
-
-    fn build_tid(&mut self, mut hir: hir::Ty) -> mir::Tid {
-        match hir {
-            hir::Ty::Union(ref mut tys) => tys.sort(),
-            hir::Ty::Record(ref mut tys) => tys.sort(),
-            _ => {}
-        }
-
-        if let Some(&tid) = self.types.get(&hir) {
-            return tid;
-        }
-
-        let ty = self.build_ty(hir.clone());
-        let tid = self.mir.types.push(ty);
-        self.types.insert(hir, tid);
-        tid
     }
 
     fn build_ty(&mut self, hir: hir::Ty) -> mir::Ty {
@@ -690,7 +651,10 @@ impl<'a> Builder<'a> {
             hir::Ty::Int => mir::Ty::Int,
             hir::Ty::Float => mir::Ty::Float,
             hir::Ty::Str => mir::Ty::Str,
-            hir::Ty::True | hir::Ty::False | hir::Ty::None | hir::Ty::Never => mir::Ty::ZST,
+            hir::Ty::True => mir::Ty::True,
+            hir::Ty::False => mir::Ty::False,
+            hir::Ty::None => mir::Ty::None,
+            hir::Ty::Never => mir::Ty::Never,
 
             hir::Ty::Generic(generic) => {
                 let index = self
@@ -704,45 +668,56 @@ impl<'a> Builder<'a> {
                 mir::Ty::Generic(index as u16)
             }
 
-            hir::Ty::Named(id, ref tys) => {
-                let spec = hir::Spec::new(&self.hir[id].generics, tys).unwrap();
+            hir::Ty::Named(id, tys) => {
+                let tys = tys.iter().map(|ty| self.build_ty(ty.clone())).collect();
 
-                match self.hir[id].ty {
-                    Some(ref ty) => {
-                        let ty = spec.apply(ty.clone()).unwrap();
-                        self.build_ty(ty)
-                    }
-                    None => mir::Ty::ZST,
+                if let Some(&id) = self.types.get(&id) {
+                    return mir::Ty::Named(id, tys);
                 }
+
+                let named = &self.hir[id];
+
+                let named = mir::Named {
+                    generics: named.generics.params.len() as u16,
+                    ty: match named.ty {
+                        Some(ref ty) => self.build_ty(ty.clone()),
+                        None => mir::Ty::None,
+                    },
+                };
+
+                let mir_id = self.mir.types.push(named);
+                self.types.insert(id, mir_id);
+
+                mir::Ty::Named(mir_id, tys)
             }
 
-            hir::Ty::Ref(ref ty) => mir::Ty::Ref(self.build_tid(ty.as_ref().clone())),
+            hir::Ty::Ref(ty) => mir::Ty::Ref(Box::new(self.build_ty(*ty))),
 
-            hir::Ty::List(ref ty) => mir::Ty::List(self.build_tid(ty.as_ref().clone())),
+            hir::Ty::List(ty) => mir::Ty::List(Box::new(self.build_ty(*ty))),
 
-            hir::Ty::Func(ref i, ref o) => {
-                let i = self.build_tid(i.as_ref().clone());
-                let o = self.build_tid(o.as_ref().clone());
+            hir::Ty::Func(i, o) => {
+                let i = self.build_ty(*i);
+                let o = self.build_ty(*o);
 
-                mir::Ty::Func(i, o)
+                mir::Ty::Func(Box::new(i), Box::new(o))
             }
 
-            hir::Ty::Tuple(ref tys) => {
-                let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
+            hir::Ty::Tuple(tys) => {
+                let tys = tys.into_iter().map(|ty| self.build_ty(ty)).collect();
 
                 mir::Ty::Tuple(tys)
             }
 
-            hir::Ty::Union(ref tys) => {
-                let tys = tys.iter().map(|ty| self.build_tid(ty.clone())).collect();
+            hir::Ty::Union(tys) => {
+                let tys = tys.into_iter().map(|ty| self.build_ty(ty)).collect();
 
                 mir::Ty::Union(tys)
             }
 
-            hir::Ty::Record(ref fields) => {
+            hir::Ty::Record(fields) => {
                 let fields = fields
-                    .iter()
-                    .map(|f| (f.name, self.build_tid(f.ty.clone())))
+                    .into_iter()
+                    .map(|f| (f.name, self.build_ty(f.ty)))
                     .collect();
 
                 mir::Ty::Record(fields)

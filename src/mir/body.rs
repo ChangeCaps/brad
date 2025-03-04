@@ -1,17 +1,31 @@
 use std::ops::{Index, IndexMut};
 
-use super::{stmt::Block, ty::Tid};
+use super::{stmt::Block, ty::Ty};
 
+/// Represents a function body.
+///
+/// The locals in the body are allocated accordingly:
+/// +-----------------+-----------------+-----------------+
+/// | captures        | arguments       | locals          |
+/// +-----------------+-----------------+-----------------+
 #[derive(Clone, Debug)]
 pub struct Body {
-    pub captures: Vec<Tid>,
+    /// The number of captures.
+    pub captures: usize,
+
+    /// The number of arguments.
+    pub arguments: usize,
+
+    /// The locals in the body.
     pub locals: Locals,
+
+    /// The block of statements.
     pub block: Block,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Locals {
-    locals: Vec<Tid>,
+    locals: Vec<Ty>,
 }
 
 impl Locals {
@@ -27,7 +41,7 @@ impl Locals {
         self.locals.is_empty()
     }
 
-    pub fn push(&mut self, ty: Tid) -> Local {
+    pub fn push(&mut self, ty: Ty) -> Local {
         let local = self.locals.len();
         self.locals.push(ty);
         Local(local)
@@ -35,13 +49,7 @@ impl Locals {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct Local(usize);
-
-impl Local {
-    pub fn index(self) -> usize {
-        self.0
-    }
-}
+pub struct Local(pub usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BodyId(usize);
@@ -76,7 +84,7 @@ impl Index<BodyId> for Bodies {
 }
 
 impl Index<Local> for Locals {
-    type Output = Tid;
+    type Output = Ty;
 
     fn index(&self, Local(i): Local) -> &Self::Output {
         &self.locals[i]

@@ -2,7 +2,7 @@ use std::{fs, io, path::Path};
 
 use crate::{
     diagnostic::{Diagnostic, Source, SourceId, Sources},
-    interpret::{self, Interpreter},
+    interpret::Interpreter,
     lower::Lowerer,
     mir,
     parse::{self, Interner, Tokens},

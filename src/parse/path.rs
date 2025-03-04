@@ -27,7 +27,7 @@ pub fn path(input: &mut Tokens) -> Result<ast::Path, Diagnostic> {
 
     let mut span = first.span.join(last.span);
 
-    let spec = if input.is(Token::Lt) {
+    let spec = if input.is(Token::Lt) && !input.has_whitespace() {
         let spec = spec(input)?;
         span = span.join(spec.span);
         Some(spec)

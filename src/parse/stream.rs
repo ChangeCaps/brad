@@ -28,7 +28,7 @@ impl Tokens {
     }
 
     pub fn nth_has_whitespace(&self, n: usize) -> bool {
-        (self.tokens.get(self.index + n)).map_or(false, |e| e.whitespace)
+        (self.tokens.get(self.index + n)).is_some_and(|e| e.whitespace)
     }
 
     pub fn has_whitespace(&self) -> bool {

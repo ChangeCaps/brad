@@ -3,7 +3,7 @@ fn main -> int {
 }
 
 fn fib (n: int) -> int {
-    match n <= 1
-    | true => n
+    match n < 2
+    | true  => n
     | false => (fib n - 1) + (fib n - 2)
 }

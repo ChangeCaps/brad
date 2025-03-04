@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use crate::{ast, diagnostic::Diagnostic, hir};
 
 use super::{lower_ty, resolve_item, Resolved};
@@ -8,7 +10,7 @@ pub struct BodyLowerer<'a> {
     body: hir::BodyId,
     scope: Vec<hir::LocalId>,
     looping: bool,
-    breaks: Vec<hir::Ty>,
+    breaks: BTreeSet<hir::Ty>,
 }
 
 impl<'a> BodyLowerer<'a> {
@@ -19,7 +21,7 @@ impl<'a> BodyLowerer<'a> {
             body,
             scope: Vec::new(),
             looping: false,
-            breaks: Vec::new(),
+            breaks: BTreeSet::new(),
         }
     }
 
@@ -486,7 +488,7 @@ impl<'a> BodyLowerer<'a> {
             | hir::BinaryOp::Gt
             | hir::BinaryOp::Ge
             | hir::BinaryOp::And
-            | hir::BinaryOp::Or => hir::Ty::Union(vec![hir::Ty::True, hir::Ty::False]),
+            | hir::BinaryOp::Or => hir::Ty::Union([hir::Ty::True, hir::Ty::False].into()),
         };
 
         let kind = hir::ExprKind::Binary(op, Box::new(lhs), Box::new(rhs));
@@ -555,7 +557,7 @@ impl<'a> BodyLowerer<'a> {
         let target = self.lower_expr(*ast.target)?;
 
         let mut arms = Vec::new();
-        let mut tys = Vec::new();
+        let mut tys = BTreeSet::new();
 
         for arm in ast.arms {
             let pattern = match arm.pattern {
@@ -574,7 +576,7 @@ impl<'a> BodyLowerer<'a> {
             let expr = self.lower_expr(arm.expr)?;
 
             if !tys.contains(&expr.ty) {
-                tys.push(expr.ty.clone());
+                tys.insert(expr.ty.clone());
             }
 
             arms.push(hir::Arm {
@@ -584,11 +586,7 @@ impl<'a> BodyLowerer<'a> {
             });
         }
 
-        let ty = match tys.len() {
-            1 => tys[0].clone(),
-            _ => hir::Ty::Union(tys),
-        };
-
+        let ty = hir::Ty::Union(tys).normalize();
         let kind = hir::ExprKind::Match(Box::new(target), arms);
         let span = ast.span;
 
@@ -606,8 +604,7 @@ impl<'a> BodyLowerer<'a> {
 
         let ty = match self.breaks.len() {
             0 => hir::Ty::Never,
-            1 => self.breaks[0].clone(),
-            _ => hir::Ty::Union(self.breaks.clone()),
+            _ => hir::Ty::Union(self.breaks.clone()).normalize(),
         };
 
         let kind = hir::ExprKind::Loop(Box::new(body));
@@ -631,10 +628,7 @@ impl<'a> BodyLowerer<'a> {
         match ast.value {
             Some(value) => {
                 let value = self.lower_expr(*value)?;
-
-                if !self.breaks.contains(&value.ty) {
-                    self.breaks.push(value.ty.clone());
-                }
+                self.breaks.insert(value.ty.clone());
 
                 let kind = hir::ExprKind::Break(Some(Box::new(value)));
                 let ty = hir::Ty::None;
@@ -643,7 +637,7 @@ impl<'a> BodyLowerer<'a> {
                 Ok(hir::Expr { kind, ty, span })
             }
             None => {
-                self.breaks.push(hir::Ty::None);
+                self.breaks.insert(hir::Ty::None);
 
                 let kind = hir::ExprKind::Break(None);
                 let ty = hir::Ty::None;
