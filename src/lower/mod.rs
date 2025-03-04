@@ -328,7 +328,7 @@ impl Lowerer {
 
                 let expr = lowerer.lower_expr(decl.body.clone())?;
 
-                if expr.ty != lowerer.body_mut().output {
+                if !lowerer.is_subty(&lowerer.body().output, &expr.ty) {
                     let diagnostic = Diagnostic::error("unresolved::type")
                         .message(format!(
                             "expected `{}`, found `{}`",

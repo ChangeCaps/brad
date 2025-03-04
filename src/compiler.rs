@@ -86,7 +86,7 @@ impl Compiler {
         let (mir, main) = mir::build(&hir)?;
 
         let interpreter = Interpreter::new(mir);
-        interpreter.run(main);
+        interpreter.run(main, Vec::new());
 
         Ok(())
     }

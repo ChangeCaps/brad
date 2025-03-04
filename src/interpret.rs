@@ -14,10 +14,11 @@ impl Interpreter {
         Self { mir }
     }
 
-    pub fn run(&self, body: mir::BodyId) {
+    pub fn run(&self, body: mir::BodyId, generics: Vec<mir::Ty>) {
         let body = &self.mir.bodies[body];
 
         let mut frame = Frame {
+            generics,
             locals: vec![Value::None; body.locals.len()],
         };
 
@@ -97,7 +98,7 @@ impl Interpreter {
                 let value = self.eval_operand(frame, operand);
 
                 Value::Union {
-                    ty: input.clone(),
+                    ty: input.clone().specialize(&frame.generics),
                     value: Box::new(value),
                 }
             }
@@ -110,6 +111,7 @@ impl Interpreter {
 
                 let Value::Func {
                     body,
+                    generics,
                     mut captures,
                     missing,
                 } = func
@@ -122,6 +124,7 @@ impl Interpreter {
                 if missing > 1 {
                     return Value::Func {
                         body,
+                        generics,
                         captures,
                         missing: missing - 1,
                     };
@@ -129,6 +132,7 @@ impl Interpreter {
 
                 let body = &self.mir.bodies[body];
                 let mut frame = Frame {
+                    generics,
                     locals: vec![Value::None; body.locals.len()],
                 };
 
@@ -288,7 +292,12 @@ impl Interpreter {
 
             mir::Value::Unary(_unary_op, _operand) => todo!(),
 
-            mir::Value::Closure { body, captures, .. } => {
+            mir::Value::Closure {
+                body,
+                captures,
+                generics,
+                ..
+            } => {
                 let captures = captures
                     .iter()
                     .map(|capture| self.eval_operand(frame, capture))
@@ -296,6 +305,7 @@ impl Interpreter {
 
                 Value::Func {
                     body: *body,
+                    generics: generics.clone(),
                     captures,
                     missing: self.mir.bodies[*body].arguments,
                 }
@@ -421,6 +431,7 @@ impl Interpreter {
 }
 
 struct Frame {
+    generics: Vec<mir::Ty>,
     locals: Vec<Value>,
 }
 
@@ -447,6 +458,7 @@ enum Value {
 
     Func {
         body: mir::BodyId,
+        generics: Vec<mir::Ty>,
         captures: Vec<Value>,
         missing: usize,
     },

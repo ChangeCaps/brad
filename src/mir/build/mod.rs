@@ -57,6 +57,14 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnost
         }
 
         let value = unpack!(block = builder.build_value(block, hir_body.expr.clone())?);
+        let value = unpack!(
+            block = builder.coerce_value(
+                block,
+                value,
+                hir_body.expr.ty.clone(),
+                hir_body.output.clone(),
+            )?
+        );
 
         block.term = mir::Term::Return(value);
 
@@ -142,10 +150,6 @@ impl<'a> Builder<'a> {
             }
 
             hir::ExprKind::Match(target, arms) => {
-                if !matches!(target.ty, hir::Ty::Union(_)) {
-                    panic!("Match target must be a union type");
-                }
-
                 let target = unpack!(block = self.build_place(block, *target)?);
 
                 let tid = self.build_ty(expr.ty.clone());
@@ -644,6 +648,13 @@ impl<'a> Builder<'a> {
         let local = self.locals.push(ty);
         self.local_map.insert(hir, local);
         local
+    }
+
+    fn unwrap_type(&self, ty: mir::Ty) -> mir::Ty {
+        match ty {
+            mir::Ty::Named(id, ref generics) => self.mir.types[id].ty.clone().specialize(generics),
+            ty => ty,
+        }
     }
 
     fn build_ty(&mut self, hir: hir::Ty) -> mir::Ty {

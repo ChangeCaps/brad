@@ -48,6 +48,67 @@ pub enum Ty {
     Union(BTreeSet<Self>),
 }
 
+impl Ty {
+    pub fn specialize(self, generics: &[Self]) -> Self {
+        match self {
+            Ty::Int | Ty::Float | Ty::Str | Ty::True | Ty::False | Ty::None | Ty::Never => self,
+
+            Ty::Generic(i) => generics[i as usize].clone(),
+
+            Ty::Named(id, mut tys) => {
+                for ty in tys.iter_mut() {
+                    *ty = ty.clone().specialize(generics);
+                }
+
+                Ty::Named(id, tys)
+            }
+
+            Ty::Ref(mut ty) => {
+                *ty = ty.specialize(generics);
+                Ty::Ref(ty)
+            }
+
+            Ty::List(mut ty) => {
+                *ty = ty.specialize(generics);
+                Ty::List(ty)
+            }
+
+            Ty::Func(mut i, mut o) => {
+                *i = i.specialize(generics);
+                *o = o.specialize(generics);
+
+                Ty::Func(i, o)
+            }
+
+            Ty::Tuple(mut tys) => {
+                for ty in tys.iter_mut() {
+                    *ty = ty.clone().specialize(generics);
+                }
+
+                Ty::Tuple(tys)
+            }
+
+            Ty::Record(mut fields) => {
+                for (_, ty) in fields.iter_mut() {
+                    *ty = ty.clone().specialize(generics);
+                }
+
+                Ty::Record(fields)
+            }
+
+            Ty::Union(tys) => {
+                let mut new_tys = BTreeSet::new();
+
+                for variant in tys.into_iter() {
+                    new_tys.insert(variant.specialize(generics));
+                }
+
+                Ty::Union(new_tys)
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Named {
     pub generics: u16,
