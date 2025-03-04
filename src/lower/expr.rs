@@ -119,7 +119,7 @@ impl<'a> BodyLowerer<'a> {
             | (hir::Ty::True, hir::Ty::True)
             | (hir::Ty::False, hir::Ty::False)
             | (hir::Ty::None, hir::Ty::None)
-            | (hir::Ty::Never, hir::Ty::Never) => true,
+            | (_, hir::Ty::Never) => true,
 
             (hir::Ty::Generic(g1), hir::Ty::Generic(g2)) => g1 == g2,
 

@@ -1,5 +1,5 @@
 fn main -> int {
-    fib 10
+    loop {}
 }
 
 fn fib (n: int) -> int {

@@ -2,7 +2,7 @@ use crate::mir;
 
 enum Flow {
     Return(Value),
-    Break(Value),
+    Break,
 }
 
 pub struct Interpreter {
@@ -23,9 +23,9 @@ impl Interpreter {
         };
 
         match self.eval_block(&mut frame, &body.block) {
-            Ok(()) => {}
+            Ok(()) => panic!("expected return"),
             Err(Flow::Return(value)) => println!("{:?}", value),
-            Err(Flow::Break(value)) => println!("{:?}", value),
+            Err(Flow::Break) => panic!("unexpected break"),
         }
     }
 
@@ -36,6 +36,7 @@ impl Interpreter {
 
         match block.term {
             mir::Term::Return(ref value) => Err(Flow::Return(self.eval_value(frame, value))),
+            mir::Term::Break => Err(Flow::Break),
             mir::Term::Exit => Ok(()),
         }
     }
@@ -47,6 +48,14 @@ impl Interpreter {
                 self.assign(frame, place, value);
                 Ok(())
             }
+
+            mir::Stmt::Loop(block) => loop {
+                match self.eval_block(frame, block) {
+                    Err(Flow::Return(value)) => break Err(Flow::Return(value)),
+                    Err(Flow::Break) => break Ok(()),
+                    Ok(()) => continue,
+                }
+            },
 
             mir::Stmt::Match {
                 target,

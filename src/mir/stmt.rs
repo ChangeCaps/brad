@@ -20,6 +20,9 @@ impl Block {
 #[derive(Clone, Debug)]
 pub enum Stmt {
     Assign(Place, Value),
+
+    Loop(Block),
+
     Match {
         target: Place,
         cases: Vec<Case>,
@@ -42,6 +45,7 @@ pub struct Case {
 #[derive(Clone, Debug)]
 pub enum Term {
     Return(Value),
+    Break,
     Exit,
 }
 

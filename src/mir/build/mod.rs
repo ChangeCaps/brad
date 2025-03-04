@@ -107,6 +107,8 @@ struct Builder<'a> {
 
     locals: mir::Locals,
     local_map: HashMap<hir::LocalId, mir::Local>,
+
+    break_local: Option<mir::Local>,
 }
 
 impl<'a> Builder<'a> {
@@ -127,6 +129,7 @@ impl<'a> Builder<'a> {
             locals,
             body,
             local_map: HashMap::new(),
+            break_local: None,
         }
     }
 
@@ -202,6 +205,30 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, output))
             }
 
+            hir::ExprKind::Loop(body) => {
+                let ty = self.build_ty(expr.ty.clone());
+                let local = self.locals.push(ty);
+
+                let old_break_local = self.break_local;
+                self.break_local = Some(local);
+
+                let mut loop_block = mir::Block::new();
+
+                let _ = unpack!(loop_block = self.build_place(loop_block, *body)?);
+
+                self.break_local = old_break_local;
+
+                let place = mir::Place {
+                    local,
+                    proj: Vec::new(),
+                    is_mutable: false,
+                };
+
+                block.stmts.push(mir::Stmt::Loop(loop_block));
+
+                Ok(BlockAnd::new(block, place))
+            }
+
             hir::ExprKind::Int(_)
             | hir::ExprKind::Float(_)
             | hir::ExprKind::True
@@ -218,7 +245,6 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Call(_, _)
             | hir::ExprKind::Assign(_, _)
             | hir::ExprKind::Ref(_)
-            | hir::ExprKind::Loop(_)
             | hir::ExprKind::Break(_)
             | hir::ExprKind::Let(_, _, _)
             | hir::ExprKind::Block(_) => {
@@ -292,6 +318,26 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, mir::Operand::NONE))
             }
 
+            hir::ExprKind::Break(value) => {
+                let local = self.break_local.unwrap();
+
+                if let Some(value) = value {
+                    let v = unpack!(block = self.build_value(block, *value)?);
+
+                    let place = mir::Place {
+                        local,
+                        proj: Vec::new(),
+                        is_mutable: false,
+                    };
+
+                    block.stmts.push(mir::Stmt::Assign(place, v));
+                }
+
+                block.term = mir::Term::Break;
+
+                Ok(BlockAnd::new(block, mir::Operand::NONE))
+            }
+
             hir::ExprKind::Local(_)
             | hir::ExprKind::List(_)
             | hir::ExprKind::Tuple(_)
@@ -305,7 +351,6 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Ref(_)
             | hir::ExprKind::Match(_, _)
             | hir::ExprKind::Loop(_)
-            | hir::ExprKind::Break(_)
             | hir::ExprKind::Block(_) => {
                 let place = unpack!(block = self.build_place(block, expr)?);
                 Ok(BlockAnd::new(block, mir::Operand::Place(place)))
@@ -576,6 +621,10 @@ impl<'a> Builder<'a> {
         }
 
         let from = self.build_ty(from);
+
+        if matches!(from, mir::Ty::Never) {
+            return Ok(BlockAnd::new(block, mir::Value::NONE));
+        }
 
         match self.build_ty(to.clone()) {
             mir::Ty::Int
