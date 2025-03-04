@@ -2,6 +2,8 @@ use crate::diagnostic::Span;
 
 use super::{Path, Ty};
 
+use std::fmt;
+
 #[derive(Clone, Debug)]
 pub enum Expr {
     Literal(Literal),
@@ -70,6 +72,19 @@ impl Literal {
     }
 }
 
+impl std::fmt::Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Int { value, .. } => write!(f, "{}", value),
+            Self::Float { value, .. } => write!(f, "{}", value),
+            Self::String { value, .. } => write!(f, "{:?}", value),
+            Self::True { .. } => write!(f, "true"),
+            Self::False { .. } => write!(f, "false"),
+            Self::None { .. } => write!(f, "none"),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ListExpr {
     pub items: Vec<Expr>,
@@ -124,6 +139,17 @@ pub enum UnaryOp {
     Deref,
 }
 
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Neg => write!(f, "-"),
+            Self::Not => write!(f, "!"),
+            Self::BitNot => write!(f, "~"),
+            Self::Deref => write!(f, "*"),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct BinaryExpr {
     pub lhs: Box<Expr>,
@@ -166,6 +192,31 @@ impl BinaryOp {
             Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge => 2,
             Self::And => 1,
             Self::Or => 0,
+        }
+    }
+}
+
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Add => write!(f, "+"),
+            Self::Sub => write!(f, "-"),
+            Self::Mul => write!(f, "*"),
+            Self::Div => write!(f, "/"),
+            Self::Mod => write!(f, "%"),
+            Self::And => write!(f, "&&"),
+            Self::Or => write!(f, "||"),
+            Self::BitAnd => write!(f, "&"),
+            Self::BitOr => write!(f, "|"),
+            Self::BitXor => write!(f, "^"),
+            Self::Shl => write!(f, "<<"),
+            Self::Shr => write!(f, ">>"),
+            Self::Eq => write!(f, "=="),
+            Self::Ne => write!(f, "!="),
+            Self::Lt => write!(f, "<"),
+            Self::Le => write!(f, "<="),
+            Self::Gt => write!(f, ">"),
+            Self::Ge => write!(f, ">="),
         }
     }
 }

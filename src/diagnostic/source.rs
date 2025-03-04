@@ -6,7 +6,7 @@ pub struct Source {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SourceId(u32);
+pub struct SourceId(pub u32);
 
 pub struct Sources {
     sources: Vec<Source>,
