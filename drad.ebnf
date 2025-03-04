@@ -46,6 +46,8 @@
 - Call binds stronger than unary
 - Bash function call semantics (call first, everything else is an argument in the same expressions!)
 
+- No, use <| and |> instead. :)
+
 - Assignments bind weaker than everything but ref
 - Ref binds the weakest.
 
@@ -71,7 +73,9 @@
 - Custom token types for unary / sticky operators such as unary but also indices.
 *)
 <assign> ::= <assign> eq                      <logic>  | <logic>
-<logic>  ::= <logic>  (ampamp|pipepipe)       <eql>    | <eql>
+<ref>    ::=          ref                     <or>     | <or>   
+<or>     ::= <or>     pipepipe                <and>    | <and>
+<and>    ::= <and>    ampamp                  <eql>    | <eql>
 <eql>    ::= <eql>    (eqeq|noteq)            <cmp>    | <cmp>
 <cmp>    ::= <cmp>    (gt|lt|gteq|lteq)       <bitor>  | <bitor>
 <bitor>  ::= <bitor>  pipe                    <bitxor> | <bitxor>
@@ -91,6 +95,7 @@
 
 <let>    ::= let <bind> (colon <type>)? eq <expr>
 <loop>   ::= loop <block>
+
 
 <block>  ::= lbrace nl* (<expr> (nl+ <expr>)*)? nl* rbrace
 
