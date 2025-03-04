@@ -11,7 +11,7 @@ pub fn decl(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
 
     match token {
         Token::Fn => funcy(input),
-        Token::Type => type_(input),
+        Token::Type => r#type(input),
         Token::Alias => alias(input),
         Token::Import => import(input),
         _ => {
@@ -85,7 +85,7 @@ fn argument(input: &mut Tokens) -> Result<ast::Argument, Diagnostic> {
     Ok(ast::Argument { binding, ty, span })
 }
 
-fn type_(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
+fn r#type(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     input.expect(Token::Type)?;
 
     let (name, span) = ident(input)?;
