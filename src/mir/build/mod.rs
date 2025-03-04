@@ -183,7 +183,6 @@ impl<'a> Builder<'a> {
                             };
 
                             block.stmts.push(mir::Stmt::Assign(output, value));
-                            block.term = mir::Term::Exit;
 
                             cases.push(mir::Case { ty, local, block });
                         }

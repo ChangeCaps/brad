@@ -69,7 +69,7 @@ impl Interpreter {
                 };
 
                 for case in cases {
-                    if ty == case.ty {
+                    if ty == case.ty.clone().specialize(&frame.generics) {
                         frame.locals[case.local.0] = *value;
 
                         return self.eval_block(frame, &case.block);
@@ -103,8 +103,16 @@ impl Interpreter {
                 Value::Record(values)
             }
 
-            mir::Value::Promote { input, operand, .. } => {
+            mir::Value::Promote {
+                input,
+                variants,
+                operand,
+            } => {
                 let value = self.eval_operand(frame, operand);
+
+                if variants.len() == 1 {
+                    return value;
+                }
 
                 Value::Union {
                     ty: input.clone().specialize(&frame.generics),
