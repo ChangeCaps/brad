@@ -65,7 +65,7 @@ impl<T> Locals<T> {
 pub struct Local(pub usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Bid(usize);
+pub struct Bid(pub usize);
 
 #[derive(Clone, Debug)]
 pub struct Bodies<T = Ty> {

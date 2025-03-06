@@ -1,8 +1,24 @@
 use std::{collections::HashMap, ffi::CString};
 
-use crate::mir::Bid;
 use crate::sir;
-use llvm_sys::{core::*, prelude::*, target::*, target_machine::*};
+use crate::sir::Operand;
+
+use llvm_sys::{
+    core::*, prelude::*, target::*, target_machine::*, LLVMIntPredicate, LLVMRealPredicate,
+};
+
+/// void* macro (takes llvm context)
+macro_rules! llvm_void_ptr {
+    ($context:expr) => {
+        LLVMPointerType(LLVMVoidTypeInContext($context), 0)
+    };
+}
+
+macro_rules! llvm_null {
+    ($context:expr) => {
+        LLVMConstNull(LLVMInt64TypeInContext($context))
+    };
+}
 
 pub fn codegen(program: sir::Program) {
     unsafe {
@@ -90,8 +106,18 @@ impl Codegen {
                 let zst = LLVMStructTypeInContext(self.context, std::ptr::null_mut(), 0, 0);
                 (zst, None)
             }
-            _ => {
-                let name = CString::new(format!("ty{}", tid.0)).unwrap();
+            ty => {
+                let name = match ty {
+                    sir::Ty::Ref(_) => "ref",
+                    sir::Ty::Func(_, _) => "fn",
+                    sir::Ty::Tuple(_) => "tuple",
+                    sir::Ty::Record(_) => "record",
+                    sir::Ty::Union(_) => "union",
+                    _ => unreachable!(),
+                };
+
+                let name = format!("ty_{}_{}", name, tid.0);
+                let name = CString::new(name).unwrap();
                 let inner = LLVMStructCreateNamed(self.context, name.as_ptr());
                 let ptr = LLVMPointerType(inner, 0);
                 (ptr, Some(inner))
@@ -153,11 +179,13 @@ impl Codegen {
                 LLVMStructSetBody(s, elements.as_mut_ptr(), elements.len() as u32, 0);
             }
             sir::Ty::Union(ref btree_set) => {
-                // return void ptr
-
+                // { u64, void* }
                 let void = LLVMVoidTypeInContext(self.context);
-                let mut ptr = LLVMPointerType(void, 0);
-                LLVMStructSetBody(self.types[&tid].1.unwrap(), &mut ptr, 1, 0);
+                let void_ptr = LLVMPointerType(void, 0);
+                let u64 = LLVMInt64TypeInContext(self.context);
+                let mut elements = [u64, void_ptr];
+                let s = self.types[&tid].1.unwrap();
+                LLVMStructSetBody(s, elements.as_mut_ptr(), 2, 0);
             }
         }
     }
@@ -187,7 +215,7 @@ struct BodyCodegen<'a> {
 }
 
 impl<'a> BodyCodegen<'a> {
-    unsafe fn new(codegen: &'a Codegen, id: Bid) -> Self {
+    unsafe fn new(codegen: &'a Codegen, id: sir::Bid) -> Self {
         let body = &codegen.program.bodies[id];
 
         let context = codegen.context;
@@ -221,7 +249,7 @@ impl<'a> BodyCodegen<'a> {
 
         let func = LLVMFunctionType(output, inputs.as_mut_ptr(), 2, 0);
 
-        let name = CString::new(format!("{:?}", id)).unwrap();
+        let name = CString::new(format!("body_{}", id.0)).unwrap();
         let function = LLVMAddFunction(module, name.as_ptr(), func);
 
         Self {
@@ -277,10 +305,28 @@ impl<'a> BodyCodegen<'a> {
                 let llvm_block =
                     LLVMAppendBasicBlockInContext(self.context, self.function, c"loop".as_ptr());
                 LLVMPositionBuilderAtEnd(self.builder, llvm_block);
-
                 self.block(block);
+                LLVMBuildBr(self.builder, llvm_block);
             }
             sir::Stmt::Match { .. } => {}
+        }
+    }
+
+    unsafe fn operand(&self, operand: &sir::Operand) -> LLVMValueRef {
+        match operand {
+            Operand::Place(place) => self.place(place),
+            Operand::Const(r#const) => match r#const {
+                sir::Const::None => LLVMConstNull(LLVMInt64TypeInContext(self.context)),
+                sir::Const::Int(value) => {
+                    LLVMConstInt(LLVMInt64TypeInContext(self.context), *value as u64, 0)
+                }
+                sir::Const::Float(value) => {
+                    LLVMConstReal(LLVMFloatTypeInContext(self.context), *value)
+                }
+                sir::Const::String(value) => {
+                    todo!("needs allocation");
+                }
+            },
         }
     }
 
@@ -290,17 +336,141 @@ impl<'a> BodyCodegen<'a> {
 
     unsafe fn value(&self, value: &sir::Value) -> LLVMValueRef {
         match value {
-            sir::Value::Use(_) => {}
-            sir::Value::Tuple(_) => {}
-            sir::Value::Record(_) => {}
-            sir::Value::Promote { .. } => {}
-            sir::Value::Coerce { .. } => {}
-            sir::Value::Call(_, _) => {}
-            sir::Value::Binary(_, _, _) => {}
-            sir::Value::Unary(_, _) => {}
-            sir::Value::Closure { .. } => {}
-        };
+            sir::Value::Use(_) => {
+                llvm_null!(self.context)
+            }
+            sir::Value::Tuple(_) => {
+                // Allocate a tuple
+                llvm_null!(self.context)
+            }
+            sir::Value::Record(_) => {
+                // Allocate a record
+                llvm_null!(self.context)
+            }
+            sir::Value::Promote { .. } => llvm_null!(self.context),
+            sir::Value::Coerce { .. } => llvm_null!(self.context),
+            sir::Value::Call(_, _) => llvm_null!(self.context),
+            sir::Value::Binary(op, lhs, rhs) => {
+                let lhs = self.operand(lhs);
+                let rhs = self.operand(rhs);
 
-        LLVMConstNull(LLVMInt64TypeInContext(self.context))
+                match op {
+                    sir::BinaryOp::Add => LLVMBuildAdd(self.builder, lhs, rhs, c"add".as_ptr()),
+                    sir::BinaryOp::Sub => LLVMBuildSub(self.builder, lhs, rhs, c"sub".as_ptr()),
+                    sir::BinaryOp::Mul => LLVMBuildMul(self.builder, lhs, rhs, c"mul".as_ptr()),
+                    sir::BinaryOp::Div => LLVMBuildSDiv(self.builder, lhs, rhs, c"div".as_ptr()),
+                    sir::BinaryOp::Mod => LLVMBuildSRem(self.builder, lhs, rhs, c"mod".as_ptr()),
+                    sir::BinaryOp::BAnd => llvm_null!(self.context),
+                    sir::BinaryOp::BOr => llvm_null!(self.context),
+                    sir::BinaryOp::BXor => llvm_null!(self.context),
+                    sir::BinaryOp::Eq => LLVMBuildICmp(
+                        self.builder,
+                        LLVMIntPredicate::LLVMIntEQ,
+                        lhs,
+                        rhs,
+                        c"eq".as_ptr(),
+                    ),
+                    sir::BinaryOp::Ne => LLVMBuildICmp(
+                        self.builder,
+                        LLVMIntPredicate::LLVMIntNE,
+                        lhs,
+                        rhs,
+                        c"ne".as_ptr(),
+                    ),
+                    sir::BinaryOp::Lt => LLVMBuildICmp(
+                        self.builder,
+                        LLVMIntPredicate::LLVMIntSLT,
+                        lhs,
+                        rhs,
+                        c"lt".as_ptr(),
+                    ),
+                    sir::BinaryOp::Le => LLVMBuildICmp(
+                        self.builder,
+                        LLVMIntPredicate::LLVMIntSLE,
+                        lhs,
+                        rhs,
+                        c"le".as_ptr(),
+                    ),
+                    sir::BinaryOp::Gt => LLVMBuildICmp(
+                        self.builder,
+                        LLVMIntPredicate::LLVMIntSGT,
+                        lhs,
+                        rhs,
+                        c"gt".as_ptr(),
+                    ),
+                    sir::BinaryOp::Ge => LLVMBuildICmp(
+                        self.builder,
+                        LLVMIntPredicate::LLVMIntSGE,
+                        lhs,
+                        rhs,
+                        c"ge".as_ptr(),
+                    ),
+                    sir::BinaryOp::LShr => LLVMBuildAShr(self.builder, lhs, rhs, c"shr".as_ptr()),
+                    sir::BinaryOp::LShl => LLVMBuildShl(self.builder, lhs, rhs, c"shr".as_ptr()),
+                    sir::BinaryOp::FAdd => LLVMBuildFAdd(self.builder, lhs, rhs, c"fadd".as_ptr()),
+                    sir::BinaryOp::FSub => LLVMBuildFSub(self.builder, lhs, rhs, c"fsub".as_ptr()),
+                    sir::BinaryOp::FMul => LLVMBuildFMul(self.builder, lhs, rhs, c"fmul".as_ptr()),
+                    sir::BinaryOp::FDiv => LLVMBuildFDiv(self.builder, lhs, rhs, c"fdiv".as_ptr()),
+                    sir::BinaryOp::FMod => LLVMBuildFRem(self.builder, lhs, rhs, c"fmod".as_ptr()),
+                    sir::BinaryOp::FEq => LLVMBuildFCmp(
+                        self.builder,
+                        LLVMRealPredicate::LLVMRealOEQ,
+                        lhs,
+                        rhs,
+                        c"feq".as_ptr(),
+                    ),
+                    sir::BinaryOp::FNe => LLVMBuildFCmp(
+                        self.builder,
+                        LLVMRealPredicate::LLVMRealONE,
+                        lhs,
+                        rhs,
+                        c"fne".as_ptr(),
+                    ),
+                    sir::BinaryOp::FLt => LLVMBuildFCmp(
+                        self.builder,
+                        LLVMRealPredicate::LLVMRealOLT,
+                        lhs,
+                        rhs,
+                        c"flt".as_ptr(),
+                    ),
+                    sir::BinaryOp::FLe => LLVMBuildFCmp(
+                        self.builder,
+                        LLVMRealPredicate::LLVMRealOLE,
+                        lhs,
+                        rhs,
+                        c"fle".as_ptr(),
+                    ),
+                    sir::BinaryOp::FGt => LLVMBuildFCmp(
+                        self.builder,
+                        LLVMRealPredicate::LLVMRealOGT,
+                        lhs,
+                        rhs,
+                        c"fgt".as_ptr(),
+                    ),
+                    sir::BinaryOp::FGe => LLVMBuildFCmp(
+                        self.builder,
+                        LLVMRealPredicate::LLVMRealOGE,
+                        lhs,
+                        rhs,
+                        c"fge".as_ptr(),
+                    ),
+                    sir::BinaryOp::And => LLVMBuildAnd(self.builder, lhs, rhs, c"and".as_ptr()),
+                    sir::BinaryOp::Or => LLVMBuildOr(self.builder, lhs, rhs, c"or".as_ptr()),
+                }
+            }
+            sir::Value::Unary(op, operand) => {
+                let operand = self.operand(operand);
+                match op {
+                    sir::UnaryOp::Neg => LLVMBuildNeg(self.builder, operand, c"neg".as_ptr()),
+                    sir::UnaryOp::FNeg => LLVMBuildFNeg(self.builder, operand, c"fneg".as_ptr()),
+                    sir::UnaryOp::BNot => llvm_null!(self.context),
+                    sir::UnaryOp::Not => LLVMBuildNot(self.builder, operand, c"not".as_ptr()),
+                    sir::UnaryOp::Deref => llvm_null!(self.context),
+                }
+            }
+            sir::Value::Closure { body, .. } => {
+                llvm_null!(self.context)
+            }
+        }
     }
 }

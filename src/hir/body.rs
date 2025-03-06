@@ -30,7 +30,7 @@ impl Index<LocalId> for Body {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct BodyId(usize);
+pub struct BodyId(pub usize);
 
 #[derive(Clone, Debug, Default)]
 pub struct Bodies {
