@@ -64,7 +64,8 @@ where
                     self.format_ty(ty)?;
                 };
 
-                self.format_expr(&func_decl.body)
+                self.format_expr(&func_decl.body)?;
+                writeln!(self.writer)
             }
             Decl::Type(type_decl) => {
                 write!(self.writer, "type {}", type_decl.name)?;
@@ -150,11 +151,12 @@ where
                 self.format_expr(&binary_expr.rhs)
             }
             Expr::Call(call_expr) => {
-                write!(self.writer, "((")?;
+                write!(self.writer, "(")?;
                 self.format_expr(&call_expr.target)?;
-                write!(self.writer, ")")?;
+
+                write!(self.writer, " (")?;
                 self.format_expr(&call_expr.input)?;
-                write!(self.writer, ")")
+                write!(self.writer, "))")
             }
             Expr::Assign(assign_expr) => {
                 self.format_expr(&assign_expr.target)?;
@@ -204,8 +206,13 @@ where
                         f.format_expr(expr)?;
                     }
 
-                    writeln!(f.writer)
+                    Ok(())
                 })?;
+
+                if !block_expr.exprs.is_empty() {
+                    self.write_indent()?;
+                }
+
                 write!(self.writer, "}}")
             }
         }
@@ -222,9 +229,11 @@ where
             ),
             Binding::Tuple { bindings, .. } => {
                 write!(self.writer, "(")?;
-                for binding in bindings {
+                for (i, binding) in bindings.iter().enumerate() {
+                    if i > 0 {
+                        write!(self.writer, ", ")?;
+                    }
                     self.format_binding(binding)?;
-                    write!(self.writer, ", ")?;
                 }
                 write!(self.writer, ")")
             }

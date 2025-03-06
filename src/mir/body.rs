@@ -1,6 +1,6 @@
 use std::ops::{Index, IndexMut};
 
-use super::{stmt::Block, ty::Ty};
+use super::{stmt::Block, Ty};
 
 /// Represents a function body.
 ///
@@ -9,26 +9,35 @@ use super::{stmt::Block, ty::Ty};
 /// | captures        | arguments       | locals          |
 /// +-----------------+-----------------+-----------------+
 #[derive(Clone, Debug)]
-pub struct Body {
+pub struct Body<T = Ty> {
     /// The number of captures.
     pub captures: usize,
 
     /// The number of arguments.
     pub arguments: usize,
 
+    /// The output type of the body.
+    pub output: T,
+
     /// The locals in the body.
-    pub locals: Locals,
+    pub locals: Locals<T>,
 
     /// The block of statements.
-    pub block: Block,
+    pub block: Block<T>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct Locals {
-    locals: Vec<Ty>,
+#[derive(Clone, Debug)]
+pub struct Locals<T = Ty> {
+    locals: Vec<T>,
 }
 
-impl Locals {
+impl<T> Default for Locals<T> {
+    fn default() -> Self {
+        Self { locals: Vec::new() }
+    }
+}
+
+impl<T> Locals<T> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -41,10 +50,14 @@ impl Locals {
         self.locals.is_empty()
     }
 
-    pub fn push(&mut self, ty: Ty) -> Local {
+    pub fn push(&mut self, ty: T) -> Local {
         let local = self.locals.len();
         self.locals.push(ty);
         Local(local)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (Local, &T)> {
+        self.locals.iter().enumerate().map(|(i, ty)| (Local(i), ty))
     }
 }
 
@@ -52,52 +65,65 @@ impl Locals {
 pub struct Local(pub usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Bid(usize);
+pub struct BodyId(usize);
 
-#[derive(Clone, Debug, Default)]
-pub struct Bodies {
-    bodies: Vec<Body>,
+#[derive(Clone, Debug)]
+pub struct Bodies<T = Ty> {
+    bodies: Vec<Body<T>>,
 }
 
-impl Bodies {
+impl<T> Default for Bodies<T> {
+    fn default() -> Self {
+        Self { bodies: Vec::new() }
+    }
+}
+
+impl<T> Bodies<T> {
     pub fn new() -> Self {
         Self { bodies: Vec::new() }
     }
 
-    pub fn push(&mut self, body: Body) -> Bid {
+    pub fn push(&mut self, body: Body<T>) -> BodyId {
         let local = self.bodies.len();
         self.bodies.push(body);
-        Bid(local)
+        BodyId(local)
     }
 
-    pub fn insert(&mut self, Bid(i): Bid, body: Body) {
+    pub fn insert(&mut self, BodyId(i): BodyId, body: Body<T>) {
         self.bodies[i] = body;
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (BodyId, &Body<T>)> {
+        self.bodies
+            .iter()
+            .enumerate()
+            .map(|(i, body)| (BodyId(i), body))
     }
 }
 
-impl Index<Bid> for Bodies {
-    type Output = Body;
+impl<T> Index<BodyId> for Bodies<T> {
+    type Output = Body<T>;
 
-    fn index(&self, Bid(i): Bid) -> &Self::Output {
+    fn index(&self, BodyId(i): BodyId) -> &Self::Output {
         &self.bodies[i]
     }
 }
 
-impl Index<Local> for Locals {
-    type Output = Ty;
+impl<T> Index<Local> for Locals<T> {
+    type Output = T;
 
     fn index(&self, Local(i): Local) -> &Self::Output {
         &self.locals[i]
     }
 }
 
-impl IndexMut<Bid> for Bodies {
-    fn index_mut(&mut self, Bid(i): Bid) -> &mut Self::Output {
+impl<T> IndexMut<BodyId> for Bodies<T> {
+    fn index_mut(&mut self, BodyId(i): BodyId) -> &mut Self::Output {
         &mut self.bodies[i]
     }
 }
 
-impl IndexMut<Local> for Locals {
+impl<T> IndexMut<Local> for Locals<T> {
     fn index_mut(&mut self, Local(i): Local) -> &mut Self::Output {
         &mut self.locals[i]
     }

@@ -3,15 +3,16 @@ use crate::{
     diagnostic::{Diagnostic, Source, SourceId, Sources},
     hir,
     interpret::Interpreter,
+    llvm_codegen::codegen,
     lower::Lowerer,
     mir,
     parse::{self, Interner, Tokens},
 };
 use std::{fs, io, path::Path};
 
-pub struct Compiler {
+pub struct Compiler<'a> {
     interner: Interner,
-    sources: Sources,
+    sources: &'a mut Sources,
     files: Vec<File>,
 }
 
@@ -22,11 +23,11 @@ struct File {
     ast: Option<ast::Module>,
 }
 
-impl Compiler {
-    pub fn new() -> Self {
+impl<'a> Compiler<'a> {
+    pub fn new(sources: &'a mut Sources) -> Self {
         Self {
             interner: Interner::new(),
-            sources: Sources::new(),
+            sources,
             files: Vec::new(),
         }
     }
@@ -37,7 +38,7 @@ impl Compiler {
     }
 
     pub fn sources(&self) -> &Sources {
-        &self.sources
+        self.sources
     }
 
     fn add_directory(&mut self, modules: Vec<&'static str>, path: &Path) -> io::Result<()> {
@@ -110,13 +111,25 @@ impl Compiler {
         mir::build(&hir)
     }
 
+    pub fn interpret(&mut self) -> Result<(), Diagnostic> {
+        self.tokenize()?;
+        self.parse()?;
+        let hir = self.lower()?;
+        let (mir, main) = self.mir(hir)?;
+        let (sir, main) = mir::specialize(mir, main);
+        let interpreter = Interpreter::new(sir);
+        interpreter.run(main);
+        Ok(())
+    }
+
     pub fn compile(&mut self) -> Result<(), Diagnostic> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;
         let (mir, main) = self.mir(hir)?;
-        let interpreter = Interpreter::new(mir);
-        interpreter.run(main, Vec::new());
+        let (sir, main) = mir::specialize(mir, main);
+
+        codegen(sir);
 
         Ok(())
     }

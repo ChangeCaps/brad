@@ -1,9 +1,0 @@
-fn main -> int {
-    loop {}
-}
-
-fn fib (n: int) -> int {
-    match n < 2
-    | true  => n
-    | false => fib (n - 1) + fib (n - 2)
-}

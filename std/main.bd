@@ -1,0 +1,37 @@
+type my-type = {
+	very-cool: int
+        very-cool-2: str
+        recursive-ref: ref none
+}
+
+fn doo (x: none) -> my-type { loop none }
+
+fn main -> int {
+    let a: my-type = doo none 
+    fib-rec 10 - fib-iter 10
+}
+
+fn fib-rec (n: int) -> int {
+    match n < 2
+    | true  => n
+    | false => fib-rec (n - 1) + fib-rec (n - 2)
+}
+
+fn fib-iter (n: int) -> int {
+    let mut a = 0
+    let mut b = 1
+    let mut i = 0
+
+    loop {
+        match i >= n
+        | true  => break
+        | false => {}
+
+        let tmp = a
+        a = b
+        b = tmp + b
+        i = i + 1
+    }
+
+    a
+}

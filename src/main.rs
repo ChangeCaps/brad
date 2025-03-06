@@ -2,7 +2,7 @@
 
 use ast::Formatter;
 use clap::{Args, Parser, Subcommand};
-use diagnostic::SourceId;
+use diagnostic::{Source, Sources};
 use parse::{Interner, Tokens};
 use std::path::PathBuf;
 
@@ -13,10 +13,11 @@ mod compiler;
 mod diagnostic;
 mod hir;
 mod interpret;
-mod lir;
+mod llvm_codegen;
 mod lower;
 mod mir;
 mod parse;
+mod sir;
 
 #[derive(Parser)]
 pub struct Cli {
@@ -44,31 +45,22 @@ pub enum Cmd {
         #[command(subcommand)]
         command: FmtCmd,
     },
-    Hir(ModuleArgs),
-    Mir(ModuleArgs),
-    Lir(ModuleArgs),
+    // Hir(ModuleArgs),
+    // Mir(ModuleArgs),
+    // Lir(ModuleArgs),
     Interpret(ModuleArgs),
+    Compile(ModuleArgs),
 }
 
 #[derive(Subcommand)]
 pub enum FmtCmd {
     Ast(FileArgs),
-    Hir(FileArgs),
-    Mir(FileArgs),
-    Lir(FileArgs),
+    // Hir(FileArgs),
+    // Mir(FileArgs),
+    // Lir(FileArgs),
 }
 
-fn create_compiler(module_args: ModuleArgs) -> Compiler {
-    let mut compiler = Compiler::new();
-
-    compiler
-        .add_package(module_args.module.clone().as_str(), module_args.module)
-        .unwrap();
-
-    compiler
-}
-
-fn main() {
+fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
     let args = Cli::parse();
 
     match &args.command {
@@ -78,38 +70,60 @@ fn main() {
             command: FmtCmd::Ast(f),
         } => {
             let mut interner = Interner::new();
-            let input = std::fs::read_to_string(f.file.clone()).unwrap();
-            let mut tokens = Tokens::tokenize(&mut interner, SourceId(0_u32), &input).unwrap();
+            let content = std::fs::read_to_string(f.file.clone()).unwrap();
+
+            let source = Source {
+                content,
+                file: f.file.clone(),
+            };
+
+            let source_id = sources.push(source);
+
+            let mut tokens =
+                Tokens::tokenize(&mut interner, source_id, &sources[source_id].content)?;
 
             match &args.command {
                 Cmd::Lex(_) => println!("{:#?}", tokens),
                 Cmd::Ast(_) => {
-                    let ast = parse::module(&mut tokens).unwrap();
+                    let ast = parse::module(&mut tokens)?;
                     println!("{:#?}", ast);
                 }
                 Cmd::Fmt {
                     command: FmtCmd::Ast(_),
                 } => {
-                    let ast = parse::module(&mut tokens).unwrap();
+                    let ast = parse::module(&mut tokens)?;
                     let mut formatter = Formatter::new(std::io::stdout());
                     formatter.format_module(&ast).unwrap();
                 }
                 _ => unreachable!(),
-            }
+            };
+
+            Ok(())
         }
 
-        Cmd::Fmt { .. } => todo!(),
-        Cmd::Hir(_) => todo!(),
-        Cmd::Mir(_) => todo!(),
-        Cmd::Lir(_) => todo!(),
-        Cmd::Interpret(f) => {
-            let mut compiler = create_compiler(f.clone());
+        Cmd::Interpret(f) | Cmd::Compile(f) => {
+            let module_args = f.clone();
+            let mut compiler = Compiler::new(sources);
 
-            if let Err(diagnostic) = compiler.compile() {
-                let mut writer = std::io::stdout();
-                let mut formatter = diagnostic::Formatter::new(&mut writer, compiler.sources());
-                formatter.write(&diagnostic).unwrap();
+            compiler
+                .add_package(module_args.module.clone().as_str(), module_args.module)
+                .unwrap();
+
+            match &args.command {
+                Cmd::Interpret(_) => compiler.interpret(),
+                Cmd::Compile(_) => compiler.compile(),
+                _ => unreachable!(),
             }
         }
+    }
+}
+
+fn main() {
+    let mut sources = Sources::new();
+
+    if let Err(diagnostic) = main2(&mut sources) {
+        let mut writer = std::io::stdout();
+        let mut formatter = diagnostic::Formatter::new(&mut writer, &sources);
+        formatter.write(&diagnostic).unwrap();
     }
 }

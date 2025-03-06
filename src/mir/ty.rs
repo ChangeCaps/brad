@@ -115,7 +115,7 @@ pub struct Named {
     pub ty: Ty,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Types {
     named: Vec<Named>,
 }
