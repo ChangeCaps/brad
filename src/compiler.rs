@@ -9,9 +9,9 @@ use crate::{
 };
 use std::{fs, io, path::Path};
 
-pub struct Compiler {
+pub struct Compiler<'a> {
     interner: Interner,
-    sources: Sources,
+    sources: &'a mut Sources,
     files: Vec<File>,
 }
 
@@ -22,11 +22,11 @@ struct File {
     ast: Option<ast::Module>,
 }
 
-impl Compiler {
-    pub fn new() -> Self {
+impl<'a> Compiler<'a> {
+    pub fn new(sources: &'a mut Sources) -> Self {
         Self {
             interner: Interner::new(),
-            sources: Sources::new(),
+            sources,
             files: Vec::new(),
         }
     }
@@ -37,7 +37,7 @@ impl Compiler {
     }
 
     pub fn sources(&self) -> &Sources {
-        &self.sources
+        self.sources
     }
 
     fn add_directory(&mut self, modules: Vec<&'static str>, path: &Path) -> io::Result<()> {

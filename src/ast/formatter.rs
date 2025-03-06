@@ -229,9 +229,11 @@ where
             ),
             Binding::Tuple { bindings, .. } => {
                 write!(self.writer, "(")?;
-                for binding in bindings {
+                for (i, binding) in bindings.iter().enumerate() {
+                    if i > 0 {
+                        write!(self.writer, ", ")?;
+                    }
                     self.format_binding(binding)?;
-                    write!(self.writer, ", ")?;
                 }
                 write!(self.writer, ")")
             }
