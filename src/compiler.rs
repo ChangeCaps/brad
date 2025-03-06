@@ -107,7 +107,7 @@ impl<'a> Compiler<'a> {
         lowerer.lower()
     }
 
-    pub fn mir(&self, hir: hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnostic> {
+    pub fn mir(&self, hir: hir::Program) -> Result<(mir::Program, mir::Bid), Diagnostic> {
         mir::build(&hir)
     }
 

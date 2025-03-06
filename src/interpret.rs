@@ -14,7 +14,7 @@ impl Interpreter {
         Self { sir }
     }
 
-    pub fn run(&self, body: sir::BodyId) {
+    pub fn run(&self, body: sir::Bid) {
         let body = &self.sir.bodies[body];
 
         let mut frame = Frame {
@@ -487,7 +487,7 @@ enum Value {
     List(Vec<Value>),
 
     Func {
-        body: sir::BodyId,
+        body: sir::Bid,
         captures: Vec<Value>,
         missing: usize,
     },

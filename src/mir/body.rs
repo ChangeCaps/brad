@@ -65,7 +65,7 @@ impl<T> Locals<T> {
 pub struct Local(pub usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct BodyId(usize);
+pub struct Bid(usize);
 
 #[derive(Clone, Debug)]
 pub struct Bodies<T = Ty> {
@@ -83,28 +83,28 @@ impl<T> Bodies<T> {
         Self { bodies: Vec::new() }
     }
 
-    pub fn push(&mut self, body: Body<T>) -> BodyId {
+    pub fn push(&mut self, body: Body<T>) -> Bid {
         let local = self.bodies.len();
         self.bodies.push(body);
-        BodyId(local)
+        Bid(local)
     }
 
-    pub fn insert(&mut self, BodyId(i): BodyId, body: Body<T>) {
+    pub fn insert(&mut self, Bid(i): Bid, body: Body<T>) {
         self.bodies[i] = body;
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (BodyId, &Body<T>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (Bid, &Body<T>)> {
         self.bodies
             .iter()
             .enumerate()
-            .map(|(i, body)| (BodyId(i), body))
+            .map(|(i, body)| (Bid(i), body))
     }
 }
 
-impl<T> Index<BodyId> for Bodies<T> {
+impl<T> Index<Bid> for Bodies<T> {
     type Output = Body<T>;
 
-    fn index(&self, BodyId(i): BodyId) -> &Self::Output {
+    fn index(&self, Bid(i): Bid) -> &Self::Output {
         &self.bodies[i]
     }
 }
@@ -117,8 +117,8 @@ impl<T> Index<Local> for Locals<T> {
     }
 }
 
-impl<T> IndexMut<BodyId> for Bodies<T> {
-    fn index_mut(&mut self, BodyId(i): BodyId) -> &mut Self::Output {
+impl<T> IndexMut<Bid> for Bodies<T> {
+    fn index_mut(&mut self, Bid(i): Bid) -> &mut Self::Output {
         &mut self.bodies[i]
     }
 }

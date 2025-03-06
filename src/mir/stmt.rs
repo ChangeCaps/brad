@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use super::{BodyId, Local, Ty};
+use super::{Bid, Local, Ty};
 
 #[derive(Clone, Debug)]
 pub struct Block<T = Ty> {
@@ -85,7 +85,7 @@ pub enum Value<T = Ty> {
 
     /// Create a closure, capturing the given operands.
     Closure {
-        body: BodyId,
+        body: Bid,
         generics: Vec<T>,
         captures: Vec<Operand>,
     },

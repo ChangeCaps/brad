@@ -13,7 +13,7 @@ pub struct Program {
 pub type Bodies = mir::Bodies<Tid>;
 
 pub type Body = mir::Body<Tid>;
-pub type BodyId = mir::BodyId;
+pub type Bid = mir::Bid;
 
 pub type Block = mir::Block<Tid>;
 

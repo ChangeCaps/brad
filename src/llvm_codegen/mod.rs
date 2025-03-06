@@ -17,7 +17,7 @@ struct Codegen {
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
 
-    bodies: HashMap<sir::BodyId, Body>,
+    bodies: HashMap<sir::Bid, Body>,
     types: HashMap<sir::Tid, (LLVMTypeRef, Option<LLVMTypeRef>)>,
 }
 
@@ -102,7 +102,7 @@ impl Codegen {
         );
     }
 
-    unsafe fn body(&self, id: sir::BodyId, body: &sir::Body) {
+    unsafe fn body(&self, id: sir::Bid, body: &sir::Body) {
         let llvm_body = &self.bodies[&id];
 
         let block =

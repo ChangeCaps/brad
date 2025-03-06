@@ -13,6 +13,7 @@ mod compiler;
 mod diagnostic;
 mod hir;
 mod interpret;
+mod lir;
 mod llvm_codegen;
 mod lower;
 mod mir;

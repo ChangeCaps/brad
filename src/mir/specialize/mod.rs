@@ -2,7 +2,7 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use crate::{mir, sir};
 
-pub fn specialize(program: mir::Program, entry: mir::BodyId) -> (sir::Program, sir::BodyId) {
+pub fn specialize(program: mir::Program, entry: mir::Bid) -> (sir::Program, sir::Bid) {
     let mut specializer = Specializer::new(&program);
 
     let body = specializer.body(entry, &[]);
@@ -15,7 +15,7 @@ struct Specializer<'a> {
     specialized: sir::Program,
 
     named: HashMap<(u32, Vec<sir::Tid>), sir::Tid>,
-    bodies: HashMap<(mir::BodyId, Vec<sir::Tid>), sir::BodyId>,
+    bodies: HashMap<(mir::Bid, Vec<sir::Tid>), sir::Bid>,
 }
 
 impl<'a> Specializer<'a> {
@@ -29,7 +29,7 @@ impl<'a> Specializer<'a> {
         }
     }
 
-    fn body(&mut self, entry: mir::BodyId, generics: &[sir::Tid]) -> sir::BodyId {
+    fn body(&mut self, entry: mir::Bid, generics: &[sir::Tid]) -> sir::Bid {
         if let Some(&body) = self.bodies.get(&(entry, generics.to_vec())) {
             return body;
         }
