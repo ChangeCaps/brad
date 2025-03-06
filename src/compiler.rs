@@ -115,8 +115,9 @@ impl Compiler {
         self.parse()?;
         let hir = self.lower()?;
         let (mir, main) = self.mir(hir)?;
-        let interpreter = Interpreter::new(mir);
-        interpreter.run(main, Vec::new());
+        let (specialized, main) = mir::specialize(mir, main);
+        let interpreter = Interpreter::new(specialized);
+        interpreter.run(main);
 
         Ok(())
     }

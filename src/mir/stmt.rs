@@ -3,12 +3,12 @@ use std::collections::BTreeSet;
 use super::{BodyId, Local, Ty};
 
 #[derive(Clone, Debug)]
-pub struct Block {
-    pub stmts: Vec<Stmt>,
-    pub term: Term,
+pub struct Block<T = Ty> {
+    pub stmts: Vec<Stmt<T>>,
+    pub term: Term<T>,
 }
 
-impl Block {
+impl<T> Block<T> {
     pub fn new() -> Self {
         Self {
             stmts: Vec::new(),
@@ -18,39 +18,39 @@ impl Block {
 }
 
 #[derive(Clone, Debug)]
-pub enum Stmt {
-    Assign(Place, Value),
+pub enum Stmt<T = Ty> {
+    Assign(Place, Value<T>),
 
-    Loop(Block),
+    Loop(Block<T>),
 
     Match {
         target: Place,
-        cases: Vec<Case>,
-        default: Block,
+        cases: Vec<Case<T>>,
+        default: Block<T>,
     },
 }
 
 #[derive(Clone, Debug)]
-pub struct Case {
+pub struct Case<T = Ty> {
     /// The type to match against.
-    pub ty: Ty,
+    pub ty: T,
 
     /// The local to bind the instance to.
     pub local: Local,
 
     /// The block to execute if the type matches.
-    pub block: Block,
+    pub block: Block<T>,
 }
 
 #[derive(Clone, Debug)]
-pub enum Term {
-    Return(Value),
+pub enum Term<T = Ty> {
+    Return(Value<T>),
     Break,
     Exit,
 }
 
 #[derive(Clone, Debug)]
-pub enum Value {
+pub enum Value<T = Ty> {
     /// Use an operand directly.
     Use(Operand),
 
@@ -62,15 +62,15 @@ pub enum Value {
 
     /// Promote a value to a variant.
     Promote {
-        input: Ty,
-        variants: BTreeSet<Ty>,
+        input: T,
+        variants: BTreeSet<T>,
         operand: Operand,
     },
 
     /// Coerce a union to another union.
     Coerce {
-        inputs: BTreeSet<Ty>,
-        variants: BTreeSet<Ty>,
+        inputs: BTreeSet<T>,
+        variants: BTreeSet<T>,
         operand: Operand,
     },
 
@@ -86,13 +86,13 @@ pub enum Value {
     /// Create a closure, capturing the given operands.
     Closure {
         body: BodyId,
+        generics: Vec<T>,
         captures: Vec<Operand>,
-        generics: Vec<Ty>,
     },
 }
 
-impl Value {
-    pub const NONE: Value = Value::Use(Operand::NONE);
+impl<T> Value<T> {
+    pub const NONE: Self = Self::Use(Operand::NONE);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

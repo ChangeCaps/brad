@@ -16,6 +16,7 @@ mod interpret;
 mod lower;
 mod mir;
 mod parse;
+mod sir;
 
 #[derive(Parser)]
 pub struct Cli {

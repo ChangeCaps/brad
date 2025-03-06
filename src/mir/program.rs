@@ -1,7 +1,7 @@
-use super::{body::Bodies, ty::Types};
+use super::{body::Bodies, ty::Types, Ty};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Program {
-    pub bodies: Bodies,
+    pub bodies: Bodies<Ty>,
     pub types: Types,
 }
