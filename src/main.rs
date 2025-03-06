@@ -43,18 +43,18 @@ pub enum Cmd {
         #[command(subcommand)]
         command: FmtCmd,
     },
-    Hir(ModuleArgs),
-    Mir(ModuleArgs),
-    Lir(ModuleArgs),
+    // Hir(ModuleArgs),
+    // Mir(ModuleArgs),
+    // Lir(ModuleArgs),
     Interpret(ModuleArgs),
 }
 
 #[derive(Subcommand)]
 pub enum FmtCmd {
     Ast(FileArgs),
-    Hir(FileArgs),
-    Mir(FileArgs),
-    Lir(FileArgs),
+    // Hir(FileArgs),
+    // Mir(FileArgs),
+    // Lir(FileArgs),
 }
 
 fn create_compiler(module_args: ModuleArgs) -> Compiler {
@@ -97,10 +97,6 @@ fn main() {
             }
         }
 
-        Cmd::Fmt { .. } => todo!(),
-        Cmd::Hir(_) => todo!(),
-        Cmd::Mir(_) => todo!(),
-        Cmd::Lir(_) => todo!(),
         Cmd::Interpret(f) => {
             let mut compiler = create_compiler(f.clone());
 
