@@ -1,4 +1,13 @@
+type my-type = {
+	very-cool: int
+        very-cool-2: str
+        recursive-ref: ref none
+}
+
+fn doo (x: none) -> my-type { loop none }
+
 fn main -> int {
+    let a: my-type = doo none 
     fib-rec 10 - fib-iter 10
 }
 

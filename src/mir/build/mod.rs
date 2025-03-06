@@ -28,6 +28,7 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnost
         let mir_id = mir.bodies.push(mir::Body {
             captures: 0,
             arguments: 0,
+            output: mir::Ty::None,
             locals: mir::Locals::new(),
             block: mir::Block::new(),
         });
@@ -71,6 +72,7 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::BodyId), Diagnost
         let body = mir::Body {
             captures: 0,
             arguments: inputs.len(),
+            output: builder.build_ty(hir_body.output.clone()),
             locals: builder.locals.clone(),
             block,
         };

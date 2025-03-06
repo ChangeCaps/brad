@@ -13,6 +13,7 @@ mod compiler;
 mod diagnostic;
 mod hir;
 mod interpret;
+mod llvm_codegen;
 mod lower;
 mod mir;
 mod parse;
@@ -48,6 +49,7 @@ pub enum Cmd {
     // Mir(ModuleArgs),
     // Lir(ModuleArgs),
     Interpret(ModuleArgs),
+    Compile(ModuleArgs),
 }
 
 #[derive(Subcommand)]
@@ -99,7 +101,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
             Ok(())
         }
 
-        Cmd::Interpret(f) => {
+        Cmd::Interpret(f) | Cmd::Compile(f) => {
             let module_args = f.clone();
             let mut compiler = Compiler::new(sources);
 
@@ -107,7 +109,11 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
                 .add_package(module_args.module.clone().as_str(), module_args.module)
                 .unwrap();
 
-            compiler.compile()
+            match &args.command {
+                Cmd::Interpret(_) => compiler.interpret(),
+                Cmd::Compile(_) => compiler.compile(),
+                _ => unreachable!(),
+            }
         }
     }
 }

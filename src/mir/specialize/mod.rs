@@ -38,6 +38,7 @@ impl<'a> Specializer<'a> {
         let id = self.specialized.bodies.push(sir::Body {
             captures: 0,
             arguments: 0,
+            output: self.specialized.types.get_or_insert(&sir::Ty::None),
             locals: sir::Locals::new(),
             block: sir::Block::new(),
         });
@@ -55,6 +56,7 @@ impl<'a> Specializer<'a> {
         self.specialized.bodies[id] = sir::Body {
             captures: self.generic.bodies[entry].captures,
             arguments: self.generic.bodies[entry].arguments,
+            output: self.ty(self.generic.bodies[entry].output.clone(), generics),
             locals,
             block,
         };

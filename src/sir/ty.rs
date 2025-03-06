@@ -79,6 +79,10 @@ impl Types {
             }
         }
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (Tid, &Ty)> {
+        self.types.iter().enumerate().map(|(i, ty)| (Tid(i), ty))
+    }
 }
 
 impl Index<Tid> for Types {

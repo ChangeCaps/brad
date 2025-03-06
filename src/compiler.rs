@@ -3,6 +3,7 @@ use crate::{
     diagnostic::{Diagnostic, Source, SourceId, Sources},
     hir,
     interpret::Interpreter,
+    llvm_codegen::codegen,
     lower::Lowerer,
     mir,
     parse::{self, Interner, Tokens},
@@ -110,14 +111,25 @@ impl<'a> Compiler<'a> {
         mir::build(&hir)
     }
 
+    pub fn interpret(&mut self) -> Result<(), Diagnostic> {
+        self.tokenize()?;
+        self.parse()?;
+        let hir = self.lower()?;
+        let (mir, main) = self.mir(hir)?;
+        let (sir, main) = mir::specialize(mir, main);
+        let interpreter = Interpreter::new(sir);
+        interpreter.run(main);
+        Ok(())
+    }
+
     pub fn compile(&mut self) -> Result<(), Diagnostic> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;
         let (mir, main) = self.mir(hir)?;
-        let (specialized, main) = mir::specialize(mir, main);
-        let interpreter = Interpreter::new(specialized);
-        interpreter.run(main);
+        let (sir, main) = mir::specialize(mir, main);
+
+        codegen(sir);
 
         Ok(())
     }

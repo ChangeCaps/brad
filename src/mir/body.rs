@@ -16,6 +16,9 @@ pub struct Body<T = Ty> {
     /// The number of arguments.
     pub arguments: usize,
 
+    /// The output type of the body.
+    pub output: T,
+
     /// The locals in the body.
     pub locals: Locals<T>,
 
@@ -88,6 +91,13 @@ impl<T> Bodies<T> {
 
     pub fn insert(&mut self, BodyId(i): BodyId, body: Body<T>) {
         self.bodies[i] = body;
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (BodyId, &Body<T>)> {
+        self.bodies
+            .iter()
+            .enumerate()
+            .map(|(i, body)| (BodyId(i), body))
     }
 }
 
