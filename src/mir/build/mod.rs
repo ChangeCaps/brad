@@ -408,9 +408,9 @@ impl<'a> Builder<'a> {
                 let mir_ty = self.build_ty(hir_ty.clone());
 
                 let op = match (op, mir_ty, hir_ty) {
-                    (hir::UnaryOp::Neg, mir::Ty::Int, _) => mir::UnaryOp::Negi,
-                    (hir::UnaryOp::Neg, mir::Ty::Float, _) => mir::UnaryOp::Negf,
-                    (hir::UnaryOp::BitNot, mir::Ty::Int, _) => mir::UnaryOp::BitNoti,
+                    (hir::UnaryOp::Neg, mir::Ty::Int, _) => mir::UnaryOp::Neg,
+                    (hir::UnaryOp::Neg, mir::Ty::Float, _) => mir::UnaryOp::FNeg,
+                    (hir::UnaryOp::BitNot, mir::Ty::Int, _) => mir::UnaryOp::BNot,
                     (hir::UnaryOp::Deref, mir::Ty::Ref(_), _) => mir::UnaryOp::Deref,
                     (hir::UnaryOp::Not, _, hir::Ty::True | hir::Ty::False | hir::Ty::None) => {
                         mir::UnaryOp::Not
@@ -436,31 +436,31 @@ impl<'a> Builder<'a> {
                 let rhs = unpack!(block = self.build_operand(block, *rhs)?);
 
                 let op = match (op, rhs_ty, lhs_ty) {
-                    (hir::BinaryOp::Add, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Addi,
-                    (hir::BinaryOp::Sub, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Subi,
-                    (hir::BinaryOp::Mul, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Muli,
-                    (hir::BinaryOp::Div, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Divi,
-                    (hir::BinaryOp::Mod, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Modi,
+                    (hir::BinaryOp::Add, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Add,
+                    (hir::BinaryOp::Sub, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Sub,
+                    (hir::BinaryOp::Mul, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Mul,
+                    (hir::BinaryOp::Div, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Div,
+                    (hir::BinaryOp::Mod, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Mod,
 
-                    (hir::BinaryOp::Eq, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Eqi,
-                    (hir::BinaryOp::Ne, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Nei,
-                    (hir::BinaryOp::Lt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Lti,
-                    (hir::BinaryOp::Le, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Lei,
-                    (hir::BinaryOp::Gt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Gti,
-                    (hir::BinaryOp::Ge, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Gei,
+                    (hir::BinaryOp::Eq, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Eq,
+                    (hir::BinaryOp::Ne, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Ne,
+                    (hir::BinaryOp::Lt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Lt,
+                    (hir::BinaryOp::Le, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Le,
+                    (hir::BinaryOp::Gt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Gt,
+                    (hir::BinaryOp::Ge, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Ge,
 
-                    (hir::BinaryOp::Add, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Addf,
-                    (hir::BinaryOp::Sub, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Subf,
-                    (hir::BinaryOp::Mul, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Mulf,
-                    (hir::BinaryOp::Div, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Divf,
-                    (hir::BinaryOp::Mod, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Modf,
+                    (hir::BinaryOp::Add, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FAdd,
+                    (hir::BinaryOp::Sub, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FSub,
+                    (hir::BinaryOp::Mul, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FMul,
+                    (hir::BinaryOp::Div, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FDiv,
+                    (hir::BinaryOp::Mod, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FMod,
 
-                    (hir::BinaryOp::Eq, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Eqf,
-                    (hir::BinaryOp::Ne, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Nef,
-                    (hir::BinaryOp::Lt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Ltf,
-                    (hir::BinaryOp::Le, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Lef,
-                    (hir::BinaryOp::Gt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Gtf,
-                    (hir::BinaryOp::Ge, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::Gef,
+                    (hir::BinaryOp::Eq, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FEq,
+                    (hir::BinaryOp::Ne, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FNe,
+                    (hir::BinaryOp::Lt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FLt,
+                    (hir::BinaryOp::Le, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FLe,
+                    (hir::BinaryOp::Gt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FGt,
+                    (hir::BinaryOp::Ge, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FGe,
 
                     (hir::BinaryOp::And, _, _) => todo!(),
                     (hir::BinaryOp::Or, _, _) => todo!(),

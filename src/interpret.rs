@@ -164,162 +164,164 @@ impl Interpreter {
                 let rhs = self.eval_operand(frame, rhs);
 
                 match op {
-                    sir::BinaryOp::Addi => match (lhs, rhs) {
+                    mir::BinaryOp::Add => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs + rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Subi => match (lhs, rhs) {
+                    mir::BinaryOp::Sub => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs - rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Muli => match (lhs, rhs) {
+                    mir::BinaryOp::Mul => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs * rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Divi => match (lhs, rhs) {
+                    mir::BinaryOp::Div => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs / rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Modi => match (lhs, rhs) {
+                    mir::BinaryOp::Mod => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs % rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::BitAndi => match (lhs, rhs) {
+                    mir::BinaryOp::BAnd => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs & rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::BitOri => match (lhs, rhs) {
+                    mir::BinaryOp::BOr => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs | rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::BitXori => match (lhs, rhs) {
+                    mir::BinaryOp::BXor => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs ^ rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Shli => match (lhs, rhs) {
+                    mir::BinaryOp::LShl => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs << rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Shri => match (lhs, rhs) {
+                    mir::BinaryOp::LShr => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => Value::Int(lhs >> rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Eqi => match (lhs, rhs) {
+                    mir::BinaryOp::Eq => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs == rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Nei => match (lhs, rhs) {
+                    mir::BinaryOp::Ne => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs != rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Lti => match (lhs, rhs) {
+                    mir::BinaryOp::Lt => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs < rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Lei => match (lhs, rhs) {
+                    mir::BinaryOp::Le => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs <= rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Gti => match (lhs, rhs) {
+                    mir::BinaryOp::Gt => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs > rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Gei => match (lhs, rhs) {
+                    mir::BinaryOp::Ge => match (lhs, rhs) {
                         (Value::Int(lhs), Value::Int(rhs)) => self.create_bool(lhs >= rhs),
                         (lhs, rhs) => panic!("expected integers, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Addf => match (lhs, rhs) {
+                    mir::BinaryOp::FAdd => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => Value::Float(lhs + rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Subf => match (lhs, rhs) {
+                    mir::BinaryOp::FSub => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => Value::Float(lhs - rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Mulf => match (lhs, rhs) {
+                    mir::BinaryOp::FMul => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => Value::Float(lhs * rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Divf => match (lhs, rhs) {
+                    mir::BinaryOp::FDiv => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => Value::Float(lhs / rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Modf => match (lhs, rhs) {
+                    mir::BinaryOp::FMod => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => Value::Float(lhs % rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Eqf => match (lhs, rhs) {
+                    mir::BinaryOp::FEq => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs == rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Nef => match (lhs, rhs) {
+                    mir::BinaryOp::FNe => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs != rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Ltf => match (lhs, rhs) {
+                    mir::BinaryOp::FLt => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs < rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Lef => match (lhs, rhs) {
+                    mir::BinaryOp::FLe => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs <= rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Gtf => match (lhs, rhs) {
+                    mir::BinaryOp::FGt => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs > rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::Gef => match (lhs, rhs) {
+                    mir::BinaryOp::FGe => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs >= rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::And | sir::BinaryOp::Or => todo!(),
+                    mir::BinaryOp::And | mir::BinaryOp::Or => {
+                        todo!("Implement runtime booleans (type ids)")
+                    }
                 }
             }
 
-            sir::Value::Unary(op, operand) => match op {
-                sir::UnaryOp::Negi => match self.eval_operand(frame, operand) {
+            mir::Value::Unary(op, operand) => match op {
+                mir::UnaryOp::Neg => match self.eval_operand(frame, operand) {
                     Value::Int(value) => Value::Int(-value),
                     value => panic!("expected integer, got {:?}", value),
                 },
 
-                sir::UnaryOp::BitNoti => match self.eval_operand(frame, operand) {
+                mir::UnaryOp::BNot => match self.eval_operand(frame, operand) {
                     Value::Int(value) => Value::Int(!value),
                     value => panic!("expected integer, got {:?}", value),
                 },
 
-                sir::UnaryOp::Negf => match self.eval_operand(frame, operand) {
+                mir::UnaryOp::FNeg => match self.eval_operand(frame, operand) {
                     Value::Float(value) => Value::Float(-value),
                     value => panic!("expected float, got {:?}", value),
                 },
 
-                sir::UnaryOp::Not => todo!(),
+                mir::UnaryOp::Not => todo!("Implement runtime booleans (type ids)"),
 
                 sir::UnaryOp::Deref => match self.eval_operand(frame, operand) {
                     Value::Ref(value) => *value,

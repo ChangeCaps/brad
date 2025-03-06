@@ -98,35 +98,40 @@ impl<T> Value<T> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     /* integer operations */
-    Addi,
-    Subi,
-    Muli,
-    Divi,
-    Modi,
-    BitAndi,
-    BitOri,
-    BitXori,
-    Shli,
-    Shri,
-    Eqi,
-    Nei,
-    Lti,
-    Lei,
-    Gti,
-    Gei,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+
+    BAnd,
+    BOr,
+    BXor,
+
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+
+    /* shifts */
+    LShr,
+    LShl,
 
     /* floating point operations */
-    Addf,
-    Subf,
-    Mulf,
-    Divf,
-    Modf,
-    Eqf,
-    Nef,
-    Ltf,
-    Lef,
-    Gtf,
-    Gef,
+    FAdd,
+    FSub,
+    FMul,
+    FDiv,
+    FMod,
+
+    FEq,
+    FNe,
+    FLt,
+    FLe,
+    FGt,
+    FGe,
 
     /* logical operations */
     And,
@@ -135,10 +140,10 @@ pub enum BinaryOp {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
-    Negi,
-    BitNoti,
-    Negf,
-    // Only bools
+    Neg,
+    FNeg,
+    BNot,
+    // only bool
     Not,
     // only ptrs
     Deref,
