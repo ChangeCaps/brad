@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use super::{Bid, Local, Ty};
+use super::{Bid, Local, Locals, Ty};
 
 #[derive(Clone, Debug)]
 pub struct Block<T = Ty> {
@@ -19,12 +19,12 @@ impl<T> Block<T> {
 
 #[derive(Clone, Debug)]
 pub enum Stmt<T = Ty> {
-    Assign(Place, Value<T>),
+    Assign(Place<T>, Value<T>),
 
     Loop(Block<T>),
 
     Match {
-        target: Place,
+        target: Place<T>,
         cases: Vec<Case<T>>,
         default: Block<T>,
     },
@@ -52,46 +52,46 @@ pub enum Term<T = Ty> {
 #[derive(Clone, Debug)]
 pub enum Value<T = Ty> {
     /// Use an operand directly.
-    Use(Operand),
+    Use(Operand<T>),
 
     /// Initialize a tuple.
-    Tuple(Vec<Operand>),
+    Tuple(Vec<Operand<T>>),
 
     /// Initialize a record.
-    Record(Vec<(&'static str, Operand)>),
+    Record(Vec<(&'static str, Operand<T>)>),
 
     /// Promote a value to a variant.
     Promote {
         input: T,
         variants: BTreeSet<T>,
-        operand: Operand,
+        operand: Operand<T>,
     },
 
     /// Coerce a union to another union.
     Coerce {
         inputs: BTreeSet<T>,
         variants: BTreeSet<T>,
-        operand: Operand,
+        operand: Operand<T>,
     },
 
     /// Call a closure with arguments.
-    Call(Operand, Operand),
+    Call(Place<T>, Operand<T>),
 
     /// Perform a binary operation.
-    Binary(BinaryOp, Operand, Operand),
+    Binary(BinaryOp, Operand<T>, Operand<T>),
 
     /// Perform a unary operation.
-    Unary(UnaryOp, Operand),
+    Unary(UnaryOp, Operand<T>),
 
     /// Create a closure, capturing the given operands.
     Closure {
         body: Bid,
         generics: Vec<T>,
-        captures: Vec<Operand>,
+        captures: Vec<Operand<T>>,
     },
 }
 
-impl<T> Value<T> {
+impl Value {
     pub const NONE: Self = Self::Use(Operand::NONE);
 }
 
@@ -150,13 +150,22 @@ pub enum UnaryOp {
 }
 
 #[derive(Clone, Debug)]
-pub enum Operand {
-    Place(Place),
-    Const(Const),
+pub enum Operand<T = Ty> {
+    Place(Place<T>),
+    Const(Const, T),
 }
 
 impl Operand {
-    pub const NONE: Operand = Operand::Const(Const::None);
+    pub const NONE: Self = Operand::Const(Const::None, Ty::None);
+}
+
+impl<T> Operand<T> {
+    pub fn ty<'a>(&'a self, locals: &'a Locals<T>) -> &'a T {
+        match self {
+            Operand::Place(place) => place.ty(locals),
+            Operand::Const(_, ty) => ty,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -169,10 +178,19 @@ pub enum Const {
 
 /// Represents a place in memory.
 #[derive(Clone, Debug)]
-pub struct Place {
+pub struct Place<T = Ty> {
     pub local: Local,
-    pub proj: Vec<Proj>,
+    pub proj: Vec<(Proj, T)>,
     pub is_mutable: bool,
+}
+
+impl<T> Place<T> {
+    pub fn ty<'a>(&'a self, locals: &'a Locals<T>) -> &'a T {
+        match self.proj.last() {
+            Some((_, ty)) => ty,
+            None => &locals[self.local],
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

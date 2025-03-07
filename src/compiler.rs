@@ -129,7 +129,7 @@ impl<'a> Compiler<'a> {
         let (mir, main) = self.mir(hir)?;
         let (sir, main) = mir::specialize(mir, main);
 
-        codegen(sir);
+        codegen(sir, main);
 
         Ok(())
     }

@@ -26,9 +26,9 @@ pub type Case = mir::Case<Tid>;
 pub type Term = mir::Term<Tid>;
 
 pub type Value = mir::Value<Tid>;
-pub type Operand = mir::Operand;
+pub type Operand = mir::Operand<Tid>;
 pub type Const = mir::Const;
-pub type Place = mir::Place;
+pub type Place = mir::Place<Tid>;
 pub type Proj = mir::Proj;
 
 pub type BinaryOp = mir::BinaryOp;

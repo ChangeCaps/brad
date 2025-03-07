@@ -148,9 +148,20 @@ impl<'a> Builder<'a> {
             }
 
             hir::ExprKind::Field(target, field) => {
+                let ty = self.build_ty(target.ty.clone());
+
+                let ty = match ty {
+                    mir::Ty::Record(fields) => fields
+                        .iter()
+                        .find(|(name, _)| name == &field)
+                        .map(|(_, ty)| ty.clone())
+                        .unwrap(),
+                    _ => todo!("{:?}", ty),
+                };
+
                 let mut target = unpack!(block = self.build_place(block, *target)?);
 
-                target.proj.push(mir::Proj::Field(field));
+                target.proj.push((mir::Proj::Field(field), ty));
                 Ok(BlockAnd::new(block, target))
             }
 
@@ -274,22 +285,29 @@ impl<'a> Builder<'a> {
     ) -> BuildResult<mir::Operand> {
         match expr.kind {
             hir::ExprKind::Int(int) => {
-                let operand = mir::Operand::Const(mir::Const::Int(int));
+                let operand = mir::Operand::Const(mir::Const::Int(int), mir::Ty::Int);
                 Ok(BlockAnd::new(block, operand))
             }
 
             hir::ExprKind::Float(float) => {
-                let operand = mir::Operand::Const(mir::Const::Float(float));
+                let operand = mir::Operand::Const(mir::Const::Float(float), mir::Ty::Float);
                 Ok(BlockAnd::new(block, operand))
             }
 
             hir::ExprKind::True | hir::ExprKind::False | hir::ExprKind::None => {
-                let operand = mir::Operand::Const(mir::Const::None);
+                let ty = match expr.kind {
+                    hir::ExprKind::True => mir::Ty::True,
+                    hir::ExprKind::False => mir::Ty::False,
+                    hir::ExprKind::None => mir::Ty::None,
+                    _ => unreachable!(),
+                };
+
+                let operand = mir::Operand::Const(mir::Const::None, ty);
                 Ok(BlockAnd::new(block, operand))
             }
 
             hir::ExprKind::String(string) => {
-                let operand = mir::Operand::Const(mir::Const::String(string));
+                let operand = mir::Operand::Const(mir::Const::String(string), mir::Ty::Str);
                 Ok(BlockAnd::new(block, operand))
             }
 
@@ -487,7 +505,7 @@ impl<'a> Builder<'a> {
                     panic!()
                 };
 
-                let f = unpack!(block = self.build_operand(block, func.as_ref().clone())?);
+                let f = unpack!(block = self.build_place(block, func.as_ref().clone())?);
                 let i = unpack!(block = self.build_operand(block, input.as_ref().clone())?);
                 let i = unpack!(block = self.coerce_operand(block, i, input.ty, *i_ty)?);
 
@@ -542,7 +560,13 @@ impl<'a> Builder<'a> {
             hir::Binding::Tuple { bindings, .. } => {
                 for (i, binding) in bindings.iter().enumerate() {
                     let mut value = value.clone();
-                    value.proj.push(mir::Proj::Tuple(i));
+
+                    let ty = match value.ty(&self.locals) {
+                        mir::Ty::Tuple(tys) => tys[i].clone(),
+                        _ => todo!(),
+                    };
+
+                    value.proj.push((mir::Proj::Tuple(i), ty));
 
                     let result = self.build_binding(block, binding.clone(), value.clone())?;
                     unpack!(block = result);

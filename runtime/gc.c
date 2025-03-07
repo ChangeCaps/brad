@@ -7,7 +7,7 @@ BradPtr brad_alloc(
     BradSize size
 ) {
     printf("Allocating %lu bytes %lu times\n", layout.size, size);
-    return (BradPtr)malloc(size);
+    return (BradPtr)malloc(layout.size * size);
 }
 
 void brad_free(

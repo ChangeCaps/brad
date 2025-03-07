@@ -122,7 +122,7 @@ impl Interpreter {
             sir::Value::Coerce { operand, .. } => self.eval_operand(frame, operand),
 
             sir::Value::Call(func, value) => {
-                let func = self.eval_operand(frame, func);
+                let func = self.eval_place(frame, func);
                 let value = self.eval_operand(frame, value);
 
                 let Value::Func {
@@ -361,14 +361,14 @@ impl Interpreter {
     fn eval_operand(&self, frame: &mut Frame, operand: &sir::Operand) -> Value {
         match operand {
             sir::Operand::Place(place) => self.eval_place(frame, place),
-            sir::Operand::Const(const_) => self.eval_const(const_),
+            sir::Operand::Const(const_, _) => self.eval_const(const_),
         }
     }
 
     fn eval_place(&self, frame: &mut Frame, place: &sir::Place) -> Value {
         let mut value = frame.locals[place.local.0].clone();
 
-        for proj in &place.proj {
+        for (proj, _) in &place.proj {
             match proj {
                 sir::Proj::Field(name) => {
                     match value {
@@ -417,10 +417,10 @@ impl Interpreter {
     fn assign(&self, frame: &mut Frame, place: &sir::Place, value: Value) {
         fn recurse<'a>(
             target: &mut Value,
-            mut projs: impl Iterator<Item = &'a sir::Proj>,
+            mut projs: impl Iterator<Item = &'a (sir::Proj, sir::Tid)>,
             value: Value,
         ) {
-            let Some(proj) = projs.next() else {
+            let Some((proj, _)) = projs.next() else {
                 *target = value;
                 return;
             };

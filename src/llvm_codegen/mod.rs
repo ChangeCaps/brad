@@ -1,149 +1,255 @@
-use std::{collections::HashMap, ffi::CString};
+use std::{collections::HashMap, ffi::CString, ops::Deref, ptr};
 
 use crate::sir;
 use crate::sir::Operand;
 
 use crate::mir::Proj;
-use llvm_sys::{core::*, prelude::*, LLVMIntPredicate, LLVMRealPredicate};
+use llvm_sys::{
+    analysis::*,
+    core::*,
+    error::LLVMGetErrorMessage,
+    orc2::{lljit::*, *},
+    prelude::*,
+    target::*,
+    LLVMIntPredicate, LLVMRealPredicate,
+};
 
-/// void* macro (takes llvm context)
-macro_rules! llvm_void_ptr {
-    ($context:expr) => {
-        LLVMPointerType(LLVMVoidTypeInContext($context), 0)
-    };
-}
-
-macro_rules! llvm_null {
-    ($context:expr) => {
-        LLVMConstNull(LLVMInt64TypeInContext($context))
-    };
-}
-
-pub fn codegen(program: sir::Program) {
+pub fn codegen(program: sir::Program, entry: sir::Bid) {
     unsafe {
         let mut codegen = Codegen::new(program);
-        codegen.build();
+        codegen.build(entry);
     }
 }
 
 struct Codegen {
-    /// LLVM
+    // LLVM
     context: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
+    jit: LLVMOrcLLJITRef,
 
     program: sir::Program,
+    bodies: HashMap<sir::Bid, LLVMBody>,
     types: HashMap<sir::Tid, (LLVMTypeRef, Option<LLVMTypeRef>)>,
-    extern_fns: HashMap<String, LLVMValueRef>,
+    externs: HashMap<String, (LLVMValueRef, LLVMTypeRef)>,
 }
 
 impl Codegen {
     unsafe fn new(program: sir::Program) -> Self {
+        LLVM_InitializeNativeTarget();
+        LLVM_InitializeNativeAsmPrinter();
+        LLVM_InitializeNativeAsmParser();
+
         let context = LLVMContextCreate();
         let module = LLVMModuleCreateWithNameInContext(c"main".as_ptr(), context);
         let builder = LLVMCreateBuilderInContext(context);
 
+        let mut jit = ptr::null_mut();
+        let err = LLVMOrcCreateLLJIT(&mut jit, ptr::null_mut());
+
+        if !err.is_null() {
+            let err = LLVMGetErrorMessage(err);
+            let err = CString::from_raw(err);
+            panic!("{}", err.to_str().unwrap());
+        }
+
         Self {
-            program,
             context,
             module,
             builder,
+            jit,
 
+            program,
+            bodies: HashMap::new(),
             types: HashMap::new(),
-            extern_fns: HashMap::new(),
+            externs: HashMap::new(),
         }
     }
 
-    unsafe fn build(&mut self) {
+    unsafe fn build(&mut self, entry: sir::Bid) {
         // Add external brad_alloc and brad_free functions
-        let brad_alloc_fn = LLVMAddFunction(
-            self.module,
-            c"brad_alloc".as_ptr(),
-            LLVMFunctionType(
-                LLVMPointerType(LLVMInt8TypeInContext(self.context), 0),
-                [LLVMInt64TypeInContext(self.context), LLVMInt64TypeInContext(self.context)].as_mut_ptr(),
-                2,
-                0,
-            ),
+        let brad_alloc_ty = LLVMFunctionType(
+            self.void_pointer_type(),
+            [
+                LLVMInt64TypeInContext(self.context),
+                LLVMInt64TypeInContext(self.context),
+            ]
+            .as_mut_ptr(),
+            2,
+            0,
         );
 
-        let brad_free_fn = LLVMAddFunction(
-            self.module,
-            c"brad_free".as_ptr(),
-            LLVMFunctionType(
-                LLVMVoidTypeInContext(self.context),
-                [LLVMPointerType(LLVMInt8TypeInContext(self.context), 0)].as_mut_ptr(),
-                1,
-                0,
-            ),
+        let brad_alloc_fn = LLVMAddFunction(self.module, c"brad_alloc".as_ptr(), brad_alloc_ty);
+
+        let brad_free_ty = LLVMFunctionType(
+            LLVMVoidTypeInContext(self.context),
+            [LLVMPointerType(LLVMInt8TypeInContext(self.context), 0)].as_mut_ptr(),
+            1,
+            0,
         );
 
-        self.extern_fns
-            .insert("brad_alloc".to_string(), brad_alloc_fn);
-        self.extern_fns
-            .insert("brad_free".to_string(), brad_free_fn);
+        let brad_free_fn = LLVMAddFunction(self.module, c"brad_free".as_ptr(), brad_free_ty);
+
+        self.externs.insert(
+            "brad_alloc".to_string(),
+            (brad_alloc_fn, brad_alloc_ty), //
+        );
+        self.externs.insert(
+            "brad_free".to_string(),
+            (brad_free_fn, brad_free_ty), //
+        );
 
         // Build types
         for (tid, _) in self.program.types.iter() {
-            self.types.insert(tid, self.initialize_tys(tid));
+            self.types.insert(tid, self.initialize_ty(tid));
         }
 
         for (tid, _) in self.program.types.iter() {
             self.build_tys(tid);
         }
 
-        // Initialize bodies
-        let mut bodies = self
-            .program
-            .bodies
-            .iter()
-            .map(|(id, _)| BodyCodegen::new(self, id))
-            .collect::<Vec<_>>();
-
-        // Build bodies
-        for mut body in bodies {
-            body.build();
+        for (id, _) in self.program.bodies.iter() {
+            self.bodies.insert(id, LLVMBody::new(self, id));
         }
 
-        // Print LLVM IR.
+        // build bodies
+        for (id, _) in self.program.bodies.iter() {
+            let mut body_codegen = BodyCodegen::new(self, id);
+            body_codegen.build();
+        }
+
+        // print llvm ir
         println!(
             "{}",
             CString::from_raw(LLVMPrintModuleToString(self.module))
                 .to_str()
                 .unwrap()
         );
+
+        println!("Verifying module...");
+
+        LLVMVerifyModule(
+            self.module,
+            LLVMVerifierFailureAction::LLVMPrintMessageAction,
+            ptr::null_mut(),
+        );
+
+        let dylib = LLVMOrcLLJITGetMainJITDylib(self.jit);
+
+        // load `gc.o` object file
+        let gc = CString::new("gc.o").unwrap();
+
+        let mut membuf = ptr::null_mut();
+        let mut err = ptr::null_mut();
+
+        if LLVMCreateMemoryBufferWithContentsOfFile(gc.as_ptr(), &mut membuf, &mut err) != 0 {
+            let err = CString::from_raw(err);
+            panic!("{}", err.to_str().unwrap());
+        }
+
+        let err = LLVMOrcLLJITAddObjectFile(self.jit, dylib, membuf);
+
+        if !err.is_null() {
+            let err = LLVMGetErrorMessage(err);
+            let err = CString::from_raw(err);
+            panic!("{}", err.to_str().unwrap());
+        }
+
+        let ctx = LLVMOrcCreateNewThreadSafeContext();
+        let tsm = LLVMOrcCreateNewThreadSafeModule(self.module, ctx);
+
+        let err = LLVMOrcLLJITAddLLVMIRModule(self.jit, dylib, tsm);
+
+        if !err.is_null() {
+            let err = LLVMGetErrorMessage(err);
+            let err = CString::from_raw(err);
+            panic!("{}", err.to_str().unwrap());
+        }
+
+        let entry = CString::new(format!("body_{}", entry.0)).unwrap();
+
+        let mut func_addr = 0;
+        let err = LLVMOrcLLJITLookup(self.jit, &mut func_addr, entry.as_ptr());
+
+        if !err.is_null() {
+            let err = LLVMGetErrorMessage(err);
+            let err = CString::from_raw(err);
+            panic!("{}", err.to_str().unwrap());
+        }
+
+        let func: extern "C" fn() -> i64 = std::mem::transmute(func_addr);
+
+        println!("Calling entry function: {}", func());
     }
 
     fn tid(&self, tid: sir::Tid) -> LLVMTypeRef {
         self.types[&tid].0
     }
 
+    unsafe fn void_type(&self) -> LLVMTypeRef {
+        LLVMVoidTypeInContext(self.context)
+    }
+
+    unsafe fn void_pointer_type(&self) -> LLVMTypeRef {
+        LLVMPointerType(self.void_type(), 0)
+    }
+
+    unsafe fn zero_size_type(&self) -> LLVMTypeRef {
+        LLVMStructTypeInContext(self.context, ptr::null_mut(), 0, 0)
+    }
+
+    unsafe fn zero_size_value(&self) -> LLVMValueRef {
+        // initialize a struct with zero fields
+        LLVMConstNamedStruct(self.tid(sir::Tid(0)), ptr::null_mut(), 0)
+    }
+
+    unsafe fn alloc_single(&self, ty: LLVMTypeRef) -> LLVMValueRef {
+        let (alloc_fn, alloc_ty) = self.externs["brad_alloc"];
+
+        let size = LLVMSizeOf(ty);
+
+        let mut args = [
+            size,
+            LLVMConstInt(LLVMInt64TypeInContext(self.context), 1, 0),
+        ];
+
+        LLVMBuildCall2(
+            self.builder,
+            alloc_ty,
+            alloc_fn,
+            args.as_mut_ptr(),
+            2,
+            c"alloc".as_ptr(),
+        )
+    }
+
     /// Build an LLVM type from a SIR type.
-    unsafe fn initialize_tys(&self, tid: sir::Tid) -> (LLVMTypeRef, Option<LLVMTypeRef>) {
+    unsafe fn initialize_ty(&self, tid: sir::Tid) -> (LLVMTypeRef, Option<LLVMTypeRef>) {
         match &self.program.types[tid] {
             sir::Ty::Int => (LLVMInt64TypeInContext(self.context), None),
             sir::Ty::Float => (LLVMFloatTypeInContext(self.context), None),
-            sir::Ty::Str => {
-                let inner = LLVMInt8TypeInContext(self.context);
-                let ptr = LLVMPointerType(inner, 0);
-                (ptr, Some(inner))
-            }
-            sir::Ty::List(_) => {
-                let void = LLVMVoidTypeInContext(self.context);
-                let ptr = LLVMPointerType(void, 0);
-                (ptr, Some(void))
-            }
+
             sir::Ty::True | sir::Ty::False | sir::Ty::None | sir::Ty::Never => {
-                let zst = LLVMStructTypeInContext(self.context, std::ptr::null_mut(), 0, 0);
+                let zst = LLVMStructTypeInContext(self.context, ptr::null_mut(), 0, 0);
                 (zst, None)
             }
+
+            sir::Ty::Str | sir::Ty::List(_) | sir::Ty::Union(_) => {
+                let ptr = LLVMPointerType(LLVMInt8TypeInContext(self.context), 0);
+                (ptr, None)
+            }
+
+            sir::Ty::Func(_, _) => {
+                let ty = LLVMStructCreateNamed(self.context, c"ty_fn".as_ptr());
+                (ty, None)
+            }
+
             ty => {
                 let name = match ty {
                     sir::Ty::Ref(_) => "ref",
                     sir::Ty::Func(_, _) => "fn",
                     sir::Ty::Tuple(_) => "tuple",
                     sir::Ty::Record(_) => "record",
-                    sir::Ty::Union(_) => "union",
                     _ => unreachable!(),
                 };
 
@@ -165,7 +271,8 @@ impl Codegen {
             | sir::Ty::False
             | sir::Ty::None
             | sir::Ty::Never
-            | sir::Ty::List(_) => {}
+            | sir::Ty::List(_)
+            | sir::Ty::Union(_) => {}
 
             sir::Ty::Ref(inner) => {
                 let mut inner = self.tid(inner);
@@ -173,21 +280,15 @@ impl Codegen {
                 LLVMStructSetBody(s, &mut inner, 1, 0);
             }
 
-            sir::Ty::Func(input, output) => {
-                let input = self.tid(input);
-                let output = self.tid(output);
-
+            sir::Ty::Func(_, _) => {
                 let void = LLVMVoidTypeInContext(self.context);
                 let captures = LLVMPointerType(void, 0);
+                let missing = LLVMInt64TypeInContext(self.context);
 
-                let mut inputs = [captures, input];
+                let mut elements = [captures, missing, self.void_pointer_type()];
 
-                let func = LLVMFunctionType(output, inputs.as_mut_ptr(), 1, 0);
-
-                let mut elements = [captures, func];
-
-                let s = self.types[&tid].1.unwrap();
-                LLVMStructSetBody(s, elements.as_mut_ptr(), 2, 0);
+                let s = self.types[&tid].0;
+                LLVMStructSetBody(s, elements.as_mut_ptr(), 3, 0);
             }
 
             sir::Ty::Tuple(ref items) => {
@@ -209,15 +310,6 @@ impl Codegen {
                 let s = self.types[&tid].1.unwrap();
                 LLVMStructSetBody(s, elements.as_mut_ptr(), elements.len() as u32, 0);
             }
-            sir::Ty::Union(ref btree_set) => {
-                // { u64, void* }
-                let void = LLVMVoidTypeInContext(self.context);
-                let void_ptr = LLVMPointerType(void, 0);
-                let u64 = LLVMInt64TypeInContext(self.context);
-                let mut elements = [u64, void_ptr];
-                let s = self.types[&tid].1.unwrap();
-                LLVMStructSetBody(s, elements.as_mut_ptr(), 2, 0);
-            }
         }
     }
 }
@@ -226,86 +318,121 @@ impl Drop for Codegen {
     fn drop(&mut self) {
         unsafe {
             LLVMDisposeBuilder(self.builder);
-            LLVMDisposeModule(self.module);
             LLVMContextDispose(self.context);
+            LLVMOrcDisposeLLJIT(self.jit);
         }
     }
 }
 
-struct BodyCodegen<'a> {
-    /// LLVM
-    context: LLVMContextRef,
-    module: LLVMModuleRef,
-    builder: LLVMBuilderRef,
-
-    codegen: &'a Codegen,
-    body: sir::Body,
+struct LLVMBody {
     function: LLVMValueRef,
     captures: LLVMTypeRef,
+    entry: LLVMBasicBlockRef,
     locals: Vec<LLVMValueRef>,
 }
 
-impl<'a> BodyCodegen<'a> {
-    unsafe fn new(codegen: &'a Codegen, id: sir::Bid) -> Self {
+impl LLVMBody {
+    unsafe fn new(codegen: &Codegen, id: sir::Bid) -> Self {
         let body = &codegen.program.bodies[id];
 
-        let context = codegen.context;
-        let module = codegen.module;
-        let builder = codegen.builder;
+        /* create the captures struct */
 
         let mut captures = Vec::new();
 
-        for i in 0..body.captures {
+        for i in (0..body.captures + body.arguments).rev() {
             let local = body.locals[crate::mir::Local(i)];
             let ty = codegen.tid(local);
             captures.push(ty);
         }
 
-        let captures =
-            LLVMStructTypeInContext(context, captures.as_mut_ptr(), captures.len() as u32, 0);
+        let captures = LLVMStructTypeInContext(
+            codegen.context,
+            captures.as_mut_ptr(), // elements
+            captures.len() as u32, // element count
+            0,
+        );
 
-        let void = LLVMVoidTypeInContext(context);
-        let void_ptr = LLVMPointerType(void, 0);
-
-        let input = if body.arguments > 0 {
-            let input = body.locals[crate::mir::Local(body.captures)];
-            codegen.tid(input)
-        } else {
-            LLVMStructTypeInContext(context, std::ptr::null_mut(), 0, 0)
-        };
-
-        let mut inputs = [void_ptr, input];
-
+        let mut input = LLVMPointerType(captures, 0);
         let output = codegen.tid(body.output);
 
-        let func = LLVMFunctionType(output, inputs.as_mut_ptr(), 2, 0);
+        /* create the function type */
+
+        let func = LLVMFunctionType(output, &mut input, 1, 0);
+
+        /* create the function */
 
         let name = CString::new(format!("body_{}", id.0)).unwrap();
-        let function = LLVMAddFunction(module, name.as_ptr(), func);
+        let function = LLVMAddFunction(codegen.module, name.as_ptr(), func);
+
+        /* build the local variables */
+
+        let entry = LLVMAppendBasicBlockInContext(codegen.context, function, c"entry".as_ptr());
+        LLVMPositionBuilderAtEnd(codegen.builder, entry);
+
+        let mut locals = Vec::new();
+
+        for i in 0..body.locals.len() {
+            let local = body.locals[crate::mir::Local(i)];
+            let ty = codegen.tid(local);
+            let alloca = LLVMBuildAlloca(codegen.builder, ty, c"local".as_ptr());
+            locals.push(alloca);
+        }
+
+        let input = LLVMGetParam(function, 0);
+
+        for (i, local) in (0..body.captures + body.arguments).rev().enumerate() {
+            let arg = LLVMBuildStructGEP2(
+                codegen.builder,
+                captures,
+                input,
+                i as u32, // index
+                c"arg".as_ptr(),
+            );
+
+            let arg = LLVMBuildLoad2(
+                codegen.builder,
+                codegen.tid(body.locals[crate::mir::Local(local)]),
+                arg,
+                c"load".as_ptr(),
+            );
+
+            LLVMBuildStore(codegen.builder, arg, locals[local]);
+        }
 
         Self {
-            context,
-            module,
-            builder,
-
-            codegen,
-            body: body.clone(),
             function,
             captures,
-            locals: Vec::new(),
+            entry,
+            locals,
+        }
+    }
+}
+
+struct BodyCodegen<'a> {
+    codegen: &'a Codegen,
+    body: &'a sir::Body,
+    llvm_body: &'a LLVMBody,
+}
+
+impl Deref for BodyCodegen<'_> {
+    type Target = Codegen;
+
+    fn deref(&self) -> &Self::Target {
+        self.codegen
+    }
+}
+
+impl<'a> BodyCodegen<'a> {
+    unsafe fn new(codegen: &'a Codegen, id: sir::Bid) -> Self {
+        Self {
+            codegen,
+            body: &codegen.program.bodies[id],
+            llvm_body: &codegen.bodies[&id],
         }
     }
 
     unsafe fn build(&mut self) {
-        let block = LLVMAppendBasicBlockInContext(self.context, self.function, c"entry".as_ptr());
-        LLVMPositionBuilderAtEnd(self.builder, block);
-
-        for i in 0..self.body.locals.len() {
-            let local = self.body.locals[crate::mir::Local(i)];
-            let ty = self.codegen.tid(local);
-            let alloca = LLVMBuildAlloca(self.builder, ty, c"local".as_ptr());
-            self.locals.push(alloca);
-        }
+        LLVMPositionBuilderAtEnd(self.builder, self.llvm_body.entry);
 
         self.block(&self.body.block);
     }
@@ -316,7 +443,11 @@ impl<'a> BodyCodegen<'a> {
         }
 
         match &block.term {
-            sir::Term::Return(value) => {}
+            sir::Term::Return(value) => {
+                let value = self.value(value);
+                LLVMBuildRet(self.builder, value);
+            }
+
             sir::Term::Break => {}
             sir::Term::Exit => {}
         }
@@ -329,14 +460,20 @@ impl<'a> BodyCodegen<'a> {
                 let value = self.value(value);
                 LLVMBuildStore(self.builder, value, place);
             }
+
             sir::Stmt::Loop(block) => {
                 // Create loop that jumps to the top of the block
-                let llvm_block =
-                    LLVMAppendBasicBlockInContext(self.context, self.function, c"loop".as_ptr());
+                let llvm_block = LLVMAppendBasicBlockInContext(
+                    self.context,
+                    self.llvm_body.function,
+                    c"loop".as_ptr(),
+                );
+
                 LLVMPositionBuilderAtEnd(self.builder, llvm_block);
                 self.block(block);
                 LLVMBuildBr(self.builder, llvm_block);
             }
+
             sir::Stmt::Match {
                 target,
                 cases,
@@ -345,18 +482,25 @@ impl<'a> BodyCodegen<'a> {
                 // Structure only, missing control flow.
                 let target = self.place(target);
 
-                let default_block =
-                    LLVMAppendBasicBlockInContext(self.context, self.function, c"default".as_ptr());
+                let default_block = LLVMAppendBasicBlockInContext(
+                    self.context,
+                    self.llvm_body.function,
+                    c"default".as_ptr(),
+                );
 
-                let end_block =
-                    LLVMAppendBasicBlockInContext(self.context, self.function, c"end".as_ptr());
+                let end_block = LLVMAppendBasicBlockInContext(
+                    self.context,
+                    self.llvm_body.function,
+                    c"end".as_ptr(),
+                );
 
                 for case in cases {
                     let case_block = LLVMAppendBasicBlockInContext(
                         self.context,
-                        self.function,
+                        self.llvm_body.function,
                         c"case".as_ptr(),
                     );
+
                     LLVMPositionBuilderAtEnd(self.builder, case_block);
                     self.block(&case.block);
                     LLVMBuildBr(self.builder, end_block);
@@ -370,134 +514,160 @@ impl<'a> BodyCodegen<'a> {
         }
     }
 
-    unsafe fn operand(&self, operand: &sir::Operand) -> LLVMValueRef {
-        match operand {
-            Operand::Place(place) => self.place(place),
-            Operand::Const(r#const) => match r#const {
-                sir::Const::None => LLVMConstNull(LLVMInt64TypeInContext(self.context)),
-                sir::Const::Int(value) => {
-                    LLVMConstInt(LLVMInt64TypeInContext(self.context), *value as u64, 0)
-                }
-                sir::Const::Float(value) => {
-                    LLVMConstReal(LLVMFloatTypeInContext(self.context), *value)
-                }
-                sir::Const::String(value) => {
-                    todo!("needs allocation");
-                }
-            },
-        }
-    }
-
-    unsafe fn place(&self, place: &sir::Place) -> LLVMValueRef {
-        let local_tid = self.body.locals[place.local];
-        let local_ty = &self.codegen.program.types[local_tid];
-        let mut local = self.locals[place.local.0];
-
-        // TODO: Calculate size dynamically, for now everything is a pointer
-
-        for proj in &place.proj {
-            local = match (local_ty, proj) {
-                (sir::Ty::Record(fields), Proj::Field(field)) => {
-                    let mut offset = 0;
-                    for (name, ty) in fields.iter() {
-                        offset += 8; // fixed size (e.g., pointer-sized)
-                    }
-
-                    let mut gep_indices = [LLVMConstInt(LLVMInt64Type(), offset, 0)];
-                    let local_i8 = LLVMBuildBitCast(
-                        self.builder,
-                        local,
-                        LLVMPointerType(LLVMInt8Type(), 0),
-                        c"cast_to_i8ptr".as_ptr(),
-                    );
-                    LLVMBuildGEP2(
-                        self.builder,
-                        LLVMInt8Type(),
-                        local_i8,
-                        gep_indices.as_mut_ptr(),
-                        gep_indices.len() as u32,
-                        c"field_ptr".as_ptr(),
-                    )
-                }
-                (sir::Ty::Tuple(tys), Proj::Tuple(i)) => {
-                    let mut offset = 8 * i;
-
-                    let mut gep_indices = [LLVMConstInt(
-                        LLVMInt64Type(),
-                        offset as std::ffi::c_ulonglong,
-                        0,
-                    )];
-                    let local_i8 = LLVMBuildBitCast(
-                        self.builder,
-                        local,
-                        LLVMPointerType(LLVMInt8Type(), 0),
-                        c"cast_to_i8ptr".as_ptr(),
-                    );
-                    LLVMBuildGEP2(
-                        self.builder,
-                        LLVMInt8Type(),
-                        local_i8,
-                        gep_indices.as_mut_ptr(),
-                        gep_indices.len() as u32,
-                        c"tuple_ptr".as_ptr(),
-                    )
-                }
-                (sir::Ty::List(tid), Proj::Index(idx_local)) => {
-                    let ty = &self.codegen.program.types[*tid];
-                    let idx = self.locals[idx_local.0];
-
-                    let elem_size = 8; // fixed size (e.g., pointer-sized)
-                    let elem_size_val = LLVMConstInt(LLVMInt64Type(), elem_size, 0);
-                    let idx_scaled =
-                        LLVMBuildMul(self.builder, idx, elem_size_val, c"scaled_idx".as_ptr());
-
-                    let mut gep_indices = [idx_scaled];
-
-                    let local_i8 = LLVMBuildBitCast(
-                        self.builder,
-                        local,
-                        LLVMPointerType(LLVMInt8Type(), 0),
-                        c"cast_to_i8ptr".as_ptr(),
-                    );
-                    LLVMBuildGEP2(
-                        self.builder,
-                        LLVMInt8Type(),
-                        local_i8,
-                        gep_indices.as_mut_ptr(),
-                        gep_indices.len() as u32,
-                        c"indexed_ptr".as_ptr(),
-                    )
-                }
-                (sir::Ty::Ref(tid), Proj::Deref) => {
-                    let ty = &self.codegen.program.types[*tid];
-                    LLVMBuildLoad2(
-                        self.builder,
-                        LLVMPointerType(LLVMInt8Type(), 0),
-                        local,
-                        c"deref_ptr".as_ptr(),
-                    )
-                }
-                _ => panic!("invalid projection"),
-            }
-        }
-
-        local
-    }
-
     unsafe fn value(&self, value: &sir::Value) -> LLVMValueRef {
         match value {
             sir::Value::Use(operand) => self.operand(operand),
+
             sir::Value::Tuple(_) => {
-                // Allocate a tuple
-                llvm_null!(self.context)
+                todo!()
             }
+
             sir::Value::Record(_) => {
-                // Allocate a record
-                llvm_null!(self.context)
+                todo!()
             }
-            sir::Value::Promote { .. } => llvm_null!(self.context),
-            sir::Value::Coerce { .. } => llvm_null!(self.context),
-            sir::Value::Call(_, _) => llvm_null!(self.context),
+
+            sir::Value::Promote { .. } => todo!(),
+
+            sir::Value::Coerce { .. } => todo!(),
+
+            sir::Value::Call(func, input) => {
+                let func_tid = *func.ty(&self.body.locals);
+
+                let output_ty = match self.program.types[func_tid] {
+                    sir::Ty::Func(_, output) => self.codegen.tid(output),
+                    _ => unreachable!(),
+                };
+
+                let func_ty = self.codegen.tid(func_tid);
+                let func = self.place(func);
+
+                let input_tid = *input.ty(&self.body.locals);
+                let input_ty = self.codegen.tid(input_tid);
+                let input = self.operand(input);
+
+                let captures = LLVMBuildStructGEP2(
+                    self.builder,
+                    func_ty,
+                    func,
+                    0, // captures
+                    c"func_captures_ptr".as_ptr(),
+                );
+
+                let captures = LLVMBuildLoad2(
+                    self.builder,
+                    LLVMPointerType(LLVMInt8TypeInContext(self.context), 0),
+                    captures,
+                    c"func_captures".as_ptr(),
+                );
+
+                let missing = LLVMBuildStructGEP2(
+                    self.builder,
+                    func_ty,
+                    func,
+                    1, // missing
+                    c"func_missing_ptr".as_ptr(),
+                );
+
+                let new_missing = LLVMBuildSub(
+                    self.builder,
+                    LLVMBuildLoad2(
+                        self.builder,
+                        LLVMInt64TypeInContext(self.context),
+                        missing,
+                        c"func_missing".as_ptr(),
+                    ),
+                    LLVMSizeOf(input_ty),
+                    c"new_missing".as_ptr(),
+                );
+
+                let input_location = LLVMBuildGEP2(
+                    self.builder,
+                    LLVMInt8TypeInContext(self.context),
+                    captures,
+                    [new_missing].as_mut_ptr(),
+                    1,
+                    c"input_location".as_ptr(),
+                );
+
+                LLVMBuildStore(self.builder, input, input_location);
+                LLVMBuildStore(self.builder, new_missing, missing);
+
+                let call_block = LLVMAppendBasicBlockInContext(
+                    self.context,
+                    self.llvm_body.function,
+                    c"call".as_ptr(),
+                );
+
+                let append_block = LLVMAppendBasicBlockInContext(
+                    self.context,
+                    self.llvm_body.function,
+                    c"append".as_ptr(),
+                );
+
+                let end_block = LLVMAppendBasicBlockInContext(
+                    self.context,
+                    self.llvm_body.function,
+                    c"end".as_ptr(),
+                );
+
+                let call = LLVMBuildICmp(
+                    self.builder,
+                    LLVMIntPredicate::LLVMIntEQ,
+                    new_missing,
+                    LLVMConstInt(LLVMInt64TypeInContext(self.context), 0, 0),
+                    c"cmp".as_ptr(),
+                );
+
+                let output = LLVMBuildAlloca(self.builder, output_ty, c"call_output".as_ptr());
+
+                LLVMBuildCondBr(self.builder, call, call_block, append_block);
+
+                /* call block */
+
+                LLVMPositionBuilderAtEnd(self.builder, call_block);
+
+                let func_ptr = LLVMBuildStructGEP2(
+                    self.builder,
+                    func_ty,
+                    func,
+                    2, // function pointer
+                    c"func_ptr".as_ptr(),
+                );
+
+                let func_ptr = LLVMBuildLoad2(
+                    self.builder,
+                    self.codegen.void_pointer_type(),
+                    func_ptr,
+                    c"load".as_ptr(),
+                );
+
+                let result = LLVMBuildCall2(
+                    self.builder,
+                    LLVMFunctionType(output_ty, [self.void_pointer_type()].as_mut_ptr(), 1, 0),
+                    func_ptr,
+                    [captures].as_mut_ptr(),
+                    1,
+                    c"call".as_ptr(),
+                );
+
+                LLVMBuildStore(self.builder, result, output);
+                LLVMBuildBr(self.builder, end_block);
+
+                /* append block */
+
+                LLVMPositionBuilderAtEnd(self.builder, append_block);
+
+                let func = LLVMBuildLoad2(self.builder, func_ty, func, c"load".as_ptr());
+                LLVMBuildStore(self.builder, func, output);
+                LLVMBuildBr(self.builder, end_block);
+
+                /* end block */
+
+                LLVMPositionBuilderAtEnd(self.builder, end_block);
+
+                LLVMBuildLoad2(self.builder, output_ty, output, c"load".as_ptr())
+            }
+
             sir::Value::Binary(op, lhs, rhs) => {
                 let lhs = self.operand(lhs);
                 let rhs = self.operand(rhs);
@@ -508,9 +678,9 @@ impl<'a> BodyCodegen<'a> {
                     sir::BinaryOp::Mul => LLVMBuildMul(self.builder, lhs, rhs, c"mul".as_ptr()),
                     sir::BinaryOp::Div => LLVMBuildSDiv(self.builder, lhs, rhs, c"div".as_ptr()),
                     sir::BinaryOp::Mod => LLVMBuildSRem(self.builder, lhs, rhs, c"mod".as_ptr()),
-                    sir::BinaryOp::BAnd => llvm_null!(self.context),
-                    sir::BinaryOp::BOr => llvm_null!(self.context),
-                    sir::BinaryOp::BXor => llvm_null!(self.context),
+                    sir::BinaryOp::BAnd => todo!(),
+                    sir::BinaryOp::BOr => todo!(),
+                    sir::BinaryOp::BXor => todo!(),
                     sir::BinaryOp::Eq => LLVMBuildICmp(
                         self.builder,
                         LLVMIntPredicate::LLVMIntEQ,
@@ -606,19 +776,149 @@ impl<'a> BodyCodegen<'a> {
                     sir::BinaryOp::Or => LLVMBuildOr(self.builder, lhs, rhs, c"or".as_ptr()),
                 }
             }
+
             sir::Value::Unary(op, operand) => {
                 let operand = self.operand(operand);
                 match op {
                     sir::UnaryOp::Neg => LLVMBuildNeg(self.builder, operand, c"neg".as_ptr()),
                     sir::UnaryOp::FNeg => LLVMBuildFNeg(self.builder, operand, c"fneg".as_ptr()),
-                    sir::UnaryOp::BNot => llvm_null!(self.context),
+                    sir::UnaryOp::BNot => todo!(),
                     sir::UnaryOp::Not => LLVMBuildNot(self.builder, operand, c"not".as_ptr()),
-                    sir::UnaryOp::Deref => llvm_null!(self.context),
+                    sir::UnaryOp::Deref => todo!(),
                 }
             }
-            sir::Value::Closure { body, .. } => {
-                llvm_null!(self.context)
+
+            sir::Value::Closure { body, captures, .. } => {
+                let captures = self.alloc_single(self.bodies[body].captures);
+
+                let closure_ty = LLVMStructTypeInContext(
+                    self.context,
+                    [
+                        self.void_pointer_type(),             // captures
+                        LLVMInt64TypeInContext(self.context), // missing
+                        self.void_pointer_type(),             // function pointer
+                    ]
+                    .as_mut_ptr(),
+                    3,
+                    0,
+                );
+
+                let closure = LLVMBuildAlloca(self.builder, closure_ty, c"closure".as_ptr());
+
+                let captures_ptr = LLVMBuildStructGEP2(
+                    self.builder,
+                    closure_ty,
+                    closure,
+                    0, // captures
+                    c"captures_ptr".as_ptr(),
+                );
+
+                LLVMBuildStore(self.builder, captures, captures_ptr);
+
+                let missing = LLVMBuildStructGEP2(
+                    self.builder,
+                    closure_ty,
+                    closure,
+                    1, // missing
+                    c"missing_ptr".as_ptr(),
+                );
+
+                LLVMBuildStore(
+                    self.builder,
+                    LLVMSizeOf(self.bodies[body].captures),
+                    missing,
+                );
+
+                let function = LLVMBuildStructGEP2(
+                    self.builder,
+                    closure_ty,
+                    closure,
+                    2, // function pointer
+                    c"function_ptr".as_ptr(),
+                );
+
+                LLVMBuildStore(self.builder, self.bodies[body].function, function);
+                LLVMBuildLoad2(self.builder, closure_ty, closure, c"load".as_ptr())
             }
         }
+    }
+
+    unsafe fn operand(&self, operand: &sir::Operand) -> LLVMValueRef {
+        match operand {
+            Operand::Place(place) => {
+                let &tid = place.ty(&self.body.locals);
+                let ty = self.codegen.tid(tid);
+
+                let place = self.place(place);
+
+                LLVMBuildLoad2(self.builder, ty, place, c"load".as_ptr())
+            }
+
+            Operand::Const(r#const, _) => match r#const {
+                sir::Const::None => self.codegen.zero_size_value(),
+
+                sir::Const::Int(value) => {
+                    LLVMConstInt(LLVMInt64TypeInContext(self.context), *value as u64, 0)
+                }
+
+                sir::Const::Float(value) => {
+                    LLVMConstReal(LLVMFloatTypeInContext(self.context), *value)
+                }
+
+                sir::Const::String(value) => {
+                    todo!("needs allocation");
+                }
+            },
+        }
+    }
+
+    unsafe fn place(&self, place: &sir::Place) -> LLVMValueRef {
+        let mut local = self.llvm_body.locals[place.local.0];
+        let mut tid = self.body.locals[place.local];
+
+        for (proj, result_tid) in &place.proj {
+            match proj {
+                Proj::Field(name) => {
+                    let ty = self.codegen.tid(tid);
+
+                    let index = match self.codegen.program.types[tid] {
+                        sir::Ty::Record(ref fields) => {
+                            fields.iter().position(|(n, _)| n == name).unwrap() as u32
+                        }
+                        _ => unreachable!(),
+                    };
+
+                    let name = CString::new(*name).unwrap();
+                    local = LLVMBuildLoad2(self.builder, ty, local, name.as_ptr());
+
+                    let inner = self.codegen.types[&tid].1.expect("expected inner type");
+                    local = LLVMBuildStructGEP2(self.builder, inner, local, index, name.as_ptr());
+                }
+
+                Proj::Tuple(index) => {
+                    let ty = self.codegen.tid(tid);
+
+                    let name = CString::new(format!("tuple_{}", index)).unwrap();
+                    local = LLVMBuildLoad2(self.builder, ty, local, name.as_ptr());
+
+                    let inner = self.codegen.types[&tid].1.expect("expected a inner type");
+                    local = LLVMBuildStructGEP2(
+                        self.builder,
+                        inner,
+                        local,
+                        *index as u32,
+                        name.as_ptr(),
+                    );
+                }
+
+                Proj::Index(_) => todo!(),
+
+                Proj::Deref => todo!(),
+            }
+
+            tid = *result_tid;
+        }
+
+        local
     }
 }

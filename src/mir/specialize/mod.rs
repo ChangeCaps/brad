@@ -79,6 +79,7 @@ impl<'a> Specializer<'a> {
     fn stmt(&mut self, stmt: mir::Stmt, generics: &[sir::Tid]) -> sir::Stmt {
         match stmt {
             mir::Stmt::Assign(place, value) => {
+                let place = self.place(place, generics);
                 let value = self.value(value, generics);
                 sir::Stmt::Assign(place, value)
             }
@@ -89,6 +90,8 @@ impl<'a> Specializer<'a> {
                 cases,
                 default,
             } => {
+                let target = self.place(target, generics);
+
                 let cases = cases
                     .into_iter()
                     .map(|case| self.case(case, generics))
@@ -123,9 +126,29 @@ impl<'a> Specializer<'a> {
 
     fn value(&mut self, value: mir::Value, generics: &[sir::Tid]) -> sir::Value {
         match value {
-            mir::Value::Use(operand) => sir::Value::Use(operand),
-            mir::Value::Tuple(operands) => sir::Value::Tuple(operands),
-            mir::Value::Record(operands) => sir::Value::Record(operands),
+            mir::Value::Use(operand) => {
+                let operand = self.operand(operand, generics);
+
+                sir::Value::Use(operand)
+            }
+
+            mir::Value::Tuple(operands) => {
+                let operands = operands
+                    .into_iter()
+                    .map(|operand| self.operand(operand, generics))
+                    .collect();
+
+                sir::Value::Tuple(operands)
+            }
+
+            mir::Value::Record(operands) => {
+                let operands = operands
+                    .into_iter()
+                    .map(|(name, operand)| (name, self.operand(operand, generics)))
+                    .collect();
+
+                sir::Value::Record(operands)
+            }
 
             mir::Value::Promote {
                 input,
@@ -137,6 +160,7 @@ impl<'a> Specializer<'a> {
                     .into_iter()
                     .map(|ty| self.ty(ty, generics))
                     .collect();
+                let operand = self.operand(operand, generics);
 
                 sir::Value::Promote {
                     input,
@@ -157,6 +181,8 @@ impl<'a> Specializer<'a> {
                     .map(|ty| self.ty(ty, generics))
                     .collect();
 
+                let operand = self.operand(operand, generics);
+
                 sir::Value::Coerce {
                     inputs,
                     variants,
@@ -164,17 +190,36 @@ impl<'a> Specializer<'a> {
                 }
             }
 
-            mir::Value::Call(input, output) => sir::Value::Call(input, output),
+            mir::Value::Call(input, output) => {
+                let input = self.place(input, generics);
+                let output = self.operand(output, generics);
 
-            mir::Value::Binary(op, lhs, rhs) => sir::Value::Binary(op, lhs, rhs),
+                sir::Value::Call(input, output)
+            }
 
-            mir::Value::Unary(op, operand) => sir::Value::Unary(op, operand),
+            mir::Value::Binary(op, lhs, rhs) => {
+                let lhs = self.operand(lhs, generics);
+                let rhs = self.operand(rhs, generics);
+
+                sir::Value::Binary(op, lhs, rhs)
+            }
+
+            mir::Value::Unary(op, operand) => {
+                let operand = self.operand(operand, generics);
+
+                sir::Value::Unary(op, operand)
+            }
 
             mir::Value::Closure {
                 body,
                 generics: generics_,
                 captures,
             } => {
+                let captures = captures
+                    .into_iter()
+                    .map(|operand| self.operand(operand, generics))
+                    .collect();
+
                 let generics: Vec<_> = generics_
                     .into_iter()
                     .map(|ty| self.ty(ty, generics))
@@ -249,6 +294,30 @@ impl<'a> Specializer<'a> {
         };
 
         self.specialized.types.get_or_insert(&ty)
+    }
+
+    fn operand(&mut self, operand: mir::Operand, generics: &[sir::Tid]) -> sir::Operand {
+        match operand {
+            mir::Operand::Place(place) => sir::Operand::Place(self.place(place, generics)),
+            mir::Operand::Const(r#const, ty) => sir::Operand::Const(r#const, self.ty(ty, generics)),
+        }
+    }
+
+    fn place(&mut self, place: mir::Place, generics: &[sir::Tid]) -> sir::Place {
+        let local = place.local;
+        let is_mutable = place.is_mutable;
+
+        let proj = place
+            .proj
+            .into_iter()
+            .map(|(proj, ty)| (proj, self.ty(ty, generics)))
+            .collect();
+
+        sir::Place {
+            local,
+            proj,
+            is_mutable,
+        }
     }
 
     fn finish(self) -> sir::Program {
