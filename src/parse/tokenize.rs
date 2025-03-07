@@ -195,6 +195,11 @@ impl Iterator for Tokenizer<'_> {
             return Some(self.string().map(with_whitespace(whitespace)));
         }
 
+        if c == '/' && self.peek_nth(1) == Some('/') {
+            while self.consume() != Some('\n') {}
+            return self.next();
+        }
+
         if self.remaining().len() >= 2 {
             if let Some(token) = Token::from_symbol(&self.remaining()[..2]) {
                 let span = Span {
