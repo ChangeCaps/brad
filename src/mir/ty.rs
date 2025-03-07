@@ -111,6 +111,7 @@ impl Ty {
 
 #[derive(Clone, Debug)]
 pub struct Named {
+    pub name: String,
     pub generics: u16,
     pub ty: Ty,
 }
@@ -129,6 +130,60 @@ impl Types {
         let id = self.named.len() as u32;
         self.named.push(named);
         id
+    }
+
+    pub fn format(&self, ty: &Ty) -> String {
+        match ty {
+            Ty::Int => String::from("int"),
+            Ty::Float => String::from("float"),
+            Ty::Str => String::from("str"),
+            Ty::True => String::from("true"),
+            Ty::False => String::from("false"),
+            Ty::None => String::from("none"),
+            Ty::Never => String::from("!"),
+
+            Ty::Generic(idx) => format!("'{}", idx),
+
+            Ty::Named(idx, generics) => {
+                let generics = generics
+                    .iter()
+                    .map(|ty| self.format(ty))
+                    .collect::<Vec<_>>();
+
+                let name = &self.named[*idx as usize].name;
+
+                if generics.is_empty() {
+                    String::from(name)
+                } else {
+                    format!("{}<{}>", name, generics.join(", "))
+                }
+            }
+
+            Ty::Ref(ty) => format!("ref {}", self.format(ty)),
+
+            Ty::List(ty) => format!("[{}]", self.format(ty)),
+
+            Ty::Func(input, output) => format!("{} -> {}", self.format(input), self.format(output)),
+
+            Ty::Tuple(tys) => {
+                let tys: Vec<_> = tys.iter().map(|ty| self.format(ty)).collect();
+                format!("({})", tys.join(", "))
+            }
+
+            Ty::Record(fields) => {
+                let fields: Vec<_> = fields
+                    .iter()
+                    .map(|(name, ty)| format!("{}: {}", name, self.format(ty)))
+                    .collect();
+
+                format!("{{ {} }}", fields.join("; "))
+            }
+
+            Ty::Union(tys) => {
+                let tys: Vec<_> = tys.iter().map(|ty| self.format(ty)).collect();
+                format!("({})", tys.join(" | "))
+            }
+        }
     }
 }
 

@@ -15,7 +15,7 @@ struct BlockAnd<T> {
     value: T,
 }
 
-pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::Bid), Diagnostic> {
+pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
     let mut bodies = HashMap::new();
     let mut types = HashMap::new();
 
@@ -26,6 +26,7 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::Bid), Diagnostic>
 
     for (hir_id, _) in hir.bodies.iter() {
         let mir_id = mir.bodies.push(mir::Body {
+            name: None,
             captures: 0,
             arguments: 0,
             output: mir::Ty::None,
@@ -70,6 +71,7 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::Bid), Diagnostic>
         block.term = mir::Term::Return(value);
 
         let body = mir::Body {
+            name: Some(hir[hir_id].name.clone()),
             captures: 0,
             arguments: inputs.len(),
             output: builder.build_ty(hir_body.output.clone()),
@@ -80,12 +82,7 @@ pub fn build(hir: &hir::Program) -> Result<(mir::Program, mir::Bid), Diagnostic>
         mir.bodies[bodies[&hir_id]] = body;
     }
 
-    let (_, &main) = bodies
-        .iter()
-        .find(|(&id, _)| hir[id].name == "main")
-        .unwrap();
-
-    Ok((mir, main))
+    Ok(mir)
 }
 
 impl<T> BlockAnd<T> {
@@ -380,11 +377,17 @@ impl<'a> Builder<'a> {
     fn build_value(&mut self, mut block: mir::Block, expr: hir::Expr) -> BuildResult<mir::Value> {
         match expr.kind {
             hir::ExprKind::Block(exprs) => {
-                let mut value = mir::Value::NONE;
+                let mut value = None;
 
                 for expr in exprs {
-                    value = unpack!(block = self.build_value(block, expr)?);
+                    if let Some(value) = value {
+                        block.stmts.push(mir::Stmt::Drop(value));
+                    }
+
+                    value = Some(unpack!(block = self.build_value(block, expr)?));
                 }
+
+                let value = value.unwrap_or(mir::Value::NONE);
 
                 Ok(BlockAnd::new(block, value))
             }
@@ -641,17 +644,20 @@ impl<'a> Builder<'a> {
         from: hir::Ty,
         to: hir::Ty,
     ) -> BuildResult<mir::Value> {
-        if from == to {
+        let from = self.build_ty(from);
+        let to = self.build_ty(to);
+
+        if self.unwrap_type(from.clone()) == self.unwrap_type(to.clone()) {
             return Ok(BlockAnd::new(block, value));
         }
 
-        let from = self.build_ty(from);
+        let to = self.unwrap_type(to);
 
         if matches!(from, mir::Ty::Never) {
             return Ok(BlockAnd::new(block, mir::Value::NONE));
         }
 
-        match self.build_ty(to.clone()) {
+        match to {
             mir::Ty::Int
             | mir::Ty::Float
             | mir::Ty::Str
@@ -664,8 +670,9 @@ impl<'a> Builder<'a> {
             | mir::Ty::List(_)
             | mir::Ty::Func(_, _)
             | mir::Ty::Tuple(_)
-            | mir::Ty::Named(_, _)
             | mir::Ty::Record(_) => todo!(),
+
+            mir::Ty::Named(_, _) => unreachable!(),
 
             mir::Ty::Union(tys) => {
                 if let mir::Ty::Union(from_tys) = from.clone() {
@@ -763,6 +770,7 @@ impl<'a> Builder<'a> {
                 let named = &self.hir[id];
 
                 let named = mir::Named {
+                    name: named.name.clone(),
                     generics: named.generics.params.len() as u16,
                     ty: match named.ty {
                         Some(ref ty) => self.build_ty(ty.clone()),

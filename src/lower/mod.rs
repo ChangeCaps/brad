@@ -30,12 +30,14 @@ impl Lowerer {
     pub fn add_module(&mut self, path: &[&'static str], ast: ast::Module) {
         let mut current = self.root;
 
-        for module in path {
-            match self.program[current].modules.entry(module) {
+        for segment in path {
+            match self.program[current].modules.entry(segment) {
                 Entry::Occupied(entry) => current = *entry.get(),
                 Entry::Vacant(_) => {
-                    let new = self.program.modules.insert(hir::Module::new());
-                    self.program[current].modules.insert(module, new);
+                    let module = hir::Module::new().with_name(segment).with_parent(current);
+
+                    let new = self.program.modules.insert(module);
+                    self.program[current].modules.insert(segment, new);
                     current = new;
                 }
             }
@@ -52,6 +54,24 @@ impl Lowerer {
         self.lower_functions()?;
 
         Ok(self.program)
+    }
+
+    fn format_module_path(&self, module: hir::ModuleId) -> String {
+        let module = &self.program[module];
+
+        match (module.name, module.parent) {
+            (Some(name), Some(parent)) => {
+                let parent = self.format_module_path(parent);
+
+                if parent.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{}::{}", parent, name)
+                }
+            }
+
+            _ => String::new(),
+        }
     }
 
     /// Resolve all imports in the program.
@@ -73,7 +93,7 @@ impl Lowerer {
                         }
 
                         let body = hir::Body {
-                            name: decl.name,
+                            name: format!("{}::{}", self.format_module_path(m), decl.name),
                             generics: hir::Generics::new(),
                             locals: hir::Locals::new(),
                             input: Vec::new(),
@@ -97,6 +117,7 @@ impl Lowerer {
                         }
 
                         let named = hir::Named {
+                            name: format!("{}::{}", self.format_module_path(m), decl.name),
                             generics: hir::Generics::new(),
                             ty: None,
                         };

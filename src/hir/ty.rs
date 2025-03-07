@@ -108,6 +108,7 @@ pub struct Field {
 
 #[derive(Clone, Debug)]
 pub struct Named {
+    pub name: String,
     pub generics: Generics,
     pub ty: Option<Ty>,
 }

@@ -14,6 +14,7 @@ struct Specializer<'a> {
     generic: &'a mir::Program,
     specialized: sir::Program,
 
+    names: HashMap<sir::Tid, String>,
     named: HashMap<(u32, Vec<sir::Tid>), sir::Tid>,
     bodies: HashMap<(mir::Bid, Vec<sir::Tid>), sir::Bid>,
 }
@@ -24,18 +25,20 @@ impl<'a> Specializer<'a> {
             generic,
             specialized: sir::Program::default(),
 
+            names: HashMap::new(),
             named: HashMap::new(),
             bodies: HashMap::new(),
         }
     }
 
-    fn body(&mut self, entry: mir::Bid, generics: &[sir::Tid]) -> sir::Bid {
-        if let Some(&body) = self.bodies.get(&(entry, generics.to_vec())) {
+    fn body(&mut self, id: mir::Bid, generics: &[sir::Tid]) -> sir::Bid {
+        if let Some(&body) = self.bodies.get(&(id, generics.to_vec())) {
             return body;
         }
 
         // we have to insert a dummy body and cache the id to avoid infinite recursion
         let id = self.specialized.bodies.push(sir::Body {
+            name: None,
             captures: 0,
             arguments: 0,
             output: self.specialized.types.get_or_insert(&sir::Ty::None),
@@ -43,20 +46,37 @@ impl<'a> Specializer<'a> {
             block: sir::Block::new(),
         });
 
-        self.bodies.insert((entry, generics.to_vec()), id);
+        self.bodies.insert((id, generics.to_vec()), id);
 
         let mut locals = sir::Locals::new();
 
-        for (_, ty) in self.generic.bodies[entry].locals.iter() {
+        for (_, ty) in self.generic.bodies[id].locals.iter() {
             locals.push(self.ty(ty.clone(), generics));
         }
 
-        let block = self.block(self.generic.bodies[entry].block.clone(), generics);
+        let block = self.block(self.generic.bodies[id].block.clone(), generics);
+
+        let name = {
+            let generics: Vec<_> = generics
+                .iter()
+                .map(|tid| self.names[tid].as_str())
+                .collect();
+
+            if generics.is_empty() {
+                self.generic.bodies[id].name.clone()
+            } else {
+                self.generic.bodies[id]
+                    .name
+                    .as_ref()
+                    .map(|name| format!("{}<{}>", name, generics.join(", ")))
+            }
+        };
 
         self.specialized.bodies[id] = sir::Body {
-            captures: self.generic.bodies[entry].captures,
-            arguments: self.generic.bodies[entry].arguments,
-            output: self.ty(self.generic.bodies[entry].output.clone(), generics),
+            name,
+            captures: self.generic.bodies[id].captures,
+            arguments: self.generic.bodies[id].arguments,
+            output: self.ty(self.generic.bodies[id].output.clone(), generics),
             locals,
             block,
         };
@@ -78,6 +98,8 @@ impl<'a> Specializer<'a> {
 
     fn stmt(&mut self, stmt: mir::Stmt, generics: &[sir::Tid]) -> sir::Stmt {
         match stmt {
+            mir::Stmt::Drop(value) => sir::Stmt::Drop(self.value(value, generics)),
+
             mir::Stmt::Assign(place, value) => {
                 let place = self.place(place, generics);
                 let value = self.value(value, generics);
@@ -237,8 +259,8 @@ impl<'a> Specializer<'a> {
         }
     }
 
-    fn ty(&mut self, ty: mir::Ty, generics: &[sir::Tid]) -> sir::Tid {
-        let ty = match ty {
+    fn ty(&mut self, mir: mir::Ty, generics: &[sir::Tid]) -> sir::Tid {
+        let sir = match mir.clone() {
             mir::Ty::Int => sir::Ty::Int,
             mir::Ty::Float => sir::Ty::Float,
             mir::Ty::Str => sir::Ty::Str,
@@ -256,9 +278,14 @@ impl<'a> Specializer<'a> {
                     Entry::Occupied(entry) => return *entry.get(),
                     Entry::Vacant(entry) => {
                         let ty = self.specialized.types[tid].clone();
-                        let id = self.specialized.types.push(ty);
-                        entry.insert(id);
-                        return id;
+                        let tid = self.specialized.types.push(ty);
+                        entry.insert(tid);
+
+                        if let Entry::Vacant(e) = self.names.entry(tid) {
+                            e.insert(self.generic.types.format(&mir));
+                        }
+
+                        return tid;
                     }
                 }
             }
@@ -294,7 +321,13 @@ impl<'a> Specializer<'a> {
             }
         };
 
-        self.specialized.types.get_or_insert(&ty)
+        let tid = self.specialized.types.get_or_insert(&sir);
+
+        if !self.names.contains_key(&tid) {
+            self.names.insert(tid, self.generic.types.format(&mir));
+        }
+
+        tid
     }
 
     fn operand(&mut self, operand: mir::Operand, generics: &[sir::Tid]) -> sir::Operand {

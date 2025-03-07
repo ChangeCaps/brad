@@ -7,6 +7,8 @@ use super::{AliasId, BodyId, NamedId};
 
 #[derive(Clone, Debug, Default)]
 pub struct Module {
+    pub name: Option<&'static str>,
+    pub parent: Option<ModuleId>,
     pub modules: HashMap<&'static str, ModuleId>,
     pub items: HashMap<&'static str, Item>,
 }
@@ -14,6 +16,20 @@ pub struct Module {
 impl Module {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_name(self, name: &'static str) -> Self {
+        Self {
+            name: Some(name),
+            ..self
+        }
+    }
+
+    pub fn with_parent(self, parent: ModuleId) -> Self {
+        Self {
+            parent: Some(parent),
+            ..self
+        }
     }
 }
 

@@ -6,7 +6,7 @@ use super::{Binding, Expr, Generics, Local, LocalId, Locals, Ty};
 
 #[derive(Clone, Debug)]
 pub struct Body {
-    pub name: &'static str,
+    pub name: String,
     pub generics: Generics,
     pub locals: Locals,
     pub input: Vec<Argument>,

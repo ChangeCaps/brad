@@ -70,11 +70,7 @@ impl Codegen {
         // Add external brad_alloc and brad_free functions
         let brad_alloc_ty = LLVMFunctionType(
             self.void_pointer_type(),
-            [
-                LLVMInt64TypeInContext(self.context),
-                LLVMInt64TypeInContext(self.context),
-            ]
-            .as_mut_ptr(),
+            [self.i64_type(), self.i64_type()].as_mut_ptr(),
             2,
             0,
         );
@@ -82,13 +78,18 @@ impl Codegen {
         let brad_alloc_fn = LLVMAddFunction(self.module, c"brad_alloc".as_ptr(), brad_alloc_ty);
 
         let brad_free_ty = LLVMFunctionType(
-            LLVMVoidTypeInContext(self.context),
+            self.void_type(),
             [LLVMPointerType(LLVMInt8TypeInContext(self.context), 0)].as_mut_ptr(),
             1,
             0,
         );
 
         let brad_free_fn = LLVMAddFunction(self.module, c"brad_free".as_ptr(), brad_free_ty);
+
+        let brad_print_ty =
+            LLVMFunctionType(self.void_type(), [self.string_type()].as_mut_ptr(), 1, 0);
+
+        let brad_print_fn = LLVMAddFunction(self.module, c"brad_print".as_ptr(), brad_print_ty);
 
         self.externs.insert(
             "brad_alloc".to_string(),
@@ -97,6 +98,10 @@ impl Codegen {
         self.externs.insert(
             "brad_free".to_string(),
             (brad_free_fn, brad_free_ty), //
+        );
+        self.externs.insert(
+            "brad_print".to_string(),
+            (brad_print_fn, brad_print_ty), //
         );
 
         // Build types
@@ -108,7 +113,7 @@ impl Codegen {
             self.build_tys(tid);
         }
 
-        for (id, _) in self.program.bodies.iter() {
+        for (id, body) in self.program.bodies.iter() {
             self.bodies.insert(id, LLVMBody::new(self, id));
         }
 
@@ -201,6 +206,18 @@ impl Codegen {
     unsafe fn zero_size_value(&self) -> LLVMValueRef {
         // initialize a struct with zero fields
         LLVMConstNamedStruct(self.tid(sir::Tid(0)), ptr::null_mut(), 0)
+    }
+
+    unsafe fn string_type(&self) -> LLVMTypeRef {
+        LLVMPointerType(LLVMInt8TypeInContext(self.context), 0)
+    }
+
+    unsafe fn list_type(&self) -> LLVMTypeRef {
+        LLVMPointerType(LLVMInt8TypeInContext(self.context), 0)
+    }
+
+    unsafe fn i64_type(&self) -> LLVMTypeRef {
+        LLVMInt64TypeInContext(self.context)
     }
 
     unsafe fn alloc_single(&self, ty: LLVMTypeRef) -> LLVMValueRef {
@@ -352,6 +369,10 @@ impl LLVMBody {
     unsafe fn new(codegen: &Codegen, id: sir::Bid) -> Self {
         let body = &codegen.program.bodies[id];
 
+        if let Some(ref name) = body.name {
+            println!("Compiling function: {}", name);
+        }
+
         /* create the captures struct */
 
         let mut captures = Vec::new();
@@ -451,6 +472,29 @@ impl<'a> BodyCodegen<'a> {
     unsafe fn build(&mut self) {
         LLVMPositionBuilderAtEnd(self.builder, self.llvm_body.entry);
 
+        if self.body.name.as_deref() == Some("my-test::print") {
+            let (print_fn, print_ty) = self.externs["brad_print"];
+
+            let string = self.llvm_body.locals[0];
+            let string = LLVMBuildLoad2(self.builder, self.string_type(), string, c"load".as_ptr());
+
+            LLVMBuildCall2(
+                self.builder,
+                print_ty,
+                print_fn,
+                [string].as_mut_ptr(),
+                1,
+                c"print".as_ptr(),
+            );
+
+            let ret =
+                LLVMConstStructInContext(self.context, [self.zero_size_value()].as_mut_ptr(), 1, 0);
+
+            LLVMBuildRet(self.builder, ret);
+
+            return;
+        }
+
         self.block(&self.body.block);
     }
 
@@ -472,6 +516,10 @@ impl<'a> BodyCodegen<'a> {
 
     unsafe fn stmt(&self, stmt: &sir::Stmt) {
         match stmt {
+            sir::Stmt::Drop(value) => {
+                let _ = self.value(value);
+            }
+
             sir::Stmt::Assign(place, value) => {
                 let place = self.place(place);
                 let value = self.value(value);
@@ -485,6 +533,8 @@ impl<'a> BodyCodegen<'a> {
                     self.llvm_body.function,
                     c"loop".as_ptr(),
                 );
+
+                LLVMBuildBr(self.builder, llvm_block);
 
                 LLVMPositionBuilderAtEnd(self.builder, llvm_block);
                 self.block(block);
@@ -883,7 +933,7 @@ impl<'a> BodyCodegen<'a> {
                 }
 
                 sir::Const::String(value) => {
-                    let i64_size = LLVMSizeOf(LLVMInt64TypeInContext(self.context));
+                    let i64_size = LLVMSizeOf(self.i64_type());
                     let len = LLVMConstInt(
                         LLVMInt64TypeInContext(self.context),
                         value.len() as u64, // length in bytes
@@ -894,7 +944,7 @@ impl<'a> BodyCodegen<'a> {
 
                     let string = self.codegen.alloc_bytes(total_len);
 
-                    LLVMBuildStore(self.builder, total_len, string);
+                    LLVMBuildStore(self.builder, len, string);
 
                     let contents = LLVMConstStringInContext2(
                         self.context,

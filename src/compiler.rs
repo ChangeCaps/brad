@@ -107,7 +107,7 @@ impl<'a> Compiler<'a> {
         lowerer.lower()
     }
 
-    pub fn mir(&self, hir: hir::Program) -> Result<(mir::Program, mir::Bid), Diagnostic> {
+    pub fn mir(&self, hir: hir::Program) -> Result<mir::Program, Diagnostic> {
         mir::build(&hir)
     }
 
@@ -115,7 +115,8 @@ impl<'a> Compiler<'a> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;
-        let (mir, main) = self.mir(hir)?;
+        let mir = self.mir(hir)?;
+        let main = mir.find_body("my-test::main").unwrap();
         let (sir, main) = mir::specialize(mir, main);
         let interpreter = Interpreter::new(sir);
         interpreter.run(main);
@@ -126,7 +127,8 @@ impl<'a> Compiler<'a> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;
-        let (mir, main) = self.mir(hir)?;
+        let mir = self.mir(hir)?;
+        let main = mir.find_body("my-test::main").unwrap();
         let (sir, main) = mir::specialize(mir, main);
 
         codegen(sir, main);

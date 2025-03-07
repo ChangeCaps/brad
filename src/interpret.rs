@@ -42,6 +42,11 @@ impl Interpreter {
 
     fn eval_stmt(&self, frame: &mut Frame, stmt: &sir::Stmt) -> Result<(), Flow> {
         match stmt {
+            sir::Stmt::Drop(value) => {
+                self.eval_value(frame, value);
+                Ok(())
+            }
+
             sir::Stmt::Assign(place, value) => {
                 let value = self.eval_value(frame, value);
                 self.assign(frame, place, value);

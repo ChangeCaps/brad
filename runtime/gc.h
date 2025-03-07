@@ -17,3 +17,5 @@ typedef struct {
 
 BradPtr brad_alloc(BradMemoryLayout layout, BradSize size);
 void brad_free(BradPtr ptr);
+
+void brad_print(BradString string);

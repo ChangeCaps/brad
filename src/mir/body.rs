@@ -10,6 +10,9 @@ use super::{stmt::Block, Ty};
 /// +-----------------+-----------------+-----------------+
 #[derive(Clone, Debug)]
 pub struct Body<T = Ty> {
+    /// The name of the function.
+    pub name: Option<String>,
+
     /// The number of captures.
     pub captures: usize,
 
