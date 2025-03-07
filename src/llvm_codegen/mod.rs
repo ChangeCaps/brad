@@ -223,6 +223,23 @@ impl Codegen {
         )
     }
 
+    unsafe fn alloc_bytes(&self, count: LLVMValueRef) -> LLVMValueRef {
+        let (alloc_fn, alloc_ty) = self.externs["brad_alloc"];
+
+        let size = LLVMSizeOf(LLVMInt8TypeInContext(self.context));
+
+        let mut args = [size, count];
+
+        LLVMBuildCall2(
+            self.builder,
+            alloc_ty,
+            alloc_fn,
+            args.as_mut_ptr(),
+            2,
+            c"alloc".as_ptr(),
+        )
+    }
+
     /// Build an LLVM type from a SIR type.
     unsafe fn initialize_ty(&self, tid: sir::Tid) -> (LLVMTypeRef, Option<LLVMTypeRef>) {
         match &self.program.types[tid] {
@@ -788,7 +805,7 @@ impl<'a> BodyCodegen<'a> {
                 }
             }
 
-            sir::Value::Closure { body, captures, .. } => {
+            sir::Value::Closure { body, .. } => {
                 let captures = self.alloc_single(self.bodies[body].captures);
 
                 let closure_ty = LLVMStructTypeInContext(
@@ -845,7 +862,7 @@ impl<'a> BodyCodegen<'a> {
 
     unsafe fn operand(&self, operand: &sir::Operand) -> LLVMValueRef {
         match operand {
-            Operand::Place(place) => {
+            Operand::Copy(place) => {
                 let &tid = place.ty(&self.body.locals);
                 let ty = self.codegen.tid(tid);
 
@@ -866,7 +883,46 @@ impl<'a> BodyCodegen<'a> {
                 }
 
                 sir::Const::String(value) => {
-                    todo!("needs allocation");
+                    let i64_size = LLVMSizeOf(LLVMInt64TypeInContext(self.context));
+                    let len = LLVMConstInt(
+                        LLVMInt64TypeInContext(self.context),
+                        value.len() as u64, // length in bytes
+                        0,
+                    );
+
+                    let total_len = LLVMBuildAdd(self.builder, i64_size, len, c"len".as_ptr());
+
+                    let string = self.codegen.alloc_bytes(total_len);
+
+                    LLVMBuildStore(self.builder, total_len, string);
+
+                    let contents = LLVMConstStringInContext2(
+                        self.context,
+                        value.as_ptr() as *const i8,
+                        value.len(),
+                        0,
+                    );
+
+                    let bytes = LLVMAddGlobal(
+                        self.module,
+                        LLVMTypeOf(contents), // type
+                        c"string_bytes".as_ptr(),
+                    );
+
+                    LLVMSetInitializer(bytes, contents);
+
+                    let pointer = LLVMBuildGEP2(
+                        self.builder,
+                        LLVMInt8TypeInContext(self.context),
+                        string,
+                        [i64_size].as_mut_ptr(),
+                        1,
+                        c"str_ptr".as_ptr(),
+                    );
+
+                    LLVMBuildMemCpy(self.builder, pointer, 1, bytes, 1, len);
+
+                    string
                 }
             },
         }

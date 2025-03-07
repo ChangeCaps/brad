@@ -1,6 +1,7 @@
-#include "gc.h"
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "gc.h"
 
 BradPtr brad_alloc(
     BradMemoryLayout layout,
@@ -14,5 +15,5 @@ void brad_free(
     BradPtr ptr
 ) {
     printf("Freeing brad ptr %016lx\n", ptr);
-    return free((void *)ptr);
+    return free((void*)ptr);
 }

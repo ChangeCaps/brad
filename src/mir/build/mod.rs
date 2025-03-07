@@ -372,7 +372,7 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Loop(_)
             | hir::ExprKind::Block(_) => {
                 let place = unpack!(block = self.build_place(block, expr)?);
-                Ok(BlockAnd::new(block, mir::Operand::Place(place)))
+                Ok(BlockAnd::new(block, mir::Operand::Copy(place)))
             }
         }
     }
@@ -551,7 +551,7 @@ impl<'a> Builder<'a> {
                     is_mutable: false,
                 };
 
-                let value = mir::Value::Use(mir::Operand::Place(value));
+                let value = mir::Value::Use(mir::Operand::Copy(value));
                 block.stmts.push(mir::Stmt::Assign(place, value));
 
                 Ok(BlockAnd::new(block, ()))
@@ -590,7 +590,7 @@ impl<'a> Builder<'a> {
 
         let tid = self.build_ty(to.clone());
 
-        let operand = mir::Operand::Place(place.clone());
+        let operand = mir::Operand::Copy(place.clone());
         let value = mir::Value::Use(operand);
         let value = unpack!(block = self.coerce_value(block, value, from, to)?);
 
@@ -631,7 +631,7 @@ impl<'a> Builder<'a> {
 
         block.stmts.push(mir::Stmt::Assign(place.clone(), value));
 
-        Ok(BlockAnd::new(block, mir::Operand::Place(place)))
+        Ok(BlockAnd::new(block, mir::Operand::Copy(place)))
     }
 
     fn coerce_value(
@@ -678,7 +678,7 @@ impl<'a> Builder<'a> {
 
                     block.stmts.push(mir::Stmt::Assign(place.clone(), value));
 
-                    let operand = mir::Operand::Place(place);
+                    let operand = mir::Operand::Copy(place);
                     let value = mir::Value::Coerce {
                         inputs: from_tys,
                         variants: tys,
@@ -701,7 +701,7 @@ impl<'a> Builder<'a> {
 
                 block.stmts.push(mir::Stmt::Assign(place.clone(), value));
 
-                let operand = mir::Operand::Place(place);
+                let operand = mir::Operand::Copy(place);
                 let value = mir::Value::Promote {
                     input: from,
                     variants: tys,

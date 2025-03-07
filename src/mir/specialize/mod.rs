@@ -85,6 +85,7 @@ impl<'a> Specializer<'a> {
             }
 
             mir::Stmt::Loop(block) => sir::Stmt::Loop(self.block(block, generics)),
+
             mir::Stmt::Match {
                 target,
                 cases,
@@ -298,7 +299,7 @@ impl<'a> Specializer<'a> {
 
     fn operand(&mut self, operand: mir::Operand, generics: &[sir::Tid]) -> sir::Operand {
         match operand {
-            mir::Operand::Place(place) => sir::Operand::Place(self.place(place, generics)),
+            mir::Operand::Copy(place) => sir::Operand::Copy(self.place(place, generics)),
             mir::Operand::Const(r#const, ty) => sir::Operand::Const(r#const, self.ty(ty, generics)),
         }
     }
