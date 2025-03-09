@@ -229,7 +229,7 @@ impl<'a> Builder<'a> {
 
     fn build_stmt(&mut self, bid: lir::Bid, stmt: &sir::Stmt) -> lir::Stmt {
         match stmt {
-            sir::Stmt::Drop(value) => lir::Stmt::Drop {
+            sir::Stmt::Drop(value, _) => lir::Stmt::Drop {
                 var: {
                     let val = self.decompose_value(bid, value);
                     self.var_from_value(bid, val)
