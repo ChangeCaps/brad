@@ -66,10 +66,7 @@ impl<'a> Builder<'a> {
     }
 
     fn build_body(&mut self, bid: sir::Bid) -> lir::Bid {
-        match self.body_map.get(&bid) {
-            Some(id) => return id.clone(),
-            None => {}
-        };
+        if let Some(id) = self.body_map.get(&bid) { return *id };
 
         let argc = self.sir.bodies[bid].arguments;
 
@@ -243,10 +240,7 @@ impl<'a> Builder<'a> {
     }
 
     fn map_type(&mut self, sid: sir::Tid) -> lir::Tid {
-        match self.type_map.get(&self.sir.types[sid]) {
-            Some(id) => return id.clone(),
-            None => {}
-        };
+        if let Some(id) = self.type_map.get(&self.sir.types[sid]) { return *id };
 
         let ty = self.sir.types[sid].clone();
 
@@ -261,24 +255,18 @@ impl<'a> Builder<'a> {
             sir::Ty::Ref(tid) => lir::Ty::Ref(self.map_type(tid)),
             sir::Ty::List(tid) => lir::Ty::List(self.map_type(tid)),
             sir::Ty::Func(tid, tid1) => lir::Ty::Func(self.map_type(tid), self.map_type(tid1)),
-            sir::Ty::Tuple(ref tids) => lir::Ty::Record {
-                0: tids.iter().fold(Vec::new(), |mut vec, tid| {
-                    vec.push(self.map_type(tid.clone()));
+            sir::Ty::Tuple(ref tids) => lir::Ty::Record(tids.iter().fold(Vec::new(), |mut vec, tid| {
+                    vec.push(self.map_type(*tid));
                     vec
-                }),
-            },
-            sir::Ty::Record(ref items) => lir::Ty::Record {
-                0: items.iter().fold(Vec::new(), |mut vec, (_, tid)| {
-                    vec.push(self.map_type(tid.clone()));
+                })),
+            sir::Ty::Record(ref items) => lir::Ty::Record(items.iter().fold(Vec::new(), |mut vec, (_, tid)| {
+                    vec.push(self.map_type(*tid));
                     vec
-                }),
-            },
-            sir::Ty::Union(ref btree_set) => lir::Ty::Union {
-                0: btree_set.iter().fold(Vec::new(), |mut vec, tid| {
-                    vec.push(self.map_type(tid.clone()));
+                })),
+            sir::Ty::Union(ref btree_set) => lir::Ty::Union(btree_set.iter().fold(Vec::new(), |mut vec, tid| {
+                    vec.push(self.map_type(*tid));
                     vec
-                }),
-            },
+                })),
         };
 
         let id = self.lir.types.get_id(lt);

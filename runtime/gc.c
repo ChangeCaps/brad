@@ -25,7 +25,7 @@ void brad_print(
     char* data = malloc(string->length + 1);
     memcpy(data, string->data, string->length);
     data[string->length] = '\0';
-    printf("%s\n", data);
+    printf("%s", data);
 }
 
 brad_str brad_str_concat(

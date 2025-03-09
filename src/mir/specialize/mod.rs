@@ -100,7 +100,7 @@ impl<'a> Specializer<'a> {
             .map(|stmt| self.stmt(stmt, generics))
             .collect();
 
-        let term = self.term(block.term, generics);
+        let term = block.term.map(|term| self.term(term, generics));
 
         sir::Block { stmts, term }
     }
@@ -152,7 +152,6 @@ impl<'a> Specializer<'a> {
         match term {
             mir::Term::Return(value) => sir::Term::Return(self.value(value, generics)),
             mir::Term::Break => sir::Term::Break,
-            mir::Term::Exit => sir::Term::Exit,
         }
     }
 

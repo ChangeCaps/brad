@@ -130,7 +130,78 @@ impl<'a> Tokenizer<'a> {
         let start = self.index;
         self.consume();
 
-        while self.consume() != Some('"') {}
+        let mut content = String::new();
+
+        loop {
+            let Some(c) = self.consume() else {
+                let span = Span {
+                    source: self.source,
+                    start,
+                    end: self.index,
+                };
+
+                let diagnostic = Diagnostic::error("unexpected::character")
+                    .message("unexpected end of file in string")
+                    .label(span, "here");
+
+                return Err(diagnostic);
+            };
+
+            if c == '"' {
+                break;
+            }
+
+            if c != '\\' {
+                content.push(c);
+                continue;
+            }
+
+            let Some(c) = self.consume() else {
+                let span = Span {
+                    source: self.source,
+                    start,
+                    end: self.index,
+                };
+
+                let diagnostic = Diagnostic::error("unexpected::character")
+                    .message("unexpected end of file in string")
+                    .label(span, "here");
+
+                return Err(diagnostic);
+            };
+
+            match c {
+                'n' => {
+                    content.push('\n');
+                }
+
+                'r' => {
+                    content.push('\r');
+                }
+
+                't' => {
+                    content.push('\t');
+                }
+
+                '0' => {
+                    content.push('\0');
+                }
+
+                _ => {
+                    let span = Span {
+                        source: self.source,
+                        start,
+                        end: self.index,
+                    };
+
+                    let diagnostic = Diagnostic::error("unexpected::character")
+                        .message(format!("unexpected character in string, found `{}`", c))
+                        .label(span, "here");
+
+                    return Err(diagnostic);
+                }
+            }
+        }
 
         let end = self.index;
 
@@ -140,8 +211,7 @@ impl<'a> Tokenizer<'a> {
             end,
         };
 
-        let string = &self.input[start + 1..end - 1];
-        let s = self.interner.intern(string);
+        let s = self.interner.intern(&content);
 
         Ok((Token::String(s), span))
     }

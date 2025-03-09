@@ -59,7 +59,7 @@ impl Types {
 
     pub fn get_id(&mut self, ty: Ty) -> Tid {
         match self.type_map.get(&ty) {
-            Some(id) => id.clone(),
+            Some(id) => *id,
             None => {
                 let id: u32 = self.type_vec.len().try_into().unwrap();
                 self.type_vec.push(ty.clone());

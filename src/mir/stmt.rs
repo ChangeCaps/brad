@@ -5,14 +5,14 @@ use super::{Bid, Local, Locals, Ty};
 #[derive(Clone, Debug)]
 pub struct Block<T = Ty> {
     pub stmts: Vec<Stmt<T>>,
-    pub term: Term<T>,
+    pub term: Option<Term<T>>,
 }
 
 impl<T> Block<T> {
     pub fn new() -> Self {
         Self {
             stmts: Vec::new(),
-            term: Term::Exit,
+            term: None,
         }
     }
 }
@@ -48,7 +48,6 @@ pub struct Case<T = Ty> {
 pub enum Term<T = Ty> {
     Return(Value<T>),
     Break,
-    Exit,
 }
 
 #[derive(Clone, Debug)]
