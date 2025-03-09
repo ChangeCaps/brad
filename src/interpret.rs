@@ -73,7 +73,7 @@ impl Interpreter {
                 };
 
                 for case in cases {
-                    if ty == case.ty.clone() {
+                    if ty == case.ty {
                         frame.locals[case.local.0] = *value;
 
                         return self.eval_block(frame, &case.block);

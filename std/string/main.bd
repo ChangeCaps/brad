@@ -1,0 +1,10 @@
+#[link = "brad_str_concat"]
+extern fn concat (_: str) (_: str) -> str
+
+fn append (suffix: str) (s: str) -> str {
+  concat s suffix
+}
+
+fn prepend (prefix: str) (s: str) -> str {
+  concat prefix s
+}

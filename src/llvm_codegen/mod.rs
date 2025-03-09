@@ -16,7 +16,7 @@ pub fn codegen(program: sir::Program) -> String {
     }
 }
 
-pub fn jit(module: String, entry: sir::Bid) {
+pub fn jit(module: &str, entry: &str) {
     unsafe {
         let jit = jit::Jit::new();
         let module = jit.load_module(module);
@@ -736,10 +736,7 @@ impl<'a> BodyCodegen<'a> {
                 let func_tid = *func.ty(&self.body.locals);
 
                 let output_ty = match self.program.types[func_tid] {
-                    sir::Ty::Func(_, output) => {
-                        println!("output: {:?}", self.program.types[output]);
-                        self.codegen.tid(output)
-                    }
+                    sir::Ty::Func(_, output) => self.codegen.tid(output),
                     _ => unreachable!(),
                 };
 
@@ -856,7 +853,6 @@ impl<'a> BodyCodegen<'a> {
                 );
 
                 if LLVMGetTypeKind(output_ty) != LLVMTypeKind::LLVMVoidTypeKind {
-                    println!("output_ty: {:?}", LLVMGetTypeKind(output_ty));
                     LLVMBuildStore(self.builder, result, output);
                 }
 

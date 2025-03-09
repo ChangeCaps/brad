@@ -4,7 +4,7 @@ use ast::Formatter;
 use clap::{Args, Parser, Subcommand};
 use diagnostic::{Source, Sources};
 use parse::{Interner, Tokens};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use compiler::Compiler;
 
@@ -36,7 +36,7 @@ pub struct FileArgs {
 #[derive(Args, Clone)]
 pub struct ModuleArgs {
     /// Module name to interpret, as a positional argument
-    module: String,
+    packages: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -104,16 +104,23 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
         }
 
         Cmd::Interpret(f) | Cmd::Compile(f) => {
-            let module = f.module.clone();
+            let packages = f.packages.clone();
             let mut compiler = Compiler::new(sources);
 
-            compiler
-                .add_package(module.clone().as_str(), module.clone())
+            for package in packages.iter() {
+                let name = Path::new(package).file_stem().unwrap().to_str().unwrap();
+                compiler.add_package(name, package).unwrap();
+            }
+
+            let main_package = Path::new(packages.last().unwrap())
+                .file_stem()
+                .unwrap()
+                .to_str()
                 .unwrap();
 
             match &args.command {
-                Cmd::Interpret(_) => compiler.interpret(module.as_str()),
-                Cmd::Compile(_) => compiler.compile(module.as_str()),
+                Cmd::Interpret(_) => compiler.interpret(main_package),
+                Cmd::Compile(_) => compiler.compile(main_package),
                 _ => unreachable!(),
             }
         }

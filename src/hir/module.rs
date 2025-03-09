@@ -58,6 +58,17 @@ impl Modules {
         self.modules.push(module);
         ModuleId(id)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (ModuleId, &Module)> {
+        self.modules
+            .iter()
+            .enumerate()
+            .map(|(id, module)| (ModuleId(id), module))
+    }
+
+    pub fn ids(&self) -> impl Iterator<Item = ModuleId> {
+        (0..self.modules.len()).map(ModuleId)
+    }
 }
 
 impl Index<ModuleId> for Modules {

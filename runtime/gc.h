@@ -23,3 +23,5 @@ brad_ptr brad_alloc(brad_layout layout, brad_size size);
 void brad_free(brad_ptr ptr);
 
 void brad_print(brad_str string);
+
+brad_str brad_str_concat(brad_str a, brad_str b);

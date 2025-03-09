@@ -1,4 +1,3 @@
-use crate::sir;
 use llvm_sys::ir_reader::LLVMParseIRInContext;
 use llvm_sys::{
     core::*,
@@ -38,7 +37,7 @@ impl Jit {
         Self { context, jit }
     }
 
-    pub unsafe fn load_module(&self, module: String) -> LLVMModuleRef {
+    pub unsafe fn load_module(&self, module: &str) -> LLVMModuleRef {
         let module = CString::new(module).unwrap();
 
         let membuf = LLVMCreateMemoryBufferWithMemoryRange(
@@ -59,7 +58,7 @@ impl Jit {
         module
     }
 
-    pub unsafe fn run(&self, module: LLVMModuleRef, entry: sir::Bid) {
+    pub unsafe fn run(&self, module: LLVMModuleRef, entry: &str) {
         let dylib = LLVMOrcLLJITGetMainJITDylib(self.jit);
 
         // load `gc.o` object file
@@ -92,7 +91,7 @@ impl Jit {
             panic!("{}", err.to_str().unwrap());
         }
 
-        let entry = CString::new("std::main").unwrap();
+        let entry = CString::new(entry).unwrap();
 
         let mut func_addr = 0;
         let err = LLVMOrcLLJITLookup(self.jit, &mut func_addr, entry.as_ptr());
@@ -103,8 +102,8 @@ impl Jit {
             panic!("{}", err.to_str().unwrap());
         }
 
-        let func: extern "C" fn() -> i64 = std::mem::transmute(func_addr);
+        let func: unsafe extern "C" fn() = std::mem::transmute(func_addr);
 
-        println!("Calling entry function: {}", func());
+        func();
     }
 }

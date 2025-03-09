@@ -46,7 +46,8 @@ impl Lowerer {
         self.modules.push((current, ast));
     }
 
-    pub fn lower(mut self) -> Result<hir::Program, Diagnostic> {
+    pub fn finish(mut self) -> Result<hir::Program, Diagnostic> {
+        self.import_packages()?;
         self.resolve_imports()?;
         self.lower_aliases()?;
         self.lower_types()?;
@@ -54,6 +55,20 @@ impl Lowerer {
         self.lower_functions()?;
 
         Ok(self.program)
+    }
+
+    fn import_packages(&mut self) -> Result<(), Diagnostic> {
+        for id in self.program.modules.ids() {
+            let packages: Vec<_> = self.program[self.root]
+                .modules
+                .iter()
+                .map(|(name, id)| (*name, *id))
+                .collect();
+
+            self.program[id].modules.extend(packages);
+        }
+
+        Ok(())
     }
 
     fn format_module_path(&self, module: hir::ModuleId) -> String {

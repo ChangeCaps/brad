@@ -34,7 +34,12 @@ impl<'a> Compiler<'a> {
 
     pub fn add_package(&mut self, name: &str, path: impl AsRef<Path>) -> io::Result<()> {
         let name = self.interner.intern(name);
-        self.add_directory(vec![name], path.as_ref())
+
+        if path.as_ref().is_dir() {
+            self.add_directory(vec![name], path.as_ref())
+        } else {
+            self.add_file(&[name], path.as_ref())
+        }
     }
 
     pub fn sources(&self) -> &Sources {
@@ -54,25 +59,31 @@ impl<'a> Compiler<'a> {
 
                 self.add_directory(modules, &path)?;
             } else {
-                if path.extension() != Some("bd".as_ref()) {
-                    continue;
-                }
-
-                let content = fs::read_to_string(&path)?;
-
-                let source = Source {
-                    content,
-                    file: path,
-                };
-
-                self.files.push(File {
-                    path: modules.clone(),
-                    source: self.sources.push(source),
-                    tokens: None,
-                    ast: None,
-                });
+                self.add_file(&modules, &path)?;
             }
         }
+
+        Ok(())
+    }
+
+    fn add_file(&mut self, modules: &[&'static str], path: &Path) -> io::Result<()> {
+        if path.extension() != Some("bd".as_ref()) {
+            return Ok(());
+        }
+
+        let content = fs::read_to_string(path)?;
+
+        let source = Source {
+            content,
+            file: path.to_path_buf(),
+        };
+
+        self.files.push(File {
+            path: modules.to_vec(),
+            source: self.sources.push(source),
+            tokens: None,
+            ast: None,
+        });
 
         Ok(())
     }
@@ -104,7 +115,7 @@ impl<'a> Compiler<'a> {
             lowerer.add_module(&file.path, file.ast.take().unwrap());
         }
 
-        lowerer.lower()
+        lowerer.finish()
     }
 
     pub fn mir(&self, hir: hir::Program) -> Result<mir::Program, Diagnostic> {
@@ -129,11 +140,12 @@ impl<'a> Compiler<'a> {
         let hir = self.lower()?;
         let mir = self.mir(hir)?;
         let main = mir.find_body(format!("{}::main", module).as_str())?;
-        let (sir, main) = mir::specialize(mir, main);
+        let (sir, _) = mir::specialize(mir, main);
 
-        let module = llvm_codegen::codegen(sir);
-        println!("{}", module);
-        llvm_codegen::jit(module, main);
+        let llvm_ir = llvm_codegen::codegen(sir);
+
+        let main = format!("{}::main", module);
+        llvm_codegen::jit(&llvm_ir, &main);
 
         Ok(())
     }
