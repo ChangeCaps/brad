@@ -477,14 +477,15 @@ impl<'a> BodyCodegen<'a> {
             self.stmt(stmt);
         }
 
-        match &block.term {
-            sir::Term::Return(value) => {
-                let value = self.value(value);
-                LLVMBuildRet(self.builder, value);
-            }
+        if let Some(ref term) = block.term {
+            match term {
+                sir::Term::Return(value) => {
+                    let value = self.value(value);
+                    LLVMBuildRet(self.builder, value);
+                }
 
-            sir::Term::Break => {}
-            sir::Term::Exit => {}
+                sir::Term::Break => {}
+            }
         }
     }
 

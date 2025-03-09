@@ -34,9 +34,9 @@ impl Interpreter {
         }
 
         match block.term {
-            sir::Term::Return(ref value) => Err(Flow::Return(self.eval_value(frame, value))),
-            sir::Term::Break => Err(Flow::Break),
-            sir::Term::Exit => Ok(()),
+            Some(sir::Term::Return(ref value)) => Err(Flow::Return(self.eval_value(frame, value))),
+            Some(sir::Term::Break) => Err(Flow::Break),
+            None => Ok(()),
         }
     }
 

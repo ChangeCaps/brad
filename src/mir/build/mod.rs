@@ -62,7 +62,7 @@ pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
                     )?
                 );
 
-                block.term = mir::Term::Return(value);
+                block.term = Some(mir::Term::Return(value));
 
                 Some(block)
             }
@@ -348,7 +348,7 @@ impl<'a> Builder<'a> {
                     block.stmts.push(mir::Stmt::Assign(place, v));
                 }
 
-                block.term = mir::Term::Break;
+                block.term = Some(mir::Term::Break);
 
                 Ok(BlockAnd::new(block, mir::Operand::NONE))
             }
