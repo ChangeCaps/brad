@@ -1,20 +1,6 @@
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
-
-typedef uint64_t brad_size;
-typedef uintptr_t brad_ptr;
-
-typedef struct {
-} brad_void;
-
-typedef struct {
-    brad_size length;
-    char data[];
-}* brad_str;
-
-typedef int64_t brad_int;
+#include "types.h"
 
 typedef void (*brad_marker)(brad_ptr ptr);
 
@@ -46,9 +32,4 @@ brad_ptr brad_alloc(brad_size size, brad_marker marker);
 void brad_retain(brad_ptr ptr);
 void brad_release(brad_size count);
 void brad_collect();
-
 void brad_mark(brad_ptr ptr);
-
-void brad_print(brad_str string);
-
-brad_str brad_str_concat(brad_str a, brad_str b);
