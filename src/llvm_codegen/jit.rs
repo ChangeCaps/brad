@@ -58,17 +58,16 @@ impl Jit {
         module
     }
 
-    pub unsafe fn run(&self, module: LLVMModuleRef, entry: &str) {
-        let dylib = LLVMOrcLLJITGetMainJITDylib(self.jit);
-
-        // load `gc.o` object file
-        let gc = CString::new("gc.o").unwrap();
-
+    unsafe fn load_object_file(&self, dylib: LLVMOrcJITDylibRef, path: std::path::PathBuf) -> () {
+        assert!(path.exists(), "object file not found");
+        let obj_path_str = CString::new(path.to_str().unwrap()).unwrap();
         let mut membuf = ptr::null_mut();
-        let mut err = ptr::null_mut();
+        let mut msg = ptr::null_mut();
 
-        if LLVMCreateMemoryBufferWithContentsOfFile(gc.as_ptr(), &mut membuf, &mut err) != 0 {
-            let err = CString::from_raw(err);
+        if LLVMCreateMemoryBufferWithContentsOfFile(obj_path_str.as_ptr(), &mut membuf, &mut msg)
+            .is_negative()
+        {
+            let err = CString::from_raw(msg);
             panic!("{}", err.to_str().unwrap());
         }
 
@@ -79,6 +78,14 @@ impl Jit {
             let err = CString::from_raw(err);
             panic!("{}", err.to_str().unwrap());
         }
+    }
+
+    pub unsafe fn run(&self, module: LLVMModuleRef, entry: &str) {
+        let dylib = LLVMOrcLLJITGetMainJITDylib(self.jit);
+
+        self.load_object_file(dylib, "obj/runtime.o".into());
+        self.load_object_file(dylib, "obj/std_io.o".into());
+        self.load_object_file(dylib, "obj/std_string.o".into());
 
         let ctx = LLVMOrcCreateNewThreadSafeContext();
         let tsm = LLVMOrcCreateNewThreadSafeModule(module, ctx);

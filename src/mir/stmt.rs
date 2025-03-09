@@ -19,7 +19,7 @@ impl<T> Block<T> {
 
 #[derive(Clone, Debug)]
 pub enum Stmt<T = Ty> {
-    Drop(Value<T>),
+    Drop(Value<T>, T),
 
     Assign(Place<T>, Value<T>),
 
