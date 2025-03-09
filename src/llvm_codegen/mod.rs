@@ -38,6 +38,7 @@ struct Codegen {
     pub program: sir::Program,
     pub bodies: HashMap<sir::Bid, LLVMBody>,
     pub types: HashMap<sir::Tid, (LLVMTypeRef, Option<LLVMTypeRef>)>,
+    pub markers: HashMap<sir::Tid, LLVMValueRef>,
 }
 
 struct GarbageContext {
@@ -126,6 +127,7 @@ impl Codegen {
             program,
             bodies: HashMap::new(),
             types: HashMap::new(),
+            markers: HashMap::new(),
         }
     }
 
