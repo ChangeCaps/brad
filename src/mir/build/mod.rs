@@ -380,7 +380,8 @@ impl<'a> Builder<'a> {
 
                 for expr in exprs {
                     if let Some(value) = value {
-                        block.stmts.push(mir::Stmt::Drop(value));
+                        let ty = self.build_ty(expr.ty.clone());
+                        block.stmts.push(mir::Stmt::Drop(value, ty));
                     }
 
                     value = Some(unpack!(block = self.build_value(block, expr)?));
