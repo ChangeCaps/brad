@@ -391,9 +391,6 @@ impl LLVMBody {
 struct BodyCodegen<'a> {
     codegen: &'a mut Codegen,
     id: sir::Bid,
-
-    /// The number of local allocations retained in the function.
-    retained: usize,
 }
 
 impl Deref for BodyCodegen<'_> {
@@ -412,11 +409,7 @@ impl DerefMut for BodyCodegen<'_> {
 
 impl<'a> BodyCodegen<'a> {
     unsafe fn new(codegen: &'a mut Codegen, id: sir::Bid) -> Self {
-        Self {
-            codegen,
-            id,
-            retained: 0,
-        }
+        Self { codegen, id }
     }
 
     unsafe fn body(&self) -> &sir::Body {
@@ -452,7 +445,7 @@ impl<'a> BodyCodegen<'a> {
             self.gc.retain,
             [value].as_mut_ptr(),
             1,
-            c"retain".as_ptr(),
+            c"".as_ptr(),
         );
     }
 
@@ -463,7 +456,7 @@ impl<'a> BodyCodegen<'a> {
             self.gc.release,
             [value].as_mut_ptr(),
             1,
-            c"release".as_ptr(),
+            c"".as_ptr(),
         );
     }
 
@@ -474,7 +467,7 @@ impl<'a> BodyCodegen<'a> {
             self.gc.collect,
             [].as_mut_ptr(),
             0,
-            c"collect".as_ptr(),
+            c"".as_ptr(),
         );
     }
 

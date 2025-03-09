@@ -29,11 +29,7 @@ impl BodyCodegen<'_> {
 
                 sir::Const::String(value) => {
                     let i64_size = LLVMSizeOf(self.i64_type());
-                    let len = LLVMConstInt(
-                        LLVMInt64TypeInContext(self.context),
-                        value.len() as u64, // length in bytes
-                        0,
-                    );
+                    let len = LLVMConstInt(self.i64_type(), value.len() as u64, 0);
 
                     let total_len = LLVMBuildAdd(self.builder, i64_size, len, c"len".as_ptr());
 

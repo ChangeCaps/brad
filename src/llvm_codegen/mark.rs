@@ -32,8 +32,7 @@ impl Codegen {
     }
 
     pub unsafe fn str_marker(&mut self) -> LLVMValueRef {
-        let tid = self.program.types[sir::Ty::Str];
-
+        let tid = self.program.types.get_or_insert(&sir::Ty::Str);
         self.marker(tid)
     }
 

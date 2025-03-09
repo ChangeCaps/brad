@@ -143,6 +143,7 @@ impl<'a> Compiler<'a> {
         let (sir, _) = mir::specialize(mir, main);
 
         let llvm_ir = llvm_codegen::codegen(sir);
+
         println!("{}", llvm_ir);
 
         let main = format!("{}::main", module);

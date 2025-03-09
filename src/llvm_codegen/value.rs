@@ -143,6 +143,7 @@ impl BodyCodegen<'_> {
                 let input_tid = *input.ty(&self.body().locals);
                 let input_ty = self.codegen.tid(input_tid);
                 let input = self.operand(input);
+                self.copy(input, input_tid);
 
                 let func_ty = LLVMStructTypeInContext(
                     self.context,

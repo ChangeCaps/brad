@@ -62,6 +62,7 @@ pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
                     )?
                 );
 
+                block = builder.drop_scope(block);
                 block.term = Some(mir::Term::Return(value));
 
                 Some(block)
@@ -103,6 +104,8 @@ struct Builder<'a> {
     hir: &'a hir::Program,
     body: &'a hir::Body,
 
+    scope: Vec<mir::Local>,
+
     locals: mir::Locals,
     local_map: HashMap<hir::LocalId, mir::Local>,
 
@@ -124,11 +127,31 @@ impl<'a> Builder<'a> {
             types,
             mir,
             hir,
-            locals,
             body,
+
+            scope: Vec::new(),
+
+            locals,
             local_map: HashMap::new(),
+
             break_local: None,
         }
+    }
+
+    fn drop_scope(&mut self, mut block: mir::Block) -> mir::Block {
+        for local in self.scope.iter().rev().copied() {
+            let value = mir::Value::Use(mir::Operand::Copy(mir::Place {
+                local,
+                proj: Vec::new(),
+                is_mutable: false,
+            }));
+
+            let ty = self.locals[local].clone();
+
+            block.stmts.push(mir::Stmt::Drop(value, ty));
+        }
+
+        block
     }
 
     fn build_place(&mut self, mut block: mir::Block, expr: hir::Expr) -> BuildResult<mir::Place> {
@@ -378,6 +401,8 @@ impl<'a> Builder<'a> {
             hir::ExprKind::Block(exprs) => {
                 let mut value = None;
 
+                let scope = self.scope.len();
+
                 for expr in exprs {
                     if let Some(value) = value {
                         let ty = self.build_ty(expr.ty.clone());
@@ -385,6 +410,18 @@ impl<'a> Builder<'a> {
                     }
 
                     value = Some(unpack!(block = self.build_value(block, expr)?));
+                }
+
+                for local in self.scope.drain(scope..).rev() {
+                    let value = mir::Value::Use(mir::Operand::Copy(mir::Place {
+                        local,
+                        proj: Vec::new(),
+                        is_mutable: false,
+                    }));
+
+                    let ty = self.locals[local].clone();
+
+                    block.stmts.push(mir::Stmt::Drop(value, ty));
                 }
 
                 let value = value.unwrap_or(mir::Value::NONE);
@@ -553,6 +590,8 @@ impl<'a> Builder<'a> {
                     proj: Vec::new(),
                     is_mutable: false,
                 };
+
+                self.scope.push(place.local);
 
                 let value = mir::Value::Use(mir::Operand::Copy(value));
                 block.stmts.push(mir::Stmt::Assign(place, value));

@@ -37,6 +37,8 @@ brad_ptr brad_alloc(
 
     brad_push_allocation(ptr);
 
+    printf("Allocated %p, size: %d\n", (void*)ptr, (int)size);
+
     return ptr;
 }
 
@@ -45,6 +47,12 @@ void brad_retain(
 ) {
     brad_allocation* allocation = brad_allocation_from_ptr(ptr);
     allocation->ref_count++;
+
+    printf(
+        "Retaining %p, ref count: %d\n",
+        (void*)ptr,
+        (int)allocation->ref_count
+    );
 }
 
 void brad_release(
@@ -52,6 +60,12 @@ void brad_release(
 ) {
     brad_allocation* allocation = brad_allocation_from_ptr(ptr);
     allocation->ref_count--;
+
+    printf(
+        "Releasing %p, ref count: %d\n",
+        (void*)ptr,
+        (int)allocation->ref_count
+    );
 }
 
 void brad_mark(
@@ -73,18 +87,28 @@ void brad_print(
     brad_str string
 ) {
     fwrite(string->data, 1, string->length, stdout);
+
+    brad_release((brad_ptr)string);
 }
+
+static void brad_str_marker(
+    brad_ptr ptr
+) {}
 
 brad_str brad_str_concat(
     brad_str a,
     brad_str b
 ) {
-    brad_str result = malloc(sizeof(brad_str) + a->length + b->length);
+    brad_size new_size = sizeof(brad_str) + a->length + b->length;
+    brad_str result = (brad_str)brad_alloc(new_size, brad_str_marker);
 
     result->length = a->length + b->length;
 
     memcpy(result->data, a->data, a->length);
     memcpy(result->data + a->length, b->data, b->length);
+
+    brad_release((brad_ptr)a);
+    brad_release((brad_ptr)b);
 
     return result;
 }
