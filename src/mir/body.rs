@@ -27,6 +27,9 @@ pub struct Body<T = Ty> {
 
     /// The block of statements.
     pub block: Block<T>,
+
+    /// Whether the body is an extern function.
+    pub is_extern: bool,
 }
 
 #[derive(Clone, Debug)]

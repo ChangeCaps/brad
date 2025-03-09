@@ -47,6 +47,13 @@ impl Expr {
             Self::Block(e) => e.span,
         }
     }
+
+    pub fn empty(span: Span) -> Self {
+        Self::Block(BlockExpr {
+            exprs: Vec::new(),
+            span,
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -17,6 +17,7 @@ pub struct Func {
     pub args: Vec<Argument>,
     pub output: Option<Ty>,
     pub body: Expr,
+    pub is_extern: bool,
     pub span: Span,
 }
 

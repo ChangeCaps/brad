@@ -103,16 +103,16 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
         }
 
         Cmd::Interpret(f) | Cmd::Compile(f) => {
-            let module_args = f.clone();
+            let module = f.module.clone();
             let mut compiler = Compiler::new(sources);
 
             compiler
-                .add_package(module_args.module.clone().as_str(), module_args.module)
+                .add_package(module.clone().as_str(), module.clone())
                 .unwrap();
 
             match &args.command {
-                Cmd::Interpret(_) => compiler.interpret(),
-                Cmd::Compile(_) => compiler.compile(),
+                Cmd::Interpret(_) => compiler.interpret(module.as_str()),
+                Cmd::Compile(_) => compiler.compile(module.as_str()),
                 _ => unreachable!(),
             }
         }

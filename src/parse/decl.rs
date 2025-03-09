@@ -1,10 +1,10 @@
+use super::{binding, generics, ident, ty, Delim, Token, Tokens};
+use crate::ast::Expr;
 use crate::{
     ast,
     diagnostic::Diagnostic,
     parse::{block, path},
 };
-
-use super::{binding, generics, ident, ty, Delim, Token, Tokens};
 
 pub fn decl(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     let (token, span) = input.peek();
@@ -14,6 +14,7 @@ pub fn decl(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
         Token::Type => r#type(input),
         Token::Alias => alias(input),
         Token::Import => import(input),
+        Token::Extern => r#extern(input),
         _ => {
             let diagnostic = Diagnostic::error("expected::declaration")
                 .message(format!("expected declaration, found `{}`", token))
@@ -54,6 +55,7 @@ fn funcy(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
         args,
         output,
         body,
+        is_extern: false,
         span,
     }))
 }
@@ -139,4 +141,38 @@ fn import(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     let path = path(input)?;
 
     Ok(ast::Decl::Import(ast::Import { path }))
+}
+
+fn r#extern(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
+    input.expect(Token::Extern)?;
+    input.expect(Token::Fn)?;
+
+    let (name, span) = ident(input)?;
+
+    let generics = match input.is(Token::Lt) {
+        true => Some(generics(input)?),
+        false => None,
+    };
+
+    let mut args = Vec::new();
+
+    while !input.is(Token::Open(Delim::Brace)) && !input.is(Token::ThinArrow) {
+        args.push(argument(input)?);
+    }
+
+    let output = if input.take(Token::ThinArrow) {
+        Some(ty(input)?)
+    } else {
+        None
+    };
+
+    Ok(ast::Decl::Func(ast::Func {
+        name,
+        generics,
+        args,
+        output,
+        body: Expr::empty(span),
+        is_extern: true,
+        span,
+    }))
 }

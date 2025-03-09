@@ -12,6 +12,7 @@ pub struct Body {
     pub input: Vec<Argument>,
     pub output: Ty,
     pub expr: Expr,
+    pub is_extern: bool,
     pub span: Span,
 }
 

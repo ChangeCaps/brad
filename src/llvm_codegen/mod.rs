@@ -1,23 +1,26 @@
+mod jit;
+
 use std::{collections::HashMap, ffi::CString, ops::Deref, ptr};
 
 use crate::sir;
 use crate::sir::Operand;
 
 use crate::mir::Proj;
-use llvm_sys::{
-    analysis::*,
-    core::*,
-    error::LLVMGetErrorMessage,
-    orc2::{lljit::*, *},
-    prelude::*,
-    target::*,
-    LLVMIntPredicate, LLVMRealPredicate,
-};
+use llvm_sys::analysis::{LLVMVerifierFailureAction, LLVMVerifyModule};
+use llvm_sys::{core::*, prelude::*, target::*, LLVMIntPredicate, LLVMRealPredicate, LLVMTypeKind};
 
-pub fn codegen(program: sir::Program, entry: sir::Bid) {
+pub fn codegen(program: sir::Program) -> String {
     unsafe {
         let mut codegen = Codegen::new(program);
-        codegen.build(entry);
+        codegen.build()
+    }
+}
+
+pub fn jit(module: String, entry: sir::Bid) {
+    unsafe {
+        let jit = jit::JIT::new();
+        let module = jit.load_module(module);
+        jit.run(module, entry);
     }
 }
 
@@ -26,12 +29,20 @@ struct Codegen {
     context: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
-    jit: LLVMOrcLLJITRef,
 
     program: sir::Program,
     bodies: HashMap<sir::Bid, LLVMBody>,
     types: HashMap<sir::Tid, (LLVMTypeRef, Option<LLVMTypeRef>)>,
     externs: HashMap<String, (LLVMValueRef, LLVMTypeRef)>,
+}
+
+impl Drop for Codegen {
+    fn drop(&mut self) {
+        unsafe {
+            LLVMDisposeBuilder(self.builder);
+            LLVMContextDispose(self.context);
+        }
+    }
 }
 
 impl Codegen {
@@ -44,20 +55,10 @@ impl Codegen {
         let module = LLVMModuleCreateWithNameInContext(c"main".as_ptr(), context);
         let builder = LLVMCreateBuilderInContext(context);
 
-        let mut jit = ptr::null_mut();
-        let err = LLVMOrcCreateLLJIT(&mut jit, ptr::null_mut());
-
-        if !err.is_null() {
-            let err = LLVMGetErrorMessage(err);
-            let err = CString::from_raw(err);
-            panic!("{}", err.to_str().unwrap());
-        }
-
         Self {
             context,
             module,
             builder,
-            jit,
 
             program,
             bodies: HashMap::new(),
@@ -66,7 +67,8 @@ impl Codegen {
         }
     }
 
-    unsafe fn build(&mut self, entry: sir::Bid) {
+    /// Build LLVM IR from the SIR program.
+    unsafe fn build(&mut self) -> String {
         // Add external brad_alloc and brad_free functions
         let brad_alloc_ty = LLVMFunctionType(
             self.void_pointer_type(),
@@ -123,68 +125,22 @@ impl Codegen {
             body_codegen.build();
         }
 
-        // print llvm ir
-        println!(
-            "{}",
-            CString::from_raw(LLVMPrintModuleToString(self.module))
-                .to_str()
-                .unwrap()
-        );
-
         println!("Verifying module...");
 
-        LLVMVerifyModule(
+        let verified = LLVMVerifyModule(
             self.module,
             LLVMVerifierFailureAction::LLVMPrintMessageAction,
             ptr::null_mut(),
         );
 
-        let dylib = LLVMOrcLLJITGetMainJITDylib(self.jit);
-
-        // load `gc.o` object file
-        let gc = CString::new("gc.o").unwrap();
-
-        let mut membuf = ptr::null_mut();
-        let mut err = ptr::null_mut();
-
-        if LLVMCreateMemoryBufferWithContentsOfFile(gc.as_ptr(), &mut membuf, &mut err) != 0 {
-            let err = CString::from_raw(err);
-            panic!("{}", err.to_str().unwrap());
+        if verified.is_negative() {
+            // panic!("Module verification failed");
         }
 
-        let err = LLVMOrcLLJITAddObjectFile(self.jit, dylib, membuf);
-
-        if !err.is_null() {
-            let err = LLVMGetErrorMessage(err);
-            let err = CString::from_raw(err);
-            panic!("{}", err.to_str().unwrap());
-        }
-
-        let ctx = LLVMOrcCreateNewThreadSafeContext();
-        let tsm = LLVMOrcCreateNewThreadSafeModule(self.module, ctx);
-
-        let err = LLVMOrcLLJITAddLLVMIRModule(self.jit, dylib, tsm);
-
-        if !err.is_null() {
-            let err = LLVMGetErrorMessage(err);
-            let err = CString::from_raw(err);
-            panic!("{}", err.to_str().unwrap());
-        }
-
-        let entry = CString::new(format!("body_{}", entry.0)).unwrap();
-
-        let mut func_addr = 0;
-        let err = LLVMOrcLLJITLookup(self.jit, &mut func_addr, entry.as_ptr());
-
-        if !err.is_null() {
-            let err = LLVMGetErrorMessage(err);
-            let err = CString::from_raw(err);
-            panic!("{}", err.to_str().unwrap());
-        }
-
-        let func: extern "C" fn() -> i64 = std::mem::transmute(func_addr);
-
-        println!("Calling entry function: {}", func());
+        CString::from_raw(LLVMPrintModuleToString(self.module))
+            .to_str()
+            .unwrap()
+            .to_string()
     }
 
     fn tid(&self, tid: sir::Tid) -> LLVMTypeRef {
@@ -348,16 +304,6 @@ impl Codegen {
     }
 }
 
-impl Drop for Codegen {
-    fn drop(&mut self) {
-        unsafe {
-            LLVMDisposeBuilder(self.builder);
-            LLVMContextDispose(self.context);
-            LLVMOrcDisposeLLJIT(self.jit);
-        }
-    }
-}
-
 struct LLVMBody {
     function: LLVMValueRef,
     captures: LLVMTypeRef,
@@ -371,6 +317,7 @@ impl LLVMBody {
 
         if let Some(ref name) = body.name {
             println!("Compiling function: {}", name);
+            // Output comments
         }
 
         /* create the captures struct */
@@ -472,7 +419,7 @@ impl<'a> BodyCodegen<'a> {
     unsafe fn build(&mut self) {
         LLVMPositionBuilderAtEnd(self.builder, self.llvm_body.entry);
 
-        if self.body.name.as_deref() == Some("my-test::print") {
+        if self.body.is_extern && self.body.name.as_deref() == Some("std::print") {
             let (print_fn, print_ty) = self.externs["brad_print"];
 
             let string = self.llvm_body.locals[0];
@@ -601,7 +548,10 @@ impl<'a> BodyCodegen<'a> {
                 let func_tid = *func.ty(&self.body.locals);
 
                 let output_ty = match self.program.types[func_tid] {
-                    sir::Ty::Func(_, output) => self.codegen.tid(output),
+                    sir::Ty::Func(_, output) => {
+                        println!("output: {:?}", self.program.types[output]);
+                        self.codegen.tid(output)
+                    }
                     _ => unreachable!(),
                 };
 
@@ -717,7 +667,11 @@ impl<'a> BodyCodegen<'a> {
                     c"call".as_ptr(),
                 );
 
-                LLVMBuildStore(self.builder, result, output);
+                if LLVMGetTypeKind(output_ty) != LLVMTypeKind::LLVMVoidTypeKind {
+                    println!("output_ty: {:?}", LLVMGetTypeKind(output_ty));
+                    LLVMBuildStore(self.builder, result, output);
+                }
+
                 LLVMBuildBr(self.builder, end_block);
 
                 /* append block */

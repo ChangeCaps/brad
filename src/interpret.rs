@@ -150,6 +150,11 @@ impl Interpreter {
                 }
 
                 let body = &self.sir.bodies[body];
+
+                if body.is_extern {
+                    todo!("Implement extern functions");
+                }
+
                 let mut frame = Frame {
                     locals: vec![Value::None; body.locals.len()],
                 };

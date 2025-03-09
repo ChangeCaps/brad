@@ -99,6 +99,7 @@ impl Lowerer {
                             input: Vec::new(),
                             output: hir::Ty::Never,
                             expr: hir::Expr::none(decl.span),
+                            is_extern: decl.is_extern,
                             span: decl.span,
                         };
 
@@ -349,7 +350,7 @@ impl Lowerer {
 
                 let expr = lowerer.lower_expr(decl.body.clone())?;
 
-                if !lowerer.is_subty(&lowerer.body().output, &expr.ty) {
+                if !decl.is_extern && !lowerer.is_subty(&lowerer.body().output, &expr.ty) {
                     let diagnostic = Diagnostic::error("unresolved::type")
                         .message(format!(
                             "expected `{}`, found `{}`",

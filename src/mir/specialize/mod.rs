@@ -44,6 +44,7 @@ impl<'a> Specializer<'a> {
             output: self.specialized.types.get_or_insert(&sir::Ty::None),
             locals: sir::Locals::new(),
             block: sir::Block::new(),
+            is_extern: false,
         });
 
         self.bodies.insert((id, generics.to_vec()), id);
@@ -79,6 +80,7 @@ impl<'a> Specializer<'a> {
             output: self.ty(self.generic.bodies[id].output.clone(), generics),
             locals,
             block,
+            is_extern: self.generic.bodies[id].is_extern,
         };
 
         id
