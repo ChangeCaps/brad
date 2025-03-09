@@ -134,20 +134,18 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    pub fn compile(&mut self, module: &str) -> Result<(), Diagnostic> {
+    pub fn compile(&mut self, module: &str) -> Result<String, Diagnostic> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;
         let mir = self.mir(hir)?;
-        let main = mir.find_body(format!("{}::main", module).as_str())?;
-        let (sir, _) = mir::specialize(mir, main);
+        let bid = mir.find_body(format!("{}::main", module).as_str())?;
+        let (sir, _) = mir::specialize(mir, bid);
+        Ok(llvm_codegen::codegen(sir))
+    }
 
-        let llvm_ir = llvm_codegen::codegen(sir);
-        println!("{}", llvm_ir);
-
-        let main = format!("{}::main", module);
-        llvm_codegen::jit(&llvm_ir, &main);
-
+    pub fn jit(&self, module: &str, llvm_ir: String) -> Result<(), Diagnostic> {
+        llvm_codegen::jit(llvm_ir.as_str(), format!("{}::main", module).as_str());
         Ok(())
     }
 }
