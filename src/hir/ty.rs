@@ -158,7 +158,20 @@ impl Types {
             Ty::None => String::from("none"),
             Ty::Never => String::from("!"),
             Ty::Generic(generic) => format!("{:?}", generic),
-            Ty::Named(_, _) => String::from("named"),
+            Ty::Named(id, generics) => {
+                let named = &self[*id];
+                let generics = generics
+                    .iter()
+                    .map(|ty| self.format(ty))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                if generics.is_empty() {
+                    named.name.clone()
+                } else {
+                    format!("{}<{}>", named.name, generics)
+                }
+            }
             Ty::Ref(ty) => format!("ref {}", self.format(ty)),
             Ty::List(ty) => format!("[{}]", self.format(ty)),
             Ty::Func(i, o) => format!("{} -> {}", self.format(i), self.format(o)),

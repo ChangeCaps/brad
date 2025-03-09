@@ -1,5 +1,5 @@
 use super::{body::Bodies, ty::Types, Bid, Ty};
-use crate::diagnostic::{Diagnostic, Severity};
+use crate::diagnostic::Diagnostic;
 
 #[derive(Clone, Debug, Default)]
 pub struct Program {
@@ -15,8 +15,7 @@ impl Program {
             .find(|(_, body)| body.name.as_deref() == Some(name))
         {
             Some((bid, _)) => Ok(bid),
-            None => Err(Diagnostic::new(Severity::Error)
-                .code("E0001")
+            None => Err(Diagnostic::error("function::not_found")
                 .message(format!("no function found at '{}'", name))),
         }
     }
