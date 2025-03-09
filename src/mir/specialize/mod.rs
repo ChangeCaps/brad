@@ -183,7 +183,7 @@ impl<'a> Specializer<'a> {
             }
 
             mir::Value::Promote {
-                input,
+                variant: input,
                 variants,
                 operand,
             } => {
@@ -195,7 +195,7 @@ impl<'a> Specializer<'a> {
                 let operand = self.operand(operand, generics);
 
                 sir::Value::Promote {
-                    input,
+                    variant: input,
                     variants,
                     operand,
                 }

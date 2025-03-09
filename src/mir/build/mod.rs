@@ -721,7 +721,7 @@ impl<'a> Builder<'a> {
 
                 let operand = mir::Operand::Copy(place);
                 let value = mir::Value::Promote {
-                    input: from,
+                    variant: from,
                     variants: tys,
                     operand,
                 };

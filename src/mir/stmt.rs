@@ -64,7 +64,7 @@ pub enum Value<T = Ty> {
 
     /// Promote a value to a variant.
     Promote {
-        input: T,
+        variant: T,
         variants: BTreeSet<T>,
         operand: Operand<T>,
     },

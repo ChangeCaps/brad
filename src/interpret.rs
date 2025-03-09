@@ -108,7 +108,7 @@ impl Interpreter {
             }
 
             sir::Value::Promote {
-                input,
+                variant: input,
                 variants,
                 operand,
             } => {

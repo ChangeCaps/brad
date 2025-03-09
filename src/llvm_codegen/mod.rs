@@ -210,8 +210,7 @@ impl Codegen {
             sir::Ty::Float => (LLVMFloatTypeInContext(self.context), None),
 
             sir::Ty::True | sir::Ty::False | sir::Ty::None | sir::Ty::Never => {
-                let zst = LLVMStructTypeInContext(self.context, ptr::null_mut(), 0, 0);
-                (zst, None)
+                (self.zero_size_type(), None)
             }
 
             sir::Ty::Str | sir::Ty::List(_) | sir::Ty::Union(_) => {
@@ -223,6 +222,8 @@ impl Codegen {
                 let ty = LLVMStructCreateNamed(self.context, c"ty_fn".as_ptr());
                 (ty, None)
             }
+
+            sir::Ty::Record(fields) if fields.is_empty() => (self.zero_size_type(), None),
 
             ty => {
                 let name = match ty {
@@ -519,13 +520,29 @@ impl<'a> BodyCodegen<'a> {
                 cases,
                 default,
             } => {
-                // Structure only, missing control flow.
-                let _target = self.place(target);
+                // structure only, missing control flow.
+                let target = self.place(target);
+                let target = LLVMBuildLoad2(
+                    self.builder,
+                    self.void_pointer_type(),
+                    target, // the target
+                    c"load".as_ptr(),
+                );
+
+                // load the tag from the target
+                let tag = LLVMBuildLoad2(self.builder, self.i64_type(), target, c"load".as_ptr());
 
                 let default_block = LLVMAppendBasicBlockInContext(
                     self.context,
                     self.llvm_body.function,
                     c"default".as_ptr(),
+                );
+
+                let switch = LLVMBuildSwitch(
+                    self.builder,
+                    tag,
+                    default_block,
+                    cases.len() as u32, // estimated number of cases
                 );
 
                 let end_block = LLVMAppendBasicBlockInContext(
@@ -542,12 +559,49 @@ impl<'a> BodyCodegen<'a> {
                     );
 
                     LLVMPositionBuilderAtEnd(self.builder, case_block);
+
+                    let variant = LLVMConstInt(self.i64_type(), case.ty.0 as u64, 0);
+                    LLVMAddCase(switch, variant, case_block);
+
+                    let ty = self.tid(case.ty);
+
+                    // create a the type for the specific variant
+                    let union = LLVMStructTypeInContext(
+                        self.context,
+                        [self.i64_type(), ty].as_mut_ptr(),
+                        2,
+                        0,
+                    );
+
+                    // retrieve the value from the union
+                    let value = LLVMBuildStructGEP2(
+                        self.builder,
+                        union,
+                        target,
+                        1, // value
+                        c"union_value".as_ptr(),
+                    );
+
+                    let value = LLVMBuildLoad2(self.builder, ty, value, c"load".as_ptr());
+
+                    // store the value in the case local
+                    let local = self.llvm_body.locals[case.local.0];
+                    LLVMBuildStore(self.builder, value, local);
+
+                    // build the case block
                     self.block(&case.block);
+
                     LLVMBuildBr(self.builder, end_block);
                 }
 
+                /* default block */
+
                 LLVMPositionBuilderAtEnd(self.builder, default_block);
+
                 self.block(default);
+                LLVMBuildBr(self.builder, end_block);
+
+                /* end block */
 
                 LLVMPositionBuilderAtEnd(self.builder, end_block);
             }
@@ -558,15 +612,123 @@ impl<'a> BodyCodegen<'a> {
         match value {
             sir::Value::Use(operand) => self.operand(operand),
 
-            sir::Value::Tuple(_) => {
-                todo!()
+            sir::Value::Tuple(items) => {
+                let mut values = Vec::new();
+                let mut types = Vec::new();
+
+                for operand in items {
+                    values.push(self.operand(operand));
+                    types.push(self.tid(*operand.ty(&self.body.locals)));
+                }
+
+                let ty = LLVMStructTypeInContext(
+                    self.context,
+                    types.as_mut_ptr(),
+                    types.len() as u32,
+                    0,
+                );
+
+                let ptr = self.alloc_single(ty);
+
+                for (i, value) in values.iter().enumerate() {
+                    let field = LLVMBuildStructGEP2(
+                        self.builder,
+                        ty,
+                        ptr,      // struct memory
+                        i as u32, // field index
+                        c"field".as_ptr(),
+                    );
+
+                    LLVMBuildStore(self.builder, *value, field);
+                }
+
+                ptr
             }
 
-            sir::Value::Record(_) => {
-                todo!()
+            sir::Value::Record(fields) => {
+                if fields.is_empty() {
+                    return self.zero_size_value();
+                }
+
+                let mut values = Vec::new();
+                let mut types = Vec::new();
+
+                for (_, operand) in fields {
+                    values.push(self.operand(operand));
+                    types.push(self.tid(*operand.ty(&self.body.locals)));
+                }
+
+                let ty = LLVMStructTypeInContext(
+                    self.context,
+                    types.as_mut_ptr(),
+                    types.len() as u32,
+                    0,
+                );
+
+                let ptr = self.alloc_single(ty);
+
+                for (i, value) in values.iter().enumerate() {
+                    let field = LLVMBuildStructGEP2(
+                        self.builder,
+                        ty,
+                        ptr,      // struct memory
+                        i as u32, // field index
+                        c"field".as_ptr(),
+                    );
+
+                    LLVMBuildStore(self.builder, *value, field);
+                }
+
+                ptr
             }
 
-            sir::Value::Promote { .. } => todo!(),
+            sir::Value::Promote {
+                variant, operand, ..
+            } => {
+                let operand = self.operand(operand);
+
+                let union = LLVMStructTypeInContext(
+                    self.context,
+                    [self.i64_type(), LLVMTypeOf(operand)].as_mut_ptr(),
+                    2,
+                    0,
+                );
+
+                let ptr = self.alloc_single(union);
+
+                let tag_ptr = LLVMBuildStructGEP2(
+                    self.builder,
+                    union,
+                    ptr,
+                    0, // tag
+                    c"tag".as_ptr(),
+                );
+
+                let tag = LLVMConstInt(
+                    self.i64_type(),
+                    variant.0 as u64,
+                    0, // sign extend
+                );
+
+                LLVMBuildStore(self.builder, tag, tag_ptr);
+
+                let value_ptr = LLVMBuildStructGEP2(
+                    self.builder,
+                    union,
+                    ptr,
+                    1, // value
+                    c"value".as_ptr(),
+                );
+
+                LLVMBuildStore(self.builder, operand, value_ptr);
+
+                LLVMBuildPointerCast(
+                    self.builder,
+                    ptr, // value
+                    self.void_pointer_type(),
+                    c"promote".as_ptr(),
+                )
+            }
 
             sir::Value::Coerce { .. } => todo!(),
 

@@ -1,4 +1,7 @@
 fn main -> int {
-  io::print "Hello, world!"
-  0
+  let x: int | float = 42
+
+  match x
+  | int => 1
+  | float => 0
 }
