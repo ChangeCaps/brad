@@ -1,5 +1,7 @@
 use std::ops::{Index, IndexMut};
 
+use crate::attribute::Attributes;
+
 use super::{stmt::Block, ty::Tid};
 
 #[derive(Clone, Debug)]
@@ -10,6 +12,13 @@ pub struct Body {
     pub locals: Vec<Tid>,
     /// function body
     pub block: Block,
+
+    /// function attributes
+    pub attrs: Attributes,
+    /// if function is a link to extern
+    pub is_extern: bool,
+    /// name of function
+    pub name: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
