@@ -11,7 +11,7 @@ pub fn expr(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
         Token::Loop => loop_(input),
         Token::Match => match_(input),
         Token::Break => break_(input),
-        _ => tuple(input),
+        _ => pipe_right(input),
     }
 }
 
@@ -157,6 +157,68 @@ fn is_expr(input: &mut Tokens) -> bool {
 
         _ => false,
     }
+}
+
+fn pipe_right(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
+    let mut lhs = pipe_left(input)?;
+
+    while is_pipe_right(input) {
+        consume_newlines(input);
+
+        input.expect(Token::PipeGt)?;
+        let rhs = pipe_left(input)?;
+
+        let span = lhs.span().join(rhs.span());
+
+        lhs = ast::Expr::Call(ast::CallExpr {
+            target: Box::new(rhs),
+            input: Box::new(lhs),
+            span,
+        });
+    }
+
+    Ok(lhs)
+}
+
+fn is_pipe_right(input: &Tokens) -> bool {
+    let mut offset = 0;
+
+    while input.nth_is(offset, Token::Newline) {
+        offset += 1;
+    }
+
+    matches!(input.peek_nth(offset), (Token::PipeGt, _))
+}
+
+fn pipe_left(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
+    let mut lhs = tuple(input)?;
+
+    while is_pipe_left(input) {
+        consume_newlines(input);
+
+        input.expect(Token::LtPipe)?;
+        let rhs = unary(input, true)?;
+
+        let span = lhs.span().join(rhs.span());
+
+        lhs = ast::Expr::Call(ast::CallExpr {
+            target: Box::new(lhs),
+            input: Box::new(rhs),
+            span,
+        });
+    }
+
+    Ok(lhs)
+}
+
+fn is_pipe_left(input: &Tokens) -> bool {
+    let mut offset = 0;
+
+    while input.nth_is(offset, Token::Newline) {
+        offset += 1;
+    }
+
+    matches!(input.peek_nth(offset), (Token::LtPipe, _))
 }
 
 fn tuple(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {

@@ -24,18 +24,8 @@ pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
         types: mir::Types::new(),
     };
 
-    for (hir_id, hir_body) in hir.bodies.iter() {
-        let mir_id = mir.bodies.push(mir::Body {
-            attrs: hir_body.attrs.clone(),
-            is_extern: hir_body.is_extern,
-            name: None,
-            captures: 0,
-            arguments: 0,
-            output: mir::Ty::None,
-            locals: mir::Locals::new(),
-            block: None,
-        });
-
+    for (hir_id, _) in hir.bodies.iter() {
+        let mir_id = mir.bodies.push(mir::Body::default());
         bodies.insert(hir_id, mir_id);
     }
 
@@ -79,7 +69,7 @@ pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
             None => None,
         };
 
-        let body = mir::Body {
+        mir.bodies[bodies[&hir_id]] = mir::Body {
             attrs: hir_body.attrs.clone(),
             is_extern: hir_body.is_extern,
             name: Some(hir[hir_id].name.clone()),
@@ -89,8 +79,6 @@ pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
             locals: builder.locals.clone(),
             block,
         };
-
-        mir.bodies[bodies[&hir_id]] = body;
     }
 
     Ok(mir)

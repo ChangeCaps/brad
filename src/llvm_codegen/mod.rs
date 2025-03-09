@@ -308,7 +308,7 @@ impl LLVMBody {
 
         if let Some(ref name) = body.name {
             println!("Compiling function: {}", name);
-            // Output comments
+            // output comments
         }
 
         /* create the captures struct */

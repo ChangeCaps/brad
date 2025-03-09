@@ -2,5 +2,9 @@ import std::io
 import std::string
 
 fn main -> none {
-  io::print (string::prepend "hello, world" "!")
+  "Hello"
+    |> string::append ", "
+    |> string::append "world"
+    |> string::append "!"
+    |> io::println 
 }

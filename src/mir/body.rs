@@ -37,6 +37,21 @@ pub struct Body<T = Ty> {
     pub block: Option<Block<T>>,
 }
 
+impl Default for Body<Ty> {
+    fn default() -> Self {
+        Self {
+            attrs: Attributes::default(),
+            is_extern: false,
+            name: None,
+            captures: 0,
+            arguments: 0,
+            output: Ty::None,
+            locals: Locals::default(),
+            block: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Locals<T = Ty> {
     locals: Vec<T>,
