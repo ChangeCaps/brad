@@ -1,5 +1,7 @@
 use std::ops::{Index, IndexMut};
 
+use crate::attribute::Attributes;
+
 use super::{stmt::Block, Ty};
 
 /// Represents a function body.
@@ -10,6 +12,12 @@ use super::{stmt::Block, Ty};
 /// +-----------------+-----------------+-----------------+
 #[derive(Clone, Debug)]
 pub struct Body<T = Ty> {
+    /// The attributes of the body.
+    pub attrs: Attributes,
+
+    /// Whether the body is an extern function.
+    pub is_extern: bool,
+
     /// The name of the function.
     pub name: Option<String>,
 
@@ -26,10 +34,7 @@ pub struct Body<T = Ty> {
     pub locals: Locals<T>,
 
     /// The block of statements.
-    pub block: Block<T>,
-
-    /// Whether the body is an extern function.
-    pub is_extern: bool,
+    pub block: Option<Block<T>>,
 }
 
 #[derive(Clone, Debug)]

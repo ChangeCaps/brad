@@ -1,20 +1,23 @@
-use super::{binding, generics, ident, ty, Delim, Token, Tokens};
-use crate::ast::Expr;
+use std::borrow::Cow;
+
+use super::{binding, consume_newlines, generics, ident, ty, Delim, Token, Tokens};
 use crate::{
     ast,
+    attribute::{Attribute, Attributes},
     diagnostic::Diagnostic,
     parse::{block, path},
 };
 
 pub fn decl(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
+    let attrs = attributes(input)?;
+
     let (token, span) = input.peek();
 
     match token {
-        Token::Fn => funcy(input),
-        Token::Type => r#type(input),
-        Token::Alias => alias(input),
-        Token::Import => import(input),
-        Token::Extern => r#extern(input),
+        Token::Fn | Token::Extern => funcy(input, attrs),
+        Token::Type => r#type(input, attrs),
+        Token::Alias => alias(input, attrs),
+        Token::Import => import(input, attrs),
         _ => {
             let diagnostic = Diagnostic::error("expected::declaration")
                 .message(format!("expected declaration, found `{}`", token))
@@ -25,7 +28,9 @@ pub fn decl(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     }
 }
 
-fn funcy(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
+fn funcy(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic> {
+    let is_extern = input.take(Token::Extern);
+
     input.expect(Token::Fn)?;
 
     let (name, span) = ident(input)?;
@@ -47,15 +52,19 @@ fn funcy(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
         None
     };
 
-    let body = block(input)?;
+    let body = match input.is(Token::Open(Delim::Brace)) {
+        true => Some(block(input)?),
+        false => None,
+    };
 
     Ok(ast::Decl::Func(ast::Func {
+        attrs,
+        is_extern,
         name,
         generics,
         args,
         output,
         body,
-        is_extern: false,
         span,
     }))
 }
@@ -87,7 +96,7 @@ fn argument(input: &mut Tokens) -> Result<ast::Argument, Diagnostic> {
     Ok(ast::Argument { binding, ty, span })
 }
 
-fn r#type(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
+fn r#type(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic> {
     input.expect(Token::Type)?;
 
     let (name, span) = ident(input)?;
@@ -105,6 +114,7 @@ fn r#type(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     };
 
     Ok(ast::Decl::Type(ast::Type {
+        attrs,
         name,
         generics,
         ty,
@@ -112,7 +122,7 @@ fn r#type(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     }))
 }
 
-fn alias(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
+fn alias(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic> {
     input.expect(Token::Alias)?;
 
     let (name, span) = ident(input)?;
@@ -128,6 +138,7 @@ fn alias(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     let ty = ty(input)?;
 
     Ok(ast::Decl::Alias(ast::Alias {
+        attrs,
         name,
         generics,
         ty,
@@ -135,44 +146,56 @@ fn alias(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     }))
 }
 
-fn import(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
+fn import(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic> {
     input.expect(Token::Import)?;
 
     let path = path(input)?;
 
-    Ok(ast::Decl::Import(ast::Import { path }))
+    Ok(ast::Decl::Import(ast::Import { attrs, path }))
 }
 
-fn r#extern(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
-    input.expect(Token::Extern)?;
-    input.expect(Token::Fn)?;
+fn attributes(input: &mut Tokens) -> Result<Attributes, Diagnostic> {
+    let mut attributes = Vec::new();
+
+    while input.is(Token::Pound) {
+        attributes.push(attribute(input)?);
+        consume_newlines(input);
+    }
+
+    Ok(Attributes { attributes })
+}
+
+fn attribute(input: &mut Tokens) -> Result<Attribute, Diagnostic> {
+    input.expect(Token::Pound)?;
+    input.expect(Token::Open(Delim::Bracket))?;
 
     let (name, span) = ident(input)?;
 
-    let generics = match input.is(Token::Lt) {
-        true => Some(generics(input)?),
+    let value = match input.take(Token::Eq) {
+        true => Some(string(input)?),
         false => None,
     };
 
-    let mut args = Vec::new();
+    input.expect(Token::Close(Delim::Bracket))?;
 
-    while !input.is(Token::Open(Delim::Brace)) && !input.is(Token::ThinArrow) {
-        args.push(argument(input)?);
-    }
-
-    let output = if input.take(Token::ThinArrow) {
-        Some(ty(input)?)
-    } else {
-        None
-    };
-
-    Ok(ast::Decl::Func(ast::Func {
-        name,
-        generics,
-        args,
-        output,
-        body: Expr::empty(span),
-        is_extern: true,
+    Ok(Attribute {
+        name: Cow::Borrowed(name),
+        value,
         span,
-    }))
+    })
+}
+
+fn string(input: &mut Tokens) -> Result<Cow<'static, str>, Diagnostic> {
+    let (token, span) = input.consume();
+
+    match token {
+        Token::String(value) => Ok(Cow::Borrowed(value)),
+        _ => {
+            let diagnostic = Diagnostic::error("expected::string")
+                .message(format!("expected string, found `{}`", token))
+                .span(span);
+
+            Err(diagnostic)
+        }
+    }
 }

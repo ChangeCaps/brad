@@ -93,12 +93,13 @@ impl Lowerer {
                         }
 
                         let body = hir::Body {
+                            attrs: decl.attrs.clone(),
                             name: format!("{}::{}", self.format_module_path(m), decl.name),
                             generics: hir::Generics::new(),
                             locals: hir::Locals::new(),
                             input: Vec::new(),
                             output: hir::Ty::Never,
-                            expr: hir::Expr::none(decl.span),
+                            expr: None,
                             is_extern: decl.is_extern,
                             span: decl.span,
                         };
@@ -348,21 +349,23 @@ impl Lowerer {
                     lowerer.push_scope(local);
                 }
 
-                let expr = lowerer.lower_expr(decl.body.clone())?;
+                if let Some(body) = decl.body.clone() {
+                    let expr = lowerer.lower_expr(body)?;
 
-                if !decl.is_extern && !lowerer.is_subty(&lowerer.body().output, &expr.ty) {
-                    let diagnostic = Diagnostic::error("unresolved::type")
-                        .message(format!(
-                            "expected `{}`, found `{}`",
-                            lowerer.format_ty(&lowerer.body().output),
-                            lowerer.format_ty(&expr.ty),
-                        ))
-                        .label(decl.span, "found here");
+                    if !decl.is_extern && !lowerer.is_subty(&lowerer.body().output, &expr.ty) {
+                        let diagnostic = Diagnostic::error("unresolved::type")
+                            .message(format!(
+                                "expected `{}`, found `{}`",
+                                lowerer.format_ty(&lowerer.body().output),
+                                lowerer.format_ty(&expr.ty),
+                            ))
+                            .label(decl.span, "found here");
 
-                    return Err(diagnostic);
+                        return Err(diagnostic);
+                    }
+
+                    lowerer.body_mut().expr = Some(expr);
                 }
-
-                lowerer.body_mut().expr = expr;
             }
         }
 

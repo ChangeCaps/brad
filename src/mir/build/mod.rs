@@ -26,13 +26,14 @@ pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
 
     for (hir_id, hir_body) in hir.bodies.iter() {
         let mir_id = mir.bodies.push(mir::Body {
+            attrs: hir_body.attrs.clone(),
+            is_extern: hir_body.is_extern,
             name: None,
             captures: 0,
             arguments: 0,
             output: mir::Ty::None,
             locals: mir::Locals::new(),
-            block: mir::Block::new(),
-            is_extern: hir_body.is_extern,
+            block: None,
         });
 
         bodies.insert(hir_id, mir_id);
@@ -59,25 +60,33 @@ pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
             unpack!(block = builder.build_binding(block, input.binding.clone(), place)?);
         }
 
-        let value = unpack!(block = builder.build_value(block, hir_body.expr.clone())?);
-        let value = unpack!(
-            block = builder.coerce_value(
-                block,
-                value,
-                hir_body.expr.ty.clone(),
-                hir_body.output.clone(),
-            )?
-        );
+        let block = match hir_body.expr {
+            Some(ref body) => {
+                let value = unpack!(block = builder.build_value(block, body.clone())?);
+                let value = unpack!(
+                    block = builder.coerce_value(
+                        block,
+                        value,
+                        body.ty.clone(),
+                        hir_body.output.clone(),
+                    )?
+                );
 
-        block.term = mir::Term::Return(value);
+                block.term = mir::Term::Return(value);
+
+                Some(block)
+            }
+            None => None,
+        };
 
         let body = mir::Body {
+            attrs: hir_body.attrs.clone(),
+            is_extern: hir_body.is_extern,
             name: Some(hir[hir_id].name.clone()),
             captures: 0,
             arguments: inputs.len(),
             output: builder.build_ty(hir_body.output.clone()),
             locals: builder.locals.clone(),
-            is_extern: hir_body.is_extern,
             block,
         };
 

@@ -21,7 +21,7 @@ impl Interpreter {
             locals: vec![Value::None; body.locals.len()],
         };
 
-        match self.eval_block(&mut frame, &body.block) {
+        match self.eval_block(&mut frame, body.block.as_ref().unwrap()) {
             Ok(()) => panic!("expected return"),
             Err(Flow::Return(value)) => println!("{:?}", value),
             Err(Flow::Break) => panic!("unexpected break"),
@@ -163,7 +163,7 @@ impl Interpreter {
                     frame.locals[i] = capture.clone();
                 }
 
-                match self.eval_block(&mut frame, &body.block) {
+                match self.eval_block(&mut frame, body.block.as_ref().unwrap()) {
                     Err(Flow::Return(value)) => value,
                     _ => panic!("expected return"),
                 }

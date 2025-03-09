@@ -1,4 +1,4 @@
-use crate::diagnostic::Span;
+use crate::{attribute::Attributes, diagnostic::Span};
 
 use super::{Binding, Expr, Generic, Generics, Path, Ty};
 
@@ -12,12 +12,13 @@ pub enum Decl {
 
 #[derive(Clone, Debug)]
 pub struct Func {
+    pub attrs: Attributes,
+    pub is_extern: bool,
     pub name: &'static str,
     pub generics: Option<Generics>,
     pub args: Vec<Argument>,
     pub output: Option<Ty>,
-    pub body: Expr,
-    pub is_extern: bool,
+    pub body: Option<Expr>,
     pub span: Span,
 }
 
@@ -39,6 +40,7 @@ pub struct Argument {
 
 #[derive(Clone, Debug)]
 pub struct Type {
+    pub attrs: Attributes,
     pub name: &'static str,
     pub generics: Option<Generics>,
     pub ty: Option<Ty>,
@@ -56,6 +58,7 @@ impl Type {
 
 #[derive(Clone, Debug)]
 pub struct Alias {
+    pub attrs: Attributes,
     pub name: &'static str,
     pub generics: Option<Generics>,
     pub ty: Ty,
@@ -73,5 +76,6 @@ impl Alias {
 
 #[derive(Clone, Debug)]
 pub struct Import {
+    pub attrs: Attributes,
     pub path: Path,
 }

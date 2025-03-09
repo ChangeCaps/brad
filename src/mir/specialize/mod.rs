@@ -37,17 +37,18 @@ impl<'a> Specializer<'a> {
         }
 
         // we have to insert a dummy body and cache the id to avoid infinite recursion
-        let id = self.specialized.bodies.push(sir::Body {
+        let spec = self.specialized.bodies.push(sir::Body {
+            attrs: Default::default(),
+            is_extern: false,
             name: None,
             captures: 0,
             arguments: 0,
             output: self.specialized.types.get_or_insert(&sir::Ty::None),
             locals: sir::Locals::new(),
-            block: sir::Block::new(),
-            is_extern: false,
+            block: None,
         });
 
-        self.bodies.insert((id, generics.to_vec()), id);
+        self.bodies.insert((id, generics.to_vec()), spec);
 
         let mut locals = sir::Locals::new();
 
@@ -55,7 +56,10 @@ impl<'a> Specializer<'a> {
             locals.push(self.ty(ty.clone(), generics));
         }
 
-        let block = self.block(self.generic.bodies[id].block.clone(), generics);
+        let block = self.generic.bodies[id]
+            .block
+            .clone()
+            .map(|b| self.block(b, generics));
 
         let name = {
             let generics: Vec<_> = generics
@@ -73,17 +77,20 @@ impl<'a> Specializer<'a> {
             }
         };
 
-        self.specialized.bodies[id] = sir::Body {
+        let body = &self.generic.bodies[id];
+
+        self.specialized.bodies[spec] = sir::Body {
+            attrs: body.attrs.clone(),
+            is_extern: body.is_extern,
             name,
-            captures: self.generic.bodies[id].captures,
-            arguments: self.generic.bodies[id].arguments,
-            output: self.ty(self.generic.bodies[id].output.clone(), generics),
+            captures: body.captures,
+            arguments: body.arguments,
+            output: self.ty(body.output.clone(), generics),
             locals,
             block,
-            is_extern: self.generic.bodies[id].is_extern,
         };
 
-        id
+        spec
     }
 
     fn block(&mut self, block: mir::Block, generics: &[sir::Tid]) -> sir::Block {
@@ -325,8 +332,8 @@ impl<'a> Specializer<'a> {
 
         let tid = self.specialized.types.get_or_insert(&sir);
 
-        if !self.names.contains_key(&tid) {
-            self.names.insert(tid, self.generic.types.format(&mir));
+        if let Entry::Vacant(e) = self.names.entry(tid) {
+            e.insert(self.generic.types.format(&mir));
         }
 
         tid

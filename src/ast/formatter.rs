@@ -64,7 +64,10 @@ where
                     self.format_ty(ty)?;
                 };
 
-                self.format_expr(&func_decl.body)?;
+                if let Some(ref body) = func_decl.body {
+                    self.format_expr(body)?;
+                }
+
                 writeln!(self.writer)
             }
             Decl::Type(type_decl) => {

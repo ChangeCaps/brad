@@ -1,18 +1,19 @@
 use std::ops::{Index, IndexMut};
 
-use crate::diagnostic::Span;
+use crate::{attribute::Attributes, diagnostic::Span};
 
 use super::{Binding, Expr, Generics, Local, LocalId, Locals, Ty};
 
 #[derive(Clone, Debug)]
 pub struct Body {
+    pub attrs: Attributes,
+    pub is_extern: bool,
     pub name: String,
     pub generics: Generics,
     pub locals: Locals,
     pub input: Vec<Argument>,
     pub output: Ty,
-    pub expr: Expr,
-    pub is_extern: bool,
+    pub expr: Option<Expr>,
     pub span: Span,
 }
 

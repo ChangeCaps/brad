@@ -18,7 +18,7 @@ pub fn codegen(program: sir::Program) -> String {
 
 pub fn jit(module: String, entry: sir::Bid) {
     unsafe {
-        let jit = jit::JIT::new();
+        let jit = jit::Jit::new();
         let module = jit.load_module(module);
         jit.run(module, entry);
     }
@@ -88,11 +88,6 @@ impl Codegen {
 
         let brad_free_fn = LLVMAddFunction(self.module, c"brad_free".as_ptr(), brad_free_ty);
 
-        let brad_print_ty =
-            LLVMFunctionType(self.void_type(), [self.string_type()].as_mut_ptr(), 1, 0);
-
-        let brad_print_fn = LLVMAddFunction(self.module, c"brad_print".as_ptr(), brad_print_ty);
-
         self.externs.insert(
             "brad_alloc".to_string(),
             (brad_alloc_fn, brad_alloc_ty), //
@@ -100,10 +95,6 @@ impl Codegen {
         self.externs.insert(
             "brad_free".to_string(),
             (brad_free_fn, brad_free_ty), //
-        );
-        self.externs.insert(
-            "brad_print".to_string(),
-            (brad_print_fn, brad_print_ty), //
         );
 
         // Build types
@@ -115,7 +106,7 @@ impl Codegen {
             self.build_tys(tid);
         }
 
-        for (id, body) in self.program.bodies.iter() {
+        for (id, _) in self.program.bodies.iter() {
             self.bodies.insert(id, LLVMBody::new(self, id));
         }
 
@@ -160,8 +151,7 @@ impl Codegen {
     }
 
     unsafe fn zero_size_value(&self) -> LLVMValueRef {
-        // initialize a struct with zero fields
-        LLVMConstNamedStruct(self.tid(sir::Tid(0)), ptr::null_mut(), 0)
+        LLVMConstNamedStruct(self.zero_size_type(), ptr::null_mut(), 0)
     }
 
     unsafe fn string_type(&self) -> LLVMTypeRef {
@@ -346,7 +336,12 @@ impl LLVMBody {
 
         /* create the function */
 
-        let name = CString::new(format!("body_{}", id.0)).unwrap();
+        let name = match body.name {
+            Some(ref name) => name.clone(),
+            None => format!("anon_body_[{}]", id.0),
+        };
+
+        let name = CString::new(name).unwrap();
         let function = LLVMAddFunction(codegen.module, name.as_ptr(), func);
 
         /* build the local variables */
@@ -419,30 +414,61 @@ impl<'a> BodyCodegen<'a> {
     unsafe fn build(&mut self) {
         LLVMPositionBuilderAtEnd(self.builder, self.llvm_body.entry);
 
-        if self.body.is_extern && self.body.name.as_deref() == Some("std::print") {
-            let (print_fn, print_ty) = self.externs["brad_print"];
+        match self.body.block {
+            Some(ref block) => {
+                self.block(block);
+            }
 
-            let string = self.llvm_body.locals[0];
-            let string = LLVMBuildLoad2(self.builder, self.string_type(), string, c"load".as_ptr());
+            None => {
+                self.r#extern();
+            }
+        }
+    }
 
-            LLVMBuildCall2(
-                self.builder,
-                print_ty,
-                print_fn,
-                [string].as_mut_ptr(),
-                1,
-                c"print".as_ptr(),
-            );
+    unsafe fn r#extern(&self) {
+        assert!(self.body.is_extern);
 
-            let ret =
-                LLVMConstStructInContext(self.context, [self.zero_size_value()].as_mut_ptr(), 1, 0);
+        let mut inputs = Vec::new();
 
-            LLVMBuildRet(self.builder, ret);
-
-            return;
+        for (_, &tid) in self.body.locals.iter().take(self.body.arguments) {
+            inputs.push(self.tid(tid));
         }
 
-        self.block(&self.body.block);
+        let output = self.tid(self.body.output);
+
+        let func_ty = LLVMFunctionType(output, inputs.as_mut_ptr(), inputs.len() as u32, 0);
+
+        let name = match self.body.attrs.find_value("link") {
+            Some(name) => name.to_string(),
+            None => panic!("missing link attribute"),
+        };
+
+        let name = CString::new(name).unwrap();
+
+        let func = LLVMAddFunction(self.module, name.as_ptr(), func_ty);
+
+        let mut args = Vec::new();
+
+        for &local in self.llvm_body.locals.iter().take(self.body.arguments) {
+            let local = LLVMBuildLoad2(
+                self.builder,
+                LLVMTypeOf(local),
+                local,
+                c"load_extern_call".as_ptr(),
+            );
+            args.push(local);
+        }
+
+        let output = LLVMBuildCall2(
+            self.builder,
+            func_ty,
+            func,
+            args.as_mut_ptr(),
+            args.len() as u32,
+            c"call".as_ptr(),
+        );
+
+        LLVMBuildRet(self.builder, output);
     }
 
     unsafe fn block(&self, block: &sir::Block) {
@@ -494,7 +520,7 @@ impl<'a> BodyCodegen<'a> {
                 default,
             } => {
                 // Structure only, missing control flow.
-                let target = self.place(target);
+                let _target = self.place(target);
 
                 let default_block = LLVMAppendBasicBlockInContext(
                     self.context,

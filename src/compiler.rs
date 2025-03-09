@@ -3,8 +3,7 @@ use crate::{
     diagnostic::{Diagnostic, Source, SourceId, Sources},
     hir,
     interpret::Interpreter,
-    llvm_codegen
-    ,
+    llvm_codegen,
     lower::Lowerer,
     mir,
     parse::{self, Interner, Tokens},

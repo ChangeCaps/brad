@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use compiler::Compiler;
 
 mod ast;
+mod attribute;
 mod compiler;
 mod diagnostic;
 mod hir;

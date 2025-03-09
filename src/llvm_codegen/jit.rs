@@ -9,12 +9,12 @@ use llvm_sys::{
 use std::ffi::CString;
 use std::ptr;
 
-pub struct JIT {
+pub struct Jit {
     context: LLVMContextRef,
     jit: LLVMOrcLLJITRef,
 }
 
-impl Drop for JIT {
+impl Drop for Jit {
     fn drop(&mut self) {
         unsafe {
             LLVMContextDispose(self.context);
@@ -23,7 +23,7 @@ impl Drop for JIT {
     }
 }
 
-impl JIT {
+impl Jit {
     pub unsafe fn new() -> Self {
         let context = LLVMContextCreate();
         let mut jit = ptr::null_mut();
@@ -92,7 +92,7 @@ impl JIT {
             panic!("{}", err.to_str().unwrap());
         }
 
-        let entry = CString::new(format!("body_{}", entry.0)).unwrap();
+        let entry = CString::new("std::main").unwrap();
 
         let mut func_addr = 0;
         let err = LLVMOrcLLJITLookup(self.jit, &mut func_addr, entry.as_ptr());

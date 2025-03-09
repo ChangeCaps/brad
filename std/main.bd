@@ -1,5 +1,4 @@
-extern fn print (a: str) -> int
-
 fn main -> int {
-  print "Hello world!"
+  io::print "Hello, world!"
+  0
 }

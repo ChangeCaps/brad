@@ -3,19 +3,23 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef uint64_t BradSize;
-typedef uintptr_t BradPtr;
+typedef uint64_t brad_size;
+typedef uintptr_t brad_ptr;
+typedef struct {
+} brad_void;
 
 typedef struct {
-    BradSize size;
-} BradMemoryLayout;
+    brad_size size;
+} brad_layout;
 
 typedef struct {
-    BradSize length;
+    brad_size length;
     char data[];
-}* BradString;
+}* brad_str;
 
-BradPtr brad_alloc(BradMemoryLayout layout, BradSize size);
-void brad_free(BradPtr ptr);
+typedef int64_t brad_int;
 
-void brad_print(BradString string);
+brad_ptr brad_alloc(brad_layout layout, brad_size size);
+void brad_free(brad_ptr ptr);
+
+void brad_print(brad_str string);
