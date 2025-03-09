@@ -119,7 +119,7 @@ impl Interpreter {
                 }
 
                 Value::Union {
-                    ty: input.clone(),
+                    ty: *input,
                     value: Box::new(value),
                 }
             }
