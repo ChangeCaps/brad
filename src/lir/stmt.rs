@@ -16,7 +16,13 @@ pub enum Stmt {
     /// dst = src
     Eval { dst: Var, src: Value },
     /// returns from function giving val
+    /// defaults to None
     Return { val: Operand },
+    /// breaks out of loop giving val
+    /// return val is in local
+    Break,
+    /// destroy val (deconstruct/free)
+    Drop { var: Var },
     /// dst[index].access = val
     WriteIndex {
         dst: Var,
@@ -43,11 +49,14 @@ pub enum Stmt {
         mem: Operand,
         access: Access,
     },
+    /// match statement
     Match {
         target: Var,
         cases: Vec<Case>,
         default: Block,
     },
+    /// loop statement
+    Loop { body: Block },
 }
 
 #[derive(Clone, Debug)]
@@ -84,7 +93,7 @@ pub enum Value {
         operand: Operand,
     },
     /// call closure with arg
-    Call(Operand, Operand),
+    Call(Var, Operand),
     /// create closure from function
     Closure { func: Tid },
 }

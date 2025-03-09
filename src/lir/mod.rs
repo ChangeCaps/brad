@@ -4,7 +4,8 @@ mod program;
 mod stmt;
 mod ty;
 
-use body::*;
-use program::*;
-use stmt::*;
-use ty::*;
+pub use body::*;
+pub use build::*;
+pub use program::*;
+pub use stmt::*;
+pub use ty::*;
