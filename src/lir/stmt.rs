@@ -1,4 +1,4 @@
-use super::{body::Local, ty::Tid};
+use super::{body::Bid, body::Local, ty::Tid};
 
 #[derive(Clone, Debug)]
 pub struct Block {
@@ -9,20 +9,32 @@ impl Block {
     pub fn new() -> Self {
         Self { stmts: Vec::new() }
     }
+
+    pub fn push(&mut self, stmt: Stmt) {
+        self.stmts.push(stmt);
+    }
 }
 
 #[derive(Clone, Debug)]
 pub enum Stmt {
     /// dst = src
     Eval { dst: Var, src: Value },
+
+    //// dst = new closure from func
+    /// create closure from function
+    Closure { dst: Var, func: Bid },
+
     /// returns from function giving val
     /// defaults to None
     Return { val: Operand },
+
     /// breaks out of loop giving val
     /// return val is in local
     Break,
+
     /// destroy val (deconstruct/free)
     Drop { var: Var },
+
     /// dst[index].access = val
     WriteIndex {
         dst: Var,
@@ -30,6 +42,7 @@ pub enum Stmt {
         access: Access,
         val: Operand,
     },
+
     /// dst = array[index].access
     ReadIndex {
         dst: Var,
@@ -37,45 +50,74 @@ pub enum Stmt {
         index: Operand,
         access: Access,
     },
+
     /// (*dst).access = val
     WriteRef {
         dst: Var,
         access: Access,
         val: Operand,
     },
+
     /// dst = (*mem).access
     ReadRef {
         dst: Var,
         mem: Operand,
         access: Access,
     },
+
     /// match statement
     Match {
         target: Var,
         cases: Vec<Case>,
         default: Block,
     },
+
     /// loop statement
     Loop { body: Block },
 }
 
 #[derive(Clone, Debug)]
 pub struct Case {
+    /// type to match on
     pub tid: Tid,
+    /// local to output into
     pub local: Var,
+    /// case block (code)
     pub block: Block,
 }
 
 #[derive(Clone, Debug)]
 pub struct Var {
-    local: Local,
-    access: Access,
+    pub local: Local,
+    pub access: Access,
+}
+
+impl From<Local> for Var {
+    fn from(local: Local) -> Self {
+        Self {
+            local,
+            access: Access::new(),
+        }
+    }
+}
+
+impl From<(Local, u32)> for Var {
+    fn from((local, access): (Local, u32)) -> Self {
+        Self {
+            local,
+            access: {
+                let mut v = Access::new();
+                v.push(access);
+                v
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub enum Value {
     /// refer to local
-    Use(Var),
+    Use(Operand),
     /// compute binary operation
     Binary(BinaryOp, Operand, Operand),
     /// compute younary operation
@@ -94,8 +136,6 @@ pub enum Value {
     },
     /// call closure with arg
     Call(Var, Operand),
-    /// create closure from function
-    Closure { func: Tid },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -150,19 +190,19 @@ pub enum UnaryOp {
 #[derive(Clone, Debug)]
 pub enum Operand {
     Var(Var),
-    Const(Const),
+    Const(Tid, Const),
 }
 
 #[derive(Clone, Debug)]
 pub enum Const {
-    Empty(Tid),
-    Int(Tid, i64),
-    Float(Tid, f64),
-    String(Tid, &'static str),
+    Empty,
+    Int(i64),
+    Float(f64),
+    String(&'static str),
 }
 
 #[derive(Clone, Debug)]
-pub struct Access(Vec<u32>);
+pub struct Access(pub Vec<u32>);
 
 impl Access {
     pub fn new() -> Self {

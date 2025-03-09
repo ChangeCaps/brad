@@ -36,7 +36,15 @@ pub struct FileArgs {
 #[derive(Args, Clone)]
 pub struct ModuleArgs {
     /// Module name to interpret, as a positional argument
+    #[arg(required=true)]
     packages: Vec<String>,
+    /// Output IR file, as an optional argument
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+
+    /// Dry-run, only compile do not run.
+    #[arg(short, long, default_value = "false")]
+    dry_run: bool,
 }
 
 #[derive(Subcommand)]
@@ -120,7 +128,21 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
 
             match &args.command {
                 Cmd::Interpret(_) => compiler.interpret(main_package),
-                Cmd::Compile(_) => compiler.compile(main_package),
+                Cmd::Compile(_) => {
+                    let llvm_ir = compiler.compile(main_package)?;
+
+                    if let Some(output) = &f.output {
+                        std::fs::write(output, llvm_ir.clone()).unwrap();
+                    } else {
+                        println!("{}", llvm_ir);
+                    }
+
+                    if !f.dry_run {
+                        compiler.jit(main_package, llvm_ir)?;
+                    };
+
+                    Ok(())
+                }
                 _ => unreachable!(),
             }
         }

@@ -1,6 +1,8 @@
 /target
 Cargo.lock
 /my-test
+/obj
+/a.out
 
 .venv
 __pycache__/

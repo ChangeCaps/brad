@@ -25,7 +25,7 @@ pub struct Body {
 pub struct Bid(u32);
 
 #[derive(Clone, Copy, Debug)]
-pub struct Local(u32);
+pub struct Local(pub u32);
 
 #[derive(Clone, Debug)]
 pub struct Bodies(Vec<Body>);
