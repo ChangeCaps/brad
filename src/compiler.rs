@@ -142,7 +142,9 @@ impl<'a> Compiler<'a> {
 
         let bid = mir.find_body(format!("{}::main", module).as_str())?;
         let (sir, main) = mir::specialize(mir, bid);
-        let lir = lir::build(&sir, main);
+        let (lir, _) = lir::build(&sir, main)?;
+        let mut formatter = lir::Formatter::new(std::io::stdout());
+        formatter.format(&lir).unwrap();
         Ok(llvm_codegen::codegen(sir))
     }
 
