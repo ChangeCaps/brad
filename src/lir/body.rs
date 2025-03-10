@@ -22,7 +22,7 @@ pub struct Body {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Bid(u32);
+pub struct Bid(pub u32);
 
 #[derive(Clone, Copy, Debug)]
 pub struct Local(pub u32);
@@ -39,6 +39,10 @@ impl Bodies {
         let index = self.0.len() as u32;
         self.0.push(body);
         Bid(index)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 

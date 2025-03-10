@@ -71,6 +71,10 @@ impl Types {
             }
         }
     }
+
+    pub fn len(&self) -> usize {
+        self.type_vec.len()
+    }
 }
 
 impl Index<Tid> for Types {
