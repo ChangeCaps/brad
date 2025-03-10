@@ -1,5 +1,3 @@
-use std::default;
-
 use super::{body::Bid, body::Local, ty::Tid};
 
 #[derive(Clone, Debug)]
@@ -37,11 +35,15 @@ pub enum Stmt {
     /// destroy val (deconstruct/free)
     Drop { var: Operand, tid: Tid },
 
+    /// deep copy src into dst
+    /// src = dst.clone()
+    Copy { dst: Var, src: Var },
+
     /// dst[index].access = val
     WriteIndex {
         dst: Var,
         index: Operand,
-        access: Access,
+        access: Vec<(Access, Tid)>,
         val: Operand,
     },
 
@@ -50,21 +52,21 @@ pub enum Stmt {
         dst: Var,
         array: Var,
         index: Operand,
-        access: Access,
+        access: Vec<(Access, Tid)>,
     },
 
     /// (*dst).access = val
     WriteRef {
         dst: Var,
-        access: Access,
+        access: Vec<(Access, Tid)>,
         val: Operand,
     },
 
     /// dst = (*mem).access
     ReadRef {
         dst: Var,
-        mem: Operand,
-        access: Access,
+        mem: Var,
+        access: Vec<(Access, Tid)>,
     },
 
     /// match statement
@@ -143,35 +145,40 @@ pub enum Value {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     /* integer operations */
-    Addi,
-    Subi,
-    Muli,
-    Divi,
-    Modi,
-    BitAndi,
-    BitOri,
-    BitXori,
-    Shli,
-    Shri,
-    Eqi,
-    Nei,
-    Lti,
-    Lei,
-    Gti,
-    Gei,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+
+    BAnd,
+    BOr,
+    BXor,
+
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+
+    /* shifts */
+    LShr,
+    LShl,
 
     /* floating point operations */
-    Addf,
-    Subf,
-    Mulf,
-    Divf,
-    Modf,
-    Eqf,
-    Nef,
-    Ltf,
-    Lef,
-    Gtf,
-    Gef,
+    FAdd,
+    FSub,
+    FMul,
+    FDiv,
+    FMod,
+
+    FEq,
+    FNe,
+    FLt,
+    FLe,
+    FGt,
+    FGe,
 
     /* logical operations */
     And,
@@ -180,10 +187,10 @@ pub enum BinaryOp {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
-    Negi,
-    BitNoti,
-    Negf,
-    // Only bools
+    Neg,
+    FNeg,
+    BNot,
+    // only bool
     Not,
     // only ptrs
     Deref,
@@ -230,18 +237,16 @@ impl Var {
     }
 }
 
+/// place follows one of
+///     => [index].access
+///     => *.access
+///     => .access
 #[derive(Clone, Debug)]
 pub struct Place {
     pub local: Local,
     pub index: Option<Operand>,
     pub deref: bool,
-    pub proj: Vec<(Proj, Tid)>,
-}
-
-#[derive(Clone, Debug)]
-pub enum Proj {
-    Field(&'static str),
-    Tuple(u32),
+    pub access: Vec<(Access, Tid)>,
 }
 
 impl Place {
@@ -250,7 +255,7 @@ impl Place {
             local: Local(0),
             index: None,
             deref: false,
-            proj: Vec::new(),
+            access: Vec::new(),
         }
     }
 
@@ -258,6 +263,6 @@ impl Place {
         self.local = local;
         self.index = None;
         self.deref = false;
-        self.proj.clear();
+        self.access.clear();
     }
 }

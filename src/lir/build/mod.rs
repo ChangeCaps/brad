@@ -122,9 +122,7 @@ impl<'a> Builder<'a> {
         let sblock = self.sir.bodies[bid].block.as_ref().unwrap();
 
         // build lir body
-        let mut lblock = lir::Block::new();
-
-        lblock = self.decompose_block(id, bid, &mut lblock, sblock);
+        let lblock = self.decompose_block(id, bid, sblock);
         self.lir.bodies[id].block = lblock;
 
         id
@@ -137,15 +135,6 @@ impl<'a> Builder<'a> {
         lir::Local(index as u32)
     }
 
-    fn read_lplace(
-        &mut self,
-        bid: lir::Bid,
-        block: &mut lir::Block,
-        place: &lir::Place,
-    ) -> lir::Local {
-        todo!()
-    }
-
     fn read_place(
         &mut self,
         bid: lir::Bid,
@@ -153,7 +142,8 @@ impl<'a> Builder<'a> {
         block: &mut lir::Block,
         place: &sir::Place,
     ) -> lir::Local {
-        todo!()
+        let lplace = self.decompose_place(bid, sbid, block, place);
+        self.read_lplace(bid, block, &lplace)
     }
 
     fn write_place(
@@ -164,7 +154,121 @@ impl<'a> Builder<'a> {
         place: &sir::Place,
         value: lir::Value,
     ) -> lir::Stmt {
-        todo!()
+        let lplace = self.decompose_place(bid, sbid, block, place);
+        self.write_lplace(bid, block, &lplace, value)
+    }
+
+    fn read_lplace(
+        &mut self,
+        bid: lir::Bid,
+        block: &mut lir::Block,
+        place: &lir::Place,
+    ) -> lir::Local {
+        let dst = {
+            let tid = match place.access.last() {
+                Some((_, tid)) => tid.clone(),
+                None => self.lir.bodies[bid][place.local],
+            };
+            self.push_local(bid, tid)
+        };
+
+        let tid = self.lir.bodies[bid][place.local];
+
+        if place.deref {
+            let pid = self.lir.types.get_id(lir::Ty::Ref(tid));
+            let src = self.push_local(bid, pid);
+            block.stmts.push(lir::Stmt::Eval {
+                dst: lir::Var::from(src),
+                src: lir::Value::Use(lir::Operand::Var(lir::Var::from(place.local))),
+            });
+            block.stmts.push(lir::Stmt::ReadRef {
+                dst: lir::Var::from(dst),
+                mem: lir::Var::from(src),
+                access: place.access.clone(),
+            });
+        } else if let Some(ref index) = place.index {
+            let lid = self.lir.types.get_id(lir::Ty::List(tid));
+            let src = self.push_local(bid, lid);
+            block.stmts.push(lir::Stmt::Eval {
+                dst: lir::Var::from(src),
+                src: lir::Value::Use(lir::Operand::Var(lir::Var::from(place.local))),
+            });
+            block.stmts.push(lir::Stmt::ReadIndex {
+                dst: lir::Var::from(dst),
+                array: lir::Var::from(src),
+                index: index.clone(),
+                access: place.access.clone(),
+            });
+        } else {
+            block.stmts.push(lir::Stmt::Eval {
+                dst: lir::Var::from(dst),
+                src: lir::Value::Use(lir::Operand::Var(lir::Var {
+                    local: place.local,
+                    access: place.access.clone(),
+                })),
+            })
+        }
+
+        dst
+    }
+
+    fn write_lplace(
+        &mut self,
+        bid: lir::Bid,
+        block: &mut lir::Block,
+        place: &lir::Place,
+        value: lir::Value,
+    ) -> lir::Stmt {
+        let dst = {
+            let tid = match place.access.last() {
+                Some((_, tid)) => tid.clone(),
+                None => self.lir.bodies[bid][place.local],
+            };
+            self.push_local(bid, tid)
+        };
+
+        let tid = self.lir.bodies[bid][place.local];
+
+        if place.deref {
+            let pid = self.lir.types.get_id(lir::Ty::Ref(tid));
+            let src = self.push_local(bid, pid);
+            block.stmts.push(lir::Stmt::Eval {
+                dst: lir::Var::from(src),
+                src: value,
+            });
+            lir::Stmt::WriteRef {
+                dst: lir::Var {
+                    local: dst,
+                    access: Vec::new(),
+                },
+                access: place.access.clone(),
+                val: lir::Operand::Var(lir::Var::from(src)),
+            }
+        } else if let Some(ref index) = place.index {
+            let lid = self.lir.types.get_id(lir::Ty::List(tid));
+            let src = self.push_local(bid, lid);
+            block.stmts.push(lir::Stmt::Eval {
+                dst: lir::Var::from(src),
+                src: value,
+            });
+            lir::Stmt::WriteIndex {
+                dst: lir::Var {
+                    local: dst,
+                    access: Vec::new(),
+                },
+                index: index.clone(),
+                access: place.access.clone(),
+                val: lir::Operand::Var(lir::Var::from(src)),
+            }
+        } else {
+            lir::Stmt::Eval {
+                dst: lir::Var {
+                    local: dst,
+                    access: place.access.clone(),
+                },
+                src: value,
+            }
+        }
     }
 
     fn var_from_value(&mut self, bid: lir::Bid, value: &lir::Value) -> lir::Var {
@@ -181,12 +285,9 @@ impl<'a> Builder<'a> {
 
     fn tid_from_operand(&mut self, bid: lir::Bid, operand: &lir::Operand) -> lir::Tid {
         match operand {
-            lir::Operand::Var(lir::Var {
-                local: lir::Local(local),
-                access,
-            }) => match access.last() {
+            lir::Operand::Var(lir::Var { local, access }) => match access.last() {
                 Some((_, tid)) => tid.clone(),
-                None => self.lir.bodies[bid].locals[local.clone() as usize],
+                None => self.lir.bodies[bid][local.clone()],
             },
             lir::Operand::Const(tid, _) => tid.clone(),
         }
@@ -201,9 +302,14 @@ impl<'a> Builder<'a> {
     ) -> lir::Operand {
         match operand {
             sir::Operand::Copy(ref place) => {
-                panic!("deep copy is not a simple operation");
-                todo!()
-                // lir::Operand::Var(lir::Var::from(self.read_place(bid, sbid, block, place)))
+                let src = self.read_place(bid, sbid, block, place);
+                let tid = self.lir.bodies[bid][src];
+                let copy = self.push_local(bid, tid);
+                block.push(lir::Stmt::Copy {
+                    dst: lir::Var::from(copy),
+                    src: lir::Var::from(src),
+                });
+                lir::Operand::Var(lir::Var::from(copy))
             }
 
             sir::Operand::Move(ref place) => {
@@ -242,20 +348,17 @@ impl<'a> Builder<'a> {
                 let tid = self.lir.types.get_id(ty);
                 let tuple = self.push_local(bid, tid);
 
-                // rewrite this to work with ref type
                 for (i, operand) in operands.iter().enumerate() {
                     let op = self.decompose_operand(bid, sbid, block, operand);
-                    let tid = self.tid_from_operand(bid, &op);
+                    let id = self.tid_from_operand(bid, &op);
                     let src = lir::Value::Use(op);
                     block.push(lir::Stmt::Eval {
-                        dst: lir::Var::from((tuple, lir::Access::Tuple(i as u32), tid)),
+                        dst: lir::Var::from((tuple, lir::Access::Tuple(i as u32), id)),
                         src,
-                    });
+                    })
                 }
-                lir::Value::Use(lir::Operand::Var(lir::Var::from(tuple)));
 
-                // fix this shit
-                todo!()
+                lir::Value::Use(lir::Operand::Var(lir::Var::from(tuple)))
             }
             sir::Value::Record(items) => {
                 let ty = lir::Ty::Record(items.iter().fold(Vec::new(), |mut acc, (name, op)| {
@@ -266,20 +369,17 @@ impl<'a> Builder<'a> {
                 let tid = self.lir.types.get_id(ty);
                 let record = self.push_local(bid, tid);
 
-                // rewrite this to work with ref type
                 for (name, operand) in items.iter() {
                     let op = self.decompose_operand(bid, sbid, block, operand);
-                    let tid = self.tid_from_operand(bid, &op);
+                    let id = self.tid_from_operand(bid, &op);
                     let src = lir::Value::Use(op);
                     block.push(lir::Stmt::Eval {
-                        dst: lir::Var::from((record, lir::Access::Field(name), tid)),
+                        dst: lir::Var::from((record, lir::Access::Field(name), id)),
                         src,
                     });
                 }
-                lir::Value::Use(lir::Operand::Var(lir::Var::from(record)));
 
-                // fix this shit
-                todo!()
+                lir::Value::Use(lir::Operand::Var(lir::Var::from(record)))
             }
             sir::Value::Promote {
                 variant,
@@ -304,14 +404,53 @@ impl<'a> Builder<'a> {
                 self::lir::Value::Call(lir::Var::from(self.read_place(bid, sbid, block, place)), op)
             }
             sir::Value::Binary(binary_op, operand, operand1) => {
-                todo!()
+                let lhs = self.decompose_operand(bid, sbid, block, operand);
+                let rhs = self.decompose_operand(bid, sbid, block, operand1);
+                match binary_op {
+                    sir::BinaryOp::Add => lir::Value::Binary(lir::BinaryOp::Add, lhs, rhs),
+                    sir::BinaryOp::Sub => lir::Value::Binary(lir::BinaryOp::Sub, lhs, rhs),
+                    sir::BinaryOp::Mul => lir::Value::Binary(lir::BinaryOp::Mul, lhs, rhs),
+                    sir::BinaryOp::Div => lir::Value::Binary(lir::BinaryOp::Div, lhs, rhs),
+                    sir::BinaryOp::Mod => lir::Value::Binary(lir::BinaryOp::Mod, lhs, rhs),
+                    sir::BinaryOp::BAnd => lir::Value::Binary(lir::BinaryOp::BAnd, lhs, rhs),
+                    sir::BinaryOp::BOr => lir::Value::Binary(lir::BinaryOp::BOr, lhs, rhs),
+                    sir::BinaryOp::BXor => lir::Value::Binary(lir::BinaryOp::BXor, lhs, rhs),
+                    sir::BinaryOp::Eq => lir::Value::Binary(lir::BinaryOp::Eq, lhs, rhs),
+                    sir::BinaryOp::Ne => lir::Value::Binary(lir::BinaryOp::Ne, lhs, rhs),
+                    sir::BinaryOp::Lt => lir::Value::Binary(lir::BinaryOp::Lt, lhs, rhs),
+                    sir::BinaryOp::Le => lir::Value::Binary(lir::BinaryOp::Le, lhs, rhs),
+                    sir::BinaryOp::Gt => lir::Value::Binary(lir::BinaryOp::Gt, lhs, rhs),
+                    sir::BinaryOp::Ge => lir::Value::Binary(lir::BinaryOp::Ge, lhs, rhs),
+                    sir::BinaryOp::LShr => lir::Value::Binary(lir::BinaryOp::LShr, lhs, rhs),
+                    sir::BinaryOp::LShl => lir::Value::Binary(lir::BinaryOp::LShl, lhs, rhs),
+                    sir::BinaryOp::FAdd => lir::Value::Binary(lir::BinaryOp::FAdd, lhs, rhs),
+                    sir::BinaryOp::FSub => lir::Value::Binary(lir::BinaryOp::FSub, lhs, rhs),
+                    sir::BinaryOp::FMul => lir::Value::Binary(lir::BinaryOp::FMul, lhs, rhs),
+                    sir::BinaryOp::FDiv => lir::Value::Binary(lir::BinaryOp::FDiv, lhs, rhs),
+                    sir::BinaryOp::FMod => lir::Value::Binary(lir::BinaryOp::FMod, lhs, rhs),
+                    sir::BinaryOp::FEq => lir::Value::Binary(lir::BinaryOp::FEq, lhs, rhs),
+                    sir::BinaryOp::FNe => lir::Value::Binary(lir::BinaryOp::FNe, lhs, rhs),
+                    sir::BinaryOp::FLt => lir::Value::Binary(lir::BinaryOp::FLt, lhs, rhs),
+                    sir::BinaryOp::FLe => lir::Value::Binary(lir::BinaryOp::FLe, lhs, rhs),
+                    sir::BinaryOp::FGt => lir::Value::Binary(lir::BinaryOp::FGt, lhs, rhs),
+                    sir::BinaryOp::FGe => lir::Value::Binary(lir::BinaryOp::FGe, lhs, rhs),
+                    sir::BinaryOp::And => lir::Value::Binary(lir::BinaryOp::And, lhs, rhs),
+                    sir::BinaryOp::Or => lir::Value::Binary(lir::BinaryOp::Or, lhs, rhs),
+                }
             }
             sir::Value::Unary(unary_op, operand) => {
-                todo!()
+                let op = self.decompose_operand(bid, sbid, block, operand);
+                match unary_op {
+                    sir::UnaryOp::Neg => lir::Value::Unary(lir::UnaryOp::Neg, op),
+                    sir::UnaryOp::FNeg => lir::Value::Unary(lir::UnaryOp::FNeg, op),
+                    sir::UnaryOp::BNot => lir::Value::Unary(lir::UnaryOp::BNot, op),
+                    sir::UnaryOp::Not => lir::Value::Unary(lir::UnaryOp::Not, op),
+                    sir::UnaryOp::Deref => lir::Value::Unary(lir::UnaryOp::Deref, op),
+                }
             }
             sir::Value::Closure {
                 body,
-                generics,
+                generics: _,
                 captures,
             } => {
                 let lbid = self.build_body(body.clone());
@@ -345,37 +484,36 @@ impl<'a> Builder<'a> {
         let mut lplace = lir::Place::new();
         lplace.from({
             let sid = self.sir.bodies[sbid].locals[place.local];
-            let mut base = {
+            let base = {
                 let tid = self.map_tid(sid);
                 self.push_local(bid, tid)
             };
             self.local_map.insert(place.local.clone(), base);
             base
         });
-
         for (proj, id) in &place.proj {
             match proj {
                 sir::Proj::Field(name) => {
                     lplace
-                        .proj
-                        .push((lir::Proj::Field(name), self.map_tid(id.clone())));
+                        .access
+                        .push((lir::Access::Field(name), self.map_tid(id.clone())));
                 }
                 sir::Proj::Tuple(index) => {
-                    lplace.proj.push((
-                        lir::Proj::Tuple(index.clone() as u32),
+                    lplace.access.push((
+                        lir::Access::Tuple(index.clone() as u32),
                         self.map_tid(id.clone()),
                     ));
                 }
                 sir::Proj::Index(ref op) => {
                     let index = self.decompose_operand(bid, sbid, block, op);
-                    if lplace.index.is_some() || lplace.deref {
+                    if lplace.index.is_some() || lplace.deref || !lplace.access.is_empty() {
                         let new = self.read_lplace(bid, block, &lplace);
                         lplace.from(new);
                     }
                     lplace.index = Some(index);
                 }
                 sir::Proj::Deref => {
-                    if lplace.index.is_some() || lplace.deref {
+                    if lplace.index.is_some() || lplace.deref || !lplace.access.is_empty() {
                         let new = self.read_lplace(bid, block, &lplace);
                         lplace.from(new);
                     }
@@ -387,18 +525,12 @@ impl<'a> Builder<'a> {
         lplace
     }
 
-    fn decompose_case(
-        &mut self,
-        bid: lir::Bid,
-        sbid: sir::Bid,
-        block: &mut lir::Block,
-        case: &sir::Case,
-    ) -> lir::Case {
+    fn decompose_case(&mut self, bid: lir::Bid, sbid: sir::Bid, case: &sir::Case) -> lir::Case {
         let tid = self.map_tid(case.ty);
         lir::Case {
             tid,
             local: lir::Var::from(self.push_local(bid, tid)),
-            block: self.decompose_block(bid, sbid, block, &case.block),
+            block: self.decompose_block(bid, sbid, &case.block),
         }
     }
 
@@ -406,7 +538,6 @@ impl<'a> Builder<'a> {
         &mut self,
         bid: lir::Bid,
         sbid: sir::Bid,
-        block: &mut lir::Block,
         sblock: &sir::Block,
     ) -> lir::Block {
         let mut lblock = lir::Block::new();
@@ -445,28 +576,24 @@ impl<'a> Builder<'a> {
                 lir::Stmt::Drop { var: op, tid }
             }
             sir::Stmt::Assign(place, value) => {
-                let dst = self.decompose_place(bid, sbid, block, place);
                 let src = self.decompose_value(bid, sbid, block, value);
                 self.write_place(bid, sbid, block, place, src)
             }
             sir::Stmt::Loop(sblock) => lir::Stmt::Loop {
-                body: self.decompose_block(bid, sbid, block, sblock),
+                body: self.decompose_block(bid, sbid, sblock),
             },
             sir::Stmt::Match {
                 target,
                 cases,
                 default,
-            } => {
-                let place = self.decompose_place(bid, sbid, block, target);
-                lir::Stmt::Match {
-                    target: lir::Var::from(self.read_lplace(bid, block, &place)),
-                    cases: cases.iter().fold(Vec::new(), |mut vec, case| {
-                        vec.push(self.decompose_case(bid, sbid, block, case));
-                        vec
-                    }),
-                    default: self.decompose_block(bid, sbid, block, default),
-                }
-            }
+            } => lir::Stmt::Match {
+                target: lir::Var::from(self.read_place(bid, sbid, block, target)),
+                cases: cases.iter().fold(Vec::new(), |mut vec, case| {
+                    vec.push(self.decompose_case(bid, sbid, case));
+                    vec
+                }),
+                default: self.decompose_block(bid, sbid, default),
+            },
         }
     }
 
