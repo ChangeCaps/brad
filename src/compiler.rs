@@ -3,7 +3,7 @@ use crate::{
     diagnostic::{Diagnostic, Source, SourceId, Sources},
     hir,
     interpret::Interpreter,
-    llvm_codegen,
+    lir, llvm_codegen,
     lower::Lowerer,
     mir,
     parse::{self, Interner, Tokens},
@@ -141,7 +141,8 @@ impl<'a> Compiler<'a> {
         let mir = self.mir(hir)?;
 
         let bid = mir.find_body(format!("{}::main", module).as_str())?;
-        let (sir, _) = mir::specialize(mir, bid);
+        let (sir, main) = mir::specialize(mir, bid);
+        let lir = lir::build(&sir, main);
         Ok(llvm_codegen::codegen(sir))
     }
 
