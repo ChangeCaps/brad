@@ -124,7 +124,7 @@ impl<'a> Builder<'a> {
         // build lir body
         let mut lblock = lir::Block::new();
 
-        lblock = self.decompose_block(id, &mut lblock, sblock);
+        lblock = self.decompose_block(id, bid, &mut lblock, sblock);
         self.lir.bodies[id].block = lblock;
 
         id
@@ -135,6 +135,36 @@ impl<'a> Builder<'a> {
         let index = locals.len();
         locals.push(tid);
         lir::Local(index as u32)
+    }
+
+    fn read_lplace(
+        &mut self,
+        bid: lir::Bid,
+        block: &mut lir::Block,
+        place: &lir::Place,
+    ) -> lir::Local {
+        todo!()
+    }
+
+    fn read_place(
+        &mut self,
+        bid: lir::Bid,
+        sbid: sir::Bid,
+        block: &mut lir::Block,
+        place: &sir::Place,
+    ) -> lir::Local {
+        todo!()
+    }
+
+    fn write_place(
+        &mut self,
+        bid: lir::Bid,
+        sbid: sir::Bid,
+        block: &mut lir::Block,
+        place: &sir::Place,
+        value: lir::Value,
+    ) -> lir::Stmt {
+        todo!()
     }
 
     fn var_from_value(&mut self, bid: lir::Bid, value: &lir::Value) -> lir::Var {
@@ -153,17 +183,11 @@ impl<'a> Builder<'a> {
         match operand {
             lir::Operand::Var(lir::Var {
                 local: lir::Local(local),
-                access: lir::Access(access),
-            }) => {
-                let lid = self.lir.bodies[bid].locals[local.clone() as usize];
-                access.iter().fold(lid, |acc, index| {
-                    if let lir::Ty::Record(elems) = &self.lir.types[lid] {
-                        elems[index.clone() as usize]
-                    } else {
-                        panic!("uh oh, we did a fucky wucky")
-                    }
-                })
-            }
+                access,
+            }) => match access.last() {
+                Some((_, tid)) => tid.clone(),
+                None => self.lir.bodies[bid].locals[local.clone() as usize],
+            },
             lir::Operand::Const(tid, _) => tid.clone(),
         }
     }
@@ -171,12 +195,13 @@ impl<'a> Builder<'a> {
     fn decompose_operand(
         &mut self,
         bid: lir::Bid,
+        sbid: sir::Bid,
         block: &mut lir::Block,
         operand: &sir::Operand,
     ) -> lir::Operand {
         match operand {
             sir::Operand::Copy(ref place) => {
-                lir::Operand::Var(self.decompose_place(bid, block, place))
+                lir::Operand::Var(lir::Var::from(self.read_place(bid, sbid, block, place)))
             }
             sir::Operand::Const(ref cst, tid) => lir::Operand::Const(
                 self.map_tid(tid.clone()),
@@ -193,16 +218,17 @@ impl<'a> Builder<'a> {
     fn decompose_value(
         &mut self,
         bid: lir::Bid,
+        sbid: sir::Bid,
         block: &mut lir::Block,
         value: &sir::Value,
     ) -> lir::Value {
         match value {
             sir::Value::Use(ref operand) => {
-                lir::Value::Use(self.decompose_operand(bid, block, operand))
+                lir::Value::Use(self.decompose_operand(bid, sbid, block, operand))
             }
             sir::Value::Tuple(operands) => {
-                let ty = lir::Ty::Record(operands.iter().fold(Vec::new(), |mut acc, op| {
-                    let val = self.decompose_operand(bid, block, op);
+                let ty = lir::Ty::Tuple(operands.iter().fold(Vec::new(), |mut acc, op| {
+                    let val = self.decompose_operand(bid, sbid, block, op);
                     acc.push(self.tid_from_operand(bid, &val));
                     acc
                 }));
@@ -211,9 +237,11 @@ impl<'a> Builder<'a> {
 
                 // rewrite this to work with ref type
                 for (i, operand) in operands.iter().enumerate() {
-                    let src = lir::Value::Use(self.decompose_operand(bid, block, operand));
+                    let op = self.decompose_operand(bid, sbid, block, operand);
+                    let tid = self.tid_from_operand(bid, &op);
+                    let src = lir::Value::Use(op);
                     block.push(lir::Stmt::Eval {
-                        dst: lir::Var::from((tuple, i as u32)),
+                        dst: lir::Var::from((tuple, lir::Access::Tuple(i as u32), tid)),
                         src,
                     });
                 }
@@ -223,19 +251,21 @@ impl<'a> Builder<'a> {
                 todo!()
             }
             sir::Value::Record(items) => {
-                let ty = lir::Ty::Record(items.iter().fold(Vec::new(), |mut acc, (_, op)| {
-                    let val = self.decompose_operand(bid, block, op);
-                    acc.push(self.tid_from_operand(bid, &val));
+                let ty = lir::Ty::Record(items.iter().fold(Vec::new(), |mut acc, (name, op)| {
+                    let val = self.decompose_operand(bid, sbid, block, op);
+                    acc.push((name, self.tid_from_operand(bid, &val)));
                     acc
                 }));
                 let tid = self.lir.types.get_id(ty);
                 let record = self.push_local(bid, tid);
 
                 // rewrite this to work with ref type
-                for (i, (_, operand)) in items.iter().enumerate() {
-                    let src = lir::Value::Use(self.decompose_operand(bid, block, operand));
+                for (name, operand) in items.iter() {
+                    let op = self.decompose_operand(bid, sbid, block, operand);
+                    let tid = self.tid_from_operand(bid, &op);
+                    let src = lir::Value::Use(op);
                     block.push(lir::Stmt::Eval {
-                        dst: lir::Var::from((record, i as u32)),
+                        dst: lir::Var::from((record, lir::Access::Field(name), tid)),
                         src,
                     });
                 }
@@ -251,7 +281,7 @@ impl<'a> Builder<'a> {
             } => lir::Value::Promote {
                 input: self.map_tid(variant.clone()),
                 output: self.map_type(sir::Ty::Union(variants.clone())),
-                operand: self.decompose_operand(bid, block, operand),
+                operand: self.decompose_operand(bid, sbid, block, operand),
             },
             sir::Value::Coerce {
                 inputs,
@@ -260,12 +290,11 @@ impl<'a> Builder<'a> {
             } => lir::Value::Coerce {
                 input: self.map_type(sir::Ty::Union(inputs.clone())),
                 output: self.map_type(sir::Ty::Union(variants.clone())),
-                operand: self.decompose_operand(bid, block, operand),
+                operand: self.decompose_operand(bid, sbid, block, operand),
             },
             sir::Value::Call(ref place, ref operand) => {
-                let var = self.decompose_place(bid, block, place);
-                let op = self.decompose_operand(bid, block, operand);
-                self::lir::Value::Call(var, op)
+                let op = self.decompose_operand(bid, sbid, block, operand);
+                self::lir::Value::Call(lir::Var::from(self.read_place(bid, sbid, block, place)), op)
             }
             sir::Value::Binary(binary_op, operand, operand1) => {
                 todo!()
@@ -274,11 +303,11 @@ impl<'a> Builder<'a> {
                 todo!()
             }
             sir::Value::Closure {
-                body: sbid,
+                body,
                 generics,
                 captures,
             } => {
-                let lbid = self.build_body(sbid.clone());
+                let lbid = self.build_body(body.clone());
                 let func = self.lir.bodies[lbid].tid;
                 let closure = self.push_local(lbid, func);
                 block.push(lir::Stmt::Closure {
@@ -286,7 +315,7 @@ impl<'a> Builder<'a> {
                     func: lbid,
                 });
                 for capture in captures {
-                    let arg = self.decompose_operand(bid, block, capture);
+                    let arg = self.decompose_operand(bid, sbid, block, capture);
                     let tid = self.tid_from_operand(bid, &arg);
                     let dst = self.push_local(bid, tid);
                     block.push(lir::Stmt::Eval {
@@ -302,15 +331,67 @@ impl<'a> Builder<'a> {
     fn decompose_place(
         &mut self,
         bid: lir::Bid,
+        sbid: sir::Bid,
         block: &mut lir::Block,
         place: &sir::Place,
-    ) -> lir::Var {
-        todo!()
+    ) -> lir::Place {
+        let mut lplace = lir::Place::new();
+        lplace.from({
+            let sid = self.sir.bodies[sbid].locals[place.local];
+            let mut base = {
+                let tid = self.map_tid(sid);
+                self.push_local(bid, tid)
+            };
+            self.local_map.insert(place.local.clone(), base);
+            base
+        });
+
+        for (proj, id) in &place.proj {
+            match proj {
+                sir::Proj::Field(name) => {
+                    lplace
+                        .proj
+                        .push((lir::Proj::Field(name), self.map_tid(id.clone())));
+                }
+                sir::Proj::Tuple(index) => {
+                    lplace.proj.push((
+                        lir::Proj::Tuple(index.clone() as u32),
+                        self.map_tid(id.clone()),
+                    ));
+                }
+                sir::Proj::Index(ref op) => {
+                    let index = self.decompose_operand(bid, sbid, block, op);
+                    // let index = match op {
+                    //     sir::Operand::Copy(ref splace) => lir::Operand::Var(lir::Var::from(
+                    //         self.read_place(bid, sbid, block, splace),
+                    //     )),
+                    //     sir::Operand::Const(cst, sid) => {
+                    //         self.decompose_operand(bid, sbid, block, operand)
+                    //     }
+                    // };
+                    if lplace.index.is_some() || lplace.deref {
+                        let new = self.read_lplace(bid, block, &lplace);
+                        lplace.from(new);
+                    }
+                    lplace.index = Some(index);
+                }
+                sir::Proj::Deref => {
+                    if lplace.index.is_some() || lplace.deref {
+                        let new = self.read_lplace(bid, block, &lplace);
+                        lplace.from(new);
+                    }
+                    lplace.deref = true;
+                }
+            }
+        }
+
+        lplace
     }
 
     fn decompose_case(
         &mut self,
         bid: lir::Bid,
+        sbid: sir::Bid,
         block: &mut lir::Block,
         case: &sir::Case,
     ) -> lir::Case {
@@ -318,20 +399,21 @@ impl<'a> Builder<'a> {
         lir::Case {
             tid,
             local: lir::Var::from(self.push_local(bid, tid)),
-            block: self.decompose_block(bid, block, &case.block),
+            block: self.decompose_block(bid, sbid, block, &case.block),
         }
     }
 
     fn decompose_block(
         &mut self,
         bid: lir::Bid,
+        sbid: sir::Bid,
         block: &mut lir::Block,
         sblock: &sir::Block,
     ) -> lir::Block {
         let mut lblock = lir::Block::new();
 
         for stmt in &sblock.stmts {
-            let val = self.build_stmt(bid, &mut lblock, &stmt);
+            let val = self.build_stmt(bid, sbid, &mut lblock, &stmt);
             lblock.push(val);
         }
 
@@ -339,7 +421,7 @@ impl<'a> Builder<'a> {
             let stmt = match term {
                 sir::Term::Return(ref value) => lir::Stmt::Return {
                     val: {
-                        let val = self.decompose_value(bid, &mut lblock, value);
+                        let val = self.decompose_value(bid, sbid, &mut lblock, value);
                         self.operand_from_value(bid, &val)
                     },
                 },
@@ -350,33 +432,44 @@ impl<'a> Builder<'a> {
         lblock
     }
 
-    fn build_stmt(&mut self, bid: lir::Bid, block: &mut lir::Block, stmt: &sir::Stmt) -> lir::Stmt {
+    fn build_stmt(
+        &mut self,
+        bid: lir::Bid,
+        sbid: sir::Bid,
+        block: &mut lir::Block,
+        stmt: &sir::Stmt,
+    ) -> lir::Stmt {
         match stmt {
-            sir::Stmt::Drop(value, _) => lir::Stmt::Drop {
+            sir::Stmt::Drop(value, tid) => lir::Stmt::Drop {
                 var: {
-                    let val = self.decompose_value(bid, block, value);
-                    self.var_from_value(bid, &val)
+                    let val = self.decompose_value(bid, sbid, block, value);
+                    self.operand_from_value(bid, &val)
                 },
+                tid: self.map_tid(tid.clone()),
             },
-            sir::Stmt::Assign(place, value) => lir::Stmt::Eval {
-                dst: self.decompose_place(bid, block, place),
-                src: self.decompose_value(bid, block, value),
-            },
+            sir::Stmt::Assign(place, value) => {
+                let dst = self.decompose_place(bid, sbid, block, place);
+                let src = self.decompose_value(bid, sbid, block, value);
+                self.write_place(bid, sbid, block, place, src)
+            }
             sir::Stmt::Loop(sblock) => lir::Stmt::Loop {
-                body: self.decompose_block(bid, block, sblock),
+                body: self.decompose_block(bid, sbid, block, sblock),
             },
             sir::Stmt::Match {
                 target,
                 cases,
                 default,
-            } => lir::Stmt::Match {
-                target: self.decompose_place(bid, block, target),
-                cases: cases.iter().fold(Vec::new(), |mut vec, case| {
-                    vec.push(self.decompose_case(bid, block, case));
-                    vec
-                }),
-                default: self.decompose_block(bid, block, default),
-            },
+            } => {
+                let place = self.decompose_place(bid, sbid, block, target);
+                lir::Stmt::Match {
+                    target: lir::Var::from(self.read_lplace(bid, block, &place)),
+                    cases: cases.iter().fold(Vec::new(), |mut vec, case| {
+                        vec.push(self.decompose_case(bid, sbid, block, case));
+                        vec
+                    }),
+                    default: self.decompose_block(bid, sbid, block, default),
+                }
+            }
         }
     }
 
@@ -406,15 +499,15 @@ impl<'a> Builder<'a> {
             sir::Ty::Ref(tid) => lir::Ty::Ref(self.map_tid(tid)),
             sir::Ty::List(tid) => lir::Ty::List(self.map_tid(tid)),
             sir::Ty::Func(tid, tid1) => lir::Ty::Func(self.map_tid(tid), self.map_tid(tid1)),
-            sir::Ty::Tuple(ref tids) => lir::Ty::Record {
+            sir::Ty::Tuple(ref tids) => lir::Ty::Tuple {
                 0: tids.iter().fold(Vec::new(), |mut vec, tid| {
                     vec.push(self.map_tid(tid.clone()));
                     vec
                 }),
             },
             sir::Ty::Record(ref items) => lir::Ty::Record {
-                0: items.iter().fold(Vec::new(), |mut vec, (_, tid)| {
-                    vec.push(self.map_tid(tid.clone()));
+                0: items.iter().fold(Vec::new(), |mut vec, (name, tid)| {
+                    vec.push((name, self.map_tid(tid.clone())));
                     vec
                 }),
             },

@@ -181,7 +181,7 @@ pub enum Const {
 #[derive(Clone, Debug)]
 pub struct Place<T = Ty> {
     pub local: Local,
-    pub proj: Vec<(Proj, T)>,
+    pub proj: Vec<(Proj<T>, T)>,
     pub is_mutable: bool,
 }
 
@@ -195,9 +195,9 @@ impl<T> Place<T> {
 }
 
 #[derive(Clone, Debug)]
-pub enum Proj {
+pub enum Proj<T = Ty> {
     Field(&'static str),
     Tuple(usize),
-    Index(Local),
+    Index(Operand<T>),
     Deref,
 }

@@ -1,3 +1,5 @@
+use std::default;
+
 use super::{body::Bid, body::Local, ty::Tid};
 
 #[derive(Clone, Debug)]
@@ -33,7 +35,7 @@ pub enum Stmt {
     Break,
 
     /// destroy val (deconstruct/free)
-    Drop { var: Var },
+    Drop { var: Operand, tid: Tid },
 
     /// dst[index].access = val
     WriteIndex {
@@ -89,25 +91,25 @@ pub struct Case {
 #[derive(Clone, Debug)]
 pub struct Var {
     pub local: Local,
-    pub access: Access,
+    pub access: Vec<(Access, Tid)>,
 }
 
 impl From<Local> for Var {
     fn from(local: Local) -> Self {
         Self {
             local,
-            access: Access::new(),
+            access: Vec::new(),
         }
     }
 }
 
-impl From<(Local, u32)> for Var {
-    fn from((local, access): (Local, u32)) -> Self {
+impl From<(Local, Access, Tid)> for Var {
+    fn from((local, access, tid): (Local, Access, Tid)) -> Self {
         Self {
             local,
             access: {
-                let mut v = Access::new();
-                v.push(access);
+                let mut v = Vec::new();
+                v.push((access, tid));
                 v
             },
         }
@@ -202,18 +204,60 @@ pub enum Const {
 }
 
 #[derive(Clone, Debug)]
-pub struct Access(pub Vec<u32>);
+pub enum Access {
+    Tuple(u32),
+    Field(&'static str),
+}
 
-impl Access {
+impl Var {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self {
+            local: Local(0),
+            access: Vec::new(),
+        }
     }
 
     pub fn len(&self) -> u32 {
-        self.0.len() as u32
+        self.access.len() as u32
     }
 
-    pub fn push(&mut self, field_index: u32) {
-        self.0.push(field_index);
+    pub fn push(&mut self, access: Access, tid: Tid) {
+        self.access.push((access, tid));
+    }
+
+    pub fn clear(&mut self) {
+        self.access.clear();
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Place {
+    pub local: Local,
+    pub index: Option<Operand>,
+    pub deref: bool,
+    pub proj: Vec<(Proj, Tid)>,
+}
+
+#[derive(Clone, Debug)]
+pub enum Proj {
+    Field(&'static str),
+    Tuple(u32),
+}
+
+impl Place {
+    pub fn new() -> Self {
+        Self {
+            local: Local(0),
+            index: None,
+            deref: false,
+            proj: Vec::new(),
+        }
+    }
+
+    pub fn from(&mut self, local: Local) {
+        self.local = local;
+        self.index = None;
+        self.deref = false;
+        self.proj.clear();
     }
 }

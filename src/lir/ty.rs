@@ -29,8 +29,10 @@ pub enum Ty {
     List(Tid),
     /// function of a type to a type
     Func(Tid, Tid),
+    /// tuple of types
+    Tuple(Vec<Tid>),
     /// record of types
-    Record(Vec<Tid>),
+    Record(Vec<(&'static str, Tid)>),
     /// union of types
     Union(Vec<Tid>),
     /// unique rename of existing type

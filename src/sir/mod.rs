@@ -29,7 +29,7 @@ pub type Value = mir::Value<Tid>;
 pub type Operand = mir::Operand<Tid>;
 pub type Const = mir::Const;
 pub type Place = mir::Place<Tid>;
-pub type Proj = mir::Proj;
+pub type Proj = mir::Proj<Tid>;
 
 pub type BinaryOp = mir::BinaryOp;
 pub type UnaryOp = mir::UnaryOp;
