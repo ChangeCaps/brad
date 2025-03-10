@@ -1,6 +1,6 @@
-use std::collections::BTreeSet;
-
 use super::{Bid, Local, Locals, Ty};
+use std::collections::BTreeSet;
+use std::fmt::Formatter;
 
 #[derive(Clone, Debug)]
 pub struct Block<T = Ty> {
@@ -153,6 +153,42 @@ pub enum BinaryOp {
     Or,
 }
 
+impl std::fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::Mod => "%",
+            Self::BAnd => "&",
+            Self::BOr => "|",
+            Self::BXor => "^",
+            Self::Eq => "==",
+            Self::Ne => "!=",
+            Self::Lt => "<",
+            Self::Le => "<=",
+            Self::Gt => ">",
+            Self::Ge => ">=",
+            Self::LShr => ">>",
+            Self::LShl => "<<",
+            Self::FAdd => "+",
+            Self::FSub => "-",
+            Self::FMul => "*",
+            Self::FDiv => "/",
+            Self::FMod => "%",
+            Self::FLt => "<",
+            Self::FLe => "<=",
+            Self::FGt => ">",
+            Self::FGe => ">=",
+            Self::And => "&&",
+            Self::Or => "||",
+        };
+
+        write!(f, "{}", s)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
     Neg,
@@ -162,6 +198,20 @@ pub enum UnaryOp {
     Not,
     // only ptrs
     Deref,
+}
+
+impl std::fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Neg => "-",
+            Self::FNeg => "-",
+            Self::BNot => "~",
+            Self::Not => "!",
+            Self::Deref => "*",
+        };
+
+        write!(f, "{}", s)
+    }
 }
 
 #[derive(Clone, Debug)]

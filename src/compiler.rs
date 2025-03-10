@@ -122,33 +122,34 @@ impl<'a> Compiler<'a> {
         mir::build(&hir)
     }
 
-    pub fn interpret(&mut self, module: &str) -> Result<(), Diagnostic> {
+    pub fn interpret(&mut self, entrypoint: &str) -> Result<(), Diagnostic> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;
         let mir = self.mir(hir)?;
-        let main = mir.find_body(format!("{}::main", module).as_str())?;
+        let main = mir.find_body(entrypoint)?;
         let (sir, main) = mir::specialize(mir, main);
         let interpreter = Interpreter::new(sir);
         interpreter.run(main);
         Ok(())
     }
 
-    pub fn compile(&mut self, module: &str) -> Result<String, Diagnostic> {
+    pub fn compile(&mut self, entrypoint: &str) -> Result<String, Diagnostic> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;
         let mir = self.mir(hir)?;
 
-        let bid = mir.find_body(format!("{}::main", module).as_str())?;
+        let bid = mir.find_body(entrypoint)?;
         let (sir, main) = mir::specialize(mir, bid);
-        let lir = lir::build(&sir, main);
+        let (lir, _) = lir::build(&sir, main)?;
+        let mut formatter = lir::Formatter::new(std::io::stdout());
+        formatter.format(&lir).unwrap();
         Ok(llvm_codegen::codegen(sir))
     }
 
-    pub fn jit(&self, module: &str, llvm_ir: String) -> Result<(), Diagnostic> {
-        println!("{}", llvm_ir);
-        llvm_codegen::jit(llvm_ir.as_str(), format!("{}::main", module).as_str());
+    pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Diagnostic> {
+        llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
         Ok(())
     }
 }

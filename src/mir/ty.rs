@@ -185,6 +185,20 @@ impl Types {
             }
         }
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (u32, &Named)> {
+        self.named
+            .iter()
+            .enumerate()
+            .map(|(i, named)| (i as u32, named))
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (u32, &mut Named)> {
+        self.named
+            .iter_mut()
+            .enumerate()
+            .map(|(i, named)| (i as u32, named))
+    }
 }
 
 impl Index<u32> for Types {
