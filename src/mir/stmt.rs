@@ -15,6 +15,12 @@ impl<T> Block<T> {
             term: None,
         }
     }
+
+    pub fn push(&mut self, stmt: Stmt<T>) {
+        if self.term.is_none() {
+            self.stmts.push(stmt);
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -112,6 +112,7 @@ struct Builder<'a> {
     local_map: HashMap<hir::LocalId, mir::Local>,
 
     break_local: Option<mir::Local>,
+    break_scope: usize,
 }
 
 impl<'a> Builder<'a> {
@@ -137,6 +138,7 @@ impl<'a> Builder<'a> {
             local_map: HashMap::new(),
 
             break_local: None,
+            break_scope: 0,
         }
     }
 
@@ -148,7 +150,21 @@ impl<'a> Builder<'a> {
                 is_mutable: false,
             });
 
-            block.stmts.push(mir::Stmt::Drop(value));
+            block.push(mir::Stmt::Drop(value));
+        }
+
+        block
+    }
+
+    fn drop_break_scope(&mut self, mut block: mir::Block) -> mir::Block {
+        for local in self.scope[self.break_scope..].iter().rev() {
+            let value = mir::Operand::Move(mir::Place {
+                local: *local,
+                proj: Vec::new(),
+                is_mutable: false,
+            });
+
+            block.push(mir::Stmt::Drop(value));
         }
 
         block
@@ -219,7 +235,7 @@ impl<'a> Builder<'a> {
                                     is_mutable: false,
                                 });
 
-                                block.stmts.push(mir::Stmt::Drop(value));
+                                block.push(mir::Stmt::Drop(value));
                             }
 
                             let output = mir::Place {
@@ -228,14 +244,14 @@ impl<'a> Builder<'a> {
                                 is_mutable: false,
                             };
 
-                            block.stmts.push(mir::Stmt::Assign(output, value));
+                            block.push(mir::Stmt::Assign(output, value));
 
                             cases.push(mir::Case { ty, local, block });
                         }
                     }
                 }
 
-                block.stmts.push(mir::Stmt::Match {
+                block.push(mir::Stmt::Match {
                     target,
                     default: mir::Block::new(),
                     cases,
@@ -255,13 +271,17 @@ impl<'a> Builder<'a> {
                 let local = self.locals.push(ty);
 
                 let old_break_local = self.break_local;
+                let old_break_scope = self.break_scope;
+
                 self.break_local = Some(local);
+                self.break_scope = self.scope.len();
 
                 let mut loop_block = mir::Block::new();
 
                 let _ = unpack!(loop_block = self.build_place(loop_block, *body)?);
 
                 self.break_local = old_break_local;
+                self.break_scope = old_break_scope;
 
                 let place = mir::Place {
                     local,
@@ -269,7 +289,7 @@ impl<'a> Builder<'a> {
                     is_mutable: false,
                 };
 
-                block.stmts.push(mir::Stmt::Loop(loop_block));
+                block.push(mir::Stmt::Loop(loop_block));
 
                 Ok(BlockAnd::new(block, place))
             }
@@ -306,7 +326,7 @@ impl<'a> Builder<'a> {
                     is_mutable: false,
                 };
 
-                block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+                block.push(mir::Stmt::Assign(place.clone(), value));
 
                 Ok(BlockAnd::new(block, place))
             }
@@ -359,7 +379,7 @@ impl<'a> Builder<'a> {
                     return Err(diagnostic);
                 }
 
-                block.stmts.push(mir::Stmt::Assign(l, r));
+                block.push(mir::Stmt::Assign(l, r));
 
                 Ok(BlockAnd::new(block, mir::Operand::NONE))
             }
@@ -379,7 +399,7 @@ impl<'a> Builder<'a> {
                     is_mutable: false,
                 };
 
-                block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+                block.push(mir::Stmt::Assign(place.clone(), value));
 
                 unpack!(block = self.build_binding(block, binding, place)?);
 
@@ -398,10 +418,10 @@ impl<'a> Builder<'a> {
                         is_mutable: false,
                     };
 
-                    block.stmts.push(mir::Stmt::Assign(place, v));
+                    block.push(mir::Stmt::Assign(place, v));
                 }
 
-                block = self.drop_scope(block);
+                block = self.drop_break_scope(block);
 
                 block.term = Some(mir::Term::Break);
 
@@ -415,7 +435,7 @@ impl<'a> Builder<'a> {
 
                 for expr in exprs {
                     if let Some(operand) = operand {
-                        block.stmts.push(mir::Stmt::Drop(operand));
+                        block.push(mir::Stmt::Drop(operand));
                     }
 
                     operand = Some(unpack!(block = self.build_operand(block, expr)?));
@@ -428,7 +448,7 @@ impl<'a> Builder<'a> {
                         is_mutable: false,
                     });
 
-                    block.stmts.push(mir::Stmt::Drop(value));
+                    block.push(mir::Stmt::Drop(value));
                 }
 
                 let operand = operand.unwrap_or(mir::Operand::NONE);
@@ -623,7 +643,7 @@ impl<'a> Builder<'a> {
                 self.scope.push(place.local);
 
                 let value = mir::Value::Use(mir::Operand::Copy(value));
-                block.stmts.push(mir::Stmt::Assign(place, value));
+                block.push(mir::Stmt::Assign(place, value));
 
                 Ok(BlockAnd::new(block, ()))
             }
@@ -672,7 +692,7 @@ impl<'a> Builder<'a> {
             is_mutable: false,
         };
 
-        block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+        block.push(mir::Stmt::Assign(place.clone(), value));
 
         Ok(BlockAnd::new(block, place))
     }
@@ -700,7 +720,7 @@ impl<'a> Builder<'a> {
             is_mutable: false,
         };
 
-        block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+        block.push(mir::Stmt::Assign(place.clone(), value));
 
         Ok(BlockAnd::new(block, mir::Operand::Copy(place)))
     }
@@ -751,7 +771,7 @@ impl<'a> Builder<'a> {
                         is_mutable: false,
                     };
 
-                    block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+                    block.push(mir::Stmt::Assign(place.clone(), value));
 
                     let operand = mir::Operand::Copy(place);
                     let value = mir::Value::Coerce {
@@ -774,7 +794,7 @@ impl<'a> Builder<'a> {
                     is_mutable: false,
                 };
 
-                block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+                block.push(mir::Stmt::Assign(place.clone(), value));
 
                 let operand = mir::Operand::Copy(place);
                 let value = mir::Value::Promote {
