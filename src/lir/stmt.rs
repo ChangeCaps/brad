@@ -33,13 +33,17 @@ pub enum Stmt {
     Break,
 
     /// destroy val (deconstruct/free)
-    Drop { var: Var },
+    Drop { var: Operand, tid: Tid },
+
+    /// deep copy src into dst
+    /// src = dst.clone()
+    Copy { dst: Var, src: Var },
 
     /// dst[index].access = val
     WriteIndex {
         dst: Var,
         index: Operand,
-        access: Access,
+        access: Vec<(Access, Tid)>,
         val: Operand,
     },
 
@@ -48,21 +52,21 @@ pub enum Stmt {
         dst: Var,
         array: Var,
         index: Operand,
-        access: Access,
+        access: Vec<(Access, Tid)>,
     },
 
     /// (*dst).access = val
     WriteRef {
         dst: Var,
-        access: Access,
+        access: Vec<(Access, Tid)>,
         val: Operand,
     },
 
     /// dst = (*mem).access
     ReadRef {
         dst: Var,
-        mem: Operand,
-        access: Access,
+        mem: Var,
+        access: Vec<(Access, Tid)>,
     },
 
     /// match statement
@@ -89,25 +93,25 @@ pub struct Case {
 #[derive(Clone, Debug)]
 pub struct Var {
     pub local: Local,
-    pub access: Access,
+    pub access: Vec<(Access, Tid)>,
 }
 
 impl From<Local> for Var {
     fn from(local: Local) -> Self {
         Self {
             local,
-            access: Access::new(),
+            access: Vec::new(),
         }
     }
 }
 
-impl From<(Local, u32)> for Var {
-    fn from((local, access): (Local, u32)) -> Self {
+impl From<(Local, Access, Tid)> for Var {
+    fn from((local, access, tid): (Local, Access, Tid)) -> Self {
         Self {
             local,
             access: {
-                let mut v = Access::new();
-                v.push(access);
+                let mut v = Vec::new();
+                v.push((access, tid));
                 v
             },
         }
@@ -141,35 +145,40 @@ pub enum Value {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     /* integer operations */
-    Addi,
-    Subi,
-    Muli,
-    Divi,
-    Modi,
-    BitAndi,
-    BitOri,
-    BitXori,
-    Shli,
-    Shri,
-    Eqi,
-    Nei,
-    Lti,
-    Lei,
-    Gti,
-    Gei,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+
+    BAnd,
+    BOr,
+    BXor,
+
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+
+    /* shifts */
+    LShr,
+    LShl,
 
     /* floating point operations */
-    Addf,
-    Subf,
-    Mulf,
-    Divf,
-    Modf,
-    Eqf,
-    Nef,
-    Ltf,
-    Lef,
-    Gtf,
-    Gef,
+    FAdd,
+    FSub,
+    FMul,
+    FDiv,
+    FMod,
+
+    FEq,
+    FNe,
+    FLt,
+    FLe,
+    FGt,
+    FGe,
 
     /* logical operations */
     And,
@@ -178,10 +187,10 @@ pub enum BinaryOp {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
-    Negi,
-    BitNoti,
-    Negf,
-    // Only bools
+    Neg,
+    FNeg,
+    BNot,
+    // only bool
     Not,
     // only ptrs
     Deref,
@@ -202,18 +211,58 @@ pub enum Const {
 }
 
 #[derive(Clone, Debug)]
-pub struct Access(pub Vec<u32>);
+pub enum Access {
+    Tuple(u32),
+    Field(&'static str),
+}
 
-impl Access {
+impl Var {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self {
+            local: Local(0),
+            access: Vec::new(),
+        }
     }
 
     pub fn len(&self) -> u32 {
-        self.0.len() as u32
+        self.access.len() as u32
     }
 
-    pub fn push(&mut self, field_index: u32) {
-        self.0.push(field_index);
+    pub fn push(&mut self, access: Access, tid: Tid) {
+        self.access.push((access, tid));
+    }
+
+    pub fn clear(&mut self) {
+        self.access.clear();
+    }
+}
+
+/// place follows one of
+///     => [index].access
+///     => *.access
+///     => .access
+#[derive(Clone, Debug)]
+pub struct Place {
+    pub local: Local,
+    pub index: Option<Operand>,
+    pub deref: bool,
+    pub access: Vec<(Access, Tid)>,
+}
+
+impl Place {
+    pub fn new() -> Self {
+        Self {
+            local: Local(0),
+            index: None,
+            deref: false,
+            access: Vec::new(),
+        }
+    }
+
+    pub fn from(&mut self, local: Local) {
+        self.local = local;
+        self.index = None;
+        self.deref = false;
+        self.access.clear();
     }
 }
