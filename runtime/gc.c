@@ -37,7 +37,9 @@ brad_ptr brad_alloc(
 
     brad_push_allocation(ptr);
 
+#ifdef DEBUG
     printf("Allocated %p, size: %d\n", (void*)ptr, (int)size);
+#endif
 
     return ptr;
 }
@@ -48,11 +50,13 @@ void brad_retain(
     brad_allocation* allocation = brad_allocation_from_ptr(ptr);
     allocation->ref_count++;
 
+#ifdef DEBUG
     printf(
         "Retaining %p, ref count: %d\n",
         (void*)ptr,
         (int)allocation->ref_count
     );
+#endif
 }
 
 void brad_release(
@@ -61,11 +65,13 @@ void brad_release(
     brad_allocation* allocation = brad_allocation_from_ptr(ptr);
     allocation->ref_count--;
 
+#ifdef DEBUG
     printf(
         "Releasing %p, ref count: %d\n",
         (void*)ptr,
         (int)allocation->ref_count
     );
+#endif
 }
 
 void brad_mark(
@@ -73,7 +79,9 @@ void brad_mark(
 ) {}
 
 void brad_collect() {
+#ifdef DEBUG
     printf("Collecting garbage:\n\n");
+#endif
 
     for (brad_size i = 0; i < brad_context.allocations.len; i++) {
         if (!brad_context.allocations.allocations[i]) {
@@ -84,23 +92,28 @@ void brad_collect() {
             brad_allocation_from_ptr(brad_context.allocations.allocations[i]);
 
         if (allocation->ref_count == 0) {
+#ifdef DEBUG
             printf("Freeing %p\n", (void*)allocation);
+#endif
             free(allocation);
 
             brad_context.allocations.allocations[i] = (brad_ptr)NULL;
         }
     }
 
+#ifdef DEBUG
     printf("\n");
     printf("Garbage collection complete\n");
     printf("\n");
     printf("Remaining allocations:\n");
+#endif
 
     for (brad_size i = 0; i < brad_context.allocations.len; i++) {
         if (!brad_context.allocations.allocations[i]) {
             continue;
         }
 
+#ifdef DEBUG
         brad_allocation* allocation =
             brad_allocation_from_ptr(brad_context.allocations.allocations[i]);
 
@@ -109,7 +122,10 @@ void brad_collect() {
             (void*)brad_context.allocations.allocations[i],
             (int)allocation->ref_count
         );
+#endif
     }
 
+#ifdef DEBUG
     printf("\n");
+#endif
 }

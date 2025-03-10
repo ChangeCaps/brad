@@ -203,10 +203,24 @@ impl<'a> Builder<'a> {
                                 is_mutable: false,
                             };
 
+                            // we need to keep track of the scope for each
+                            // case so we don't drop things that aren't initialized
+                            let scope = self.scope.len();
+
                             let BlockAnd { mut block, .. } =
                                 self.build_binding(mir::Block::new(), binding, place.clone())?;
 
                             let value = unpack!(block = self.build_value(block, arm.expr)?);
+
+                            for local in self.scope.drain(scope..).rev() {
+                                let value = mir::Operand::Move(mir::Place {
+                                    local,
+                                    proj: Vec::new(),
+                                    is_mutable: false,
+                                });
+
+                                block.stmts.push(mir::Stmt::Drop(value));
+                            }
 
                             let output = mir::Place {
                                 local: output,
@@ -386,6 +400,8 @@ impl<'a> Builder<'a> {
 
                     block.stmts.push(mir::Stmt::Assign(place, v));
                 }
+
+                block = self.drop_scope(block);
 
                 block.term = Some(mir::Term::Break);
 

@@ -391,6 +391,8 @@ impl LLVMBody {
 struct BodyCodegen<'a> {
     codegen: &'a mut Codegen,
     id: sir::Bid,
+
+    loop_end: Option<LLVMBasicBlockRef>,
 }
 
 impl Deref for BodyCodegen<'_> {
@@ -409,7 +411,11 @@ impl DerefMut for BodyCodegen<'_> {
 
 impl<'a> BodyCodegen<'a> {
     unsafe fn new(codegen: &'a mut Codegen, id: sir::Bid) -> Self {
-        Self { codegen, id }
+        Self {
+            codegen,
+            id,
+            loop_end: None,
+        }
     }
 
     unsafe fn body(&self) -> &sir::Body {
@@ -546,7 +552,11 @@ impl<'a> BodyCodegen<'a> {
                     LLVMBuildRet(self.builder, value);
                 }
 
-                sir::Term::Break => {}
+                sir::Term::Break => {
+                    let end = self.loop_end.expect("break outside of loop");
+
+                    LLVMBuildBr(self.builder, end);
+                }
             }
         }
     }
@@ -566,18 +576,34 @@ impl<'a> BodyCodegen<'a> {
             }
 
             sir::Stmt::Loop(block) => {
-                // create loop that jumps to the top of the block
-                let llvm_block = LLVMAppendBasicBlockInContext(
+                let loop_block = LLVMAppendBasicBlockInContext(
                     self.context,
                     self.llvm_body().function,
                     c"loop".as_ptr(),
                 );
 
-                LLVMBuildBr(self.builder, llvm_block);
+                let end_block = LLVMAppendBasicBlockInContext(
+                    self.context,
+                    self.llvm_body().function,
+                    c"end".as_ptr(),
+                );
 
-                LLVMPositionBuilderAtEnd(self.builder, llvm_block);
+                self.loop_end = Some(end_block);
+
+                // jump to the loop block
+                LLVMBuildBr(self.builder, loop_block);
+
+                // build the loop block
+                LLVMPositionBuilderAtEnd(self.builder, loop_block);
                 self.block(block);
-                LLVMBuildBr(self.builder, llvm_block);
+
+                // jump back to the loop block
+                LLVMBuildBr(self.builder, loop_block);
+
+                // build the end block
+                LLVMPositionBuilderAtEnd(self.builder, end_block);
+
+                self.loop_end = None;
             }
 
             sir::Stmt::Match {

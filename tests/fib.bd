@@ -1,5 +1,9 @@
-fn main -> int {
-    fib-rec 10 - fib-iter 10
+fn main -> none {
+    let result = fib-rec 10 + fib-iter 10
+
+    match result == 110
+    | true  => std::io::println "Success"
+    | false => std::io::println "Failure"
 }
 
 fn fib-rec (n: int) -> int {
