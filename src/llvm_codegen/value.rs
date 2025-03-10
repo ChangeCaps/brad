@@ -285,9 +285,9 @@ impl BodyCodegen<'_> {
                     sir::BinaryOp::Mul => LLVMBuildMul(self.builder, lhs, rhs, c"mul".as_ptr()),
                     sir::BinaryOp::Div => LLVMBuildSDiv(self.builder, lhs, rhs, c"div".as_ptr()),
                     sir::BinaryOp::Mod => LLVMBuildSRem(self.builder, lhs, rhs, c"mod".as_ptr()),
-                    sir::BinaryOp::BAnd => todo!(),
-                    sir::BinaryOp::BOr => todo!(),
-                    sir::BinaryOp::BXor => todo!(),
+                    sir::BinaryOp::BAnd => LLVMBuildAnd(self.builder, lhs, rhs, c"and".as_ptr()),
+                    sir::BinaryOp::BOr => LLVMBuildOr(self.builder, lhs, rhs, c"or".as_ptr()),
+                    sir::BinaryOp::BXor => LLVMBuildXor(self.builder, lhs, rhs, c"xor".as_ptr()),
                     sir::BinaryOp::Eq => LLVMBuildICmp(
                         self.builder,
                         LLVMIntPredicate::LLVMIntEQ,
@@ -379,8 +379,8 @@ impl BodyCodegen<'_> {
                         rhs,
                         c"fge".as_ptr(),
                     ),
-                    sir::BinaryOp::And => LLVMBuildAnd(self.builder, lhs, rhs, c"and".as_ptr()),
-                    sir::BinaryOp::Or => LLVMBuildOr(self.builder, lhs, rhs, c"or".as_ptr()),
+                    sir::BinaryOp::And => todo!("implement runtime booleans"),
+                    sir::BinaryOp::Or => todo!("implement runtime booleans"),
                 }
             }
 
@@ -389,8 +389,8 @@ impl BodyCodegen<'_> {
                 match op {
                     sir::UnaryOp::Neg => LLVMBuildNeg(self.builder, operand, c"neg".as_ptr()),
                     sir::UnaryOp::FNeg => LLVMBuildFNeg(self.builder, operand, c"fneg".as_ptr()),
-                    sir::UnaryOp::BNot => todo!(),
-                    sir::UnaryOp::Not => LLVMBuildNot(self.builder, operand, c"not".as_ptr()),
+                    sir::UnaryOp::BNot => LLVMBuildNot(self.builder, operand, c"not".as_ptr()),
+                    sir::UnaryOp::Not => todo!("implement runtime booleans"),
                     sir::UnaryOp::Deref => todo!(),
                 }
             }
