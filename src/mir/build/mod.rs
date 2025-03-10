@@ -401,6 +401,8 @@ impl<'a> Builder<'a> {
                     block.stmts.push(mir::Stmt::Assign(place, v));
                 }
 
+                block = self.drop_scope(block);
+
                 block.term = Some(mir::Term::Break);
 
                 Ok(BlockAnd::new(block, mir::Operand::NONE))
