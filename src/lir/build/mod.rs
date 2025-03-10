@@ -15,11 +15,11 @@ pub fn build(
     let mut type_map: HashMap<sir::Ty, lir::Tid> = HashMap::new();
 
     let mut main = Builder::new(&mut body_map, &mut type_map, source, &mut program, entry);
-    main.build();
+    let lentry = main.build();
 
     println!("{:#?}", program);
 
-    todo!()
+    Ok((program, lentry))
 }
 
 struct Builder<'a> {
@@ -61,8 +61,8 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn build(&mut self) {
-        self.build_body(self.source);
+    fn build(&mut self) -> lir::Bid {
+        self.build_body(self.source)
     }
 
     fn build_body(&mut self, bid: sir::Bid) -> lir::Bid {
@@ -271,16 +271,70 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn var_from_value(&mut self, bid: lir::Bid, value: &lir::Value) -> lir::Var {
-        todo!()
+    fn var_from_value(
+        &mut self,
+        bid: lir::Bid,
+        block: &mut lir::Block,
+        value: &lir::Value,
+    ) -> lir::Var {
+        let var = {
+            let tid = self.tid_from_value(bid, value);
+            let local = self.push_local(bid, tid);
+            lir::Var::from(local)
+        };
+
+        block.stmts.push(lir::Stmt::Eval {
+            dst: var.clone(),
+            src: value.clone(),
+        });
+
+        var
     }
 
-    fn operand_from_value(&mut self, bid: lir::Bid, value: &lir::Value) -> lir::Operand {
-        todo!()
+    fn var_from_operand(
+        &mut self,
+        bid: lir::Bid,
+        block: &mut lir::Block,
+        operand: &lir::Operand,
+    ) -> lir::Var {
+        match operand {
+            lir::Operand::Var(var) => var.clone(),
+            lir::Operand::Const(tid, cst) => {
+                let local = self.push_local(bid, tid.clone());
+                let var = lir::Var::from(local);
+                block.push(lir::Stmt::Eval {
+                    dst: var.clone(),
+                    src: lir::Value::Use(lir::Operand::Const(tid.clone(), cst.clone())),
+                });
+                var
+            }
+        }
     }
 
-    fn var_from_operand(&mut self, bid: lir::Bid, operand: &lir::Operand) -> lir::Var {
-        todo!()
+    fn tid_from_value(&mut self, bid: lir::Bid, value: &lir::Value) -> lir::Tid {
+        match value {
+            lir::Value::Use(operand)
+            | lir::Value::Binary(_, operand, _)
+            | lir::Value::Unary(_, operand) => self.tid_from_operand(bid, operand),
+            lir::Value::Promote {
+                input: _,
+                output,
+                operand: _,
+            } => output.clone(),
+            lir::Value::Coerce {
+                input: _,
+                output,
+                operand: _,
+            } => output.clone(),
+            lir::Value::Call(var, _) => {
+                let pid = self.tid_from_var(bid, var);
+                if let lir::Ty::Func(_, ret) = self.lir.types[pid] {
+                    ret
+                } else {
+                    panic!("uh oh something did a fucky wucky")
+                }
+            }
+        }
     }
 
     fn tid_from_operand(&mut self, bid: lir::Bid, operand: &lir::Operand) -> lir::Tid {
@@ -290,6 +344,13 @@ impl<'a> Builder<'a> {
                 None => self.lir.bodies[bid][local.clone()],
             },
             lir::Operand::Const(tid, _) => tid.clone(),
+        }
+    }
+
+    fn tid_from_var(&mut self, bid: lir::Bid, var: &lir::Var) -> lir::Tid {
+        match var.access.last() {
+            Some((_, tid)) => tid.clone(),
+            None => self.lir.bodies[bid][var.local.clone()],
         }
     }
 
@@ -552,7 +613,7 @@ impl<'a> Builder<'a> {
                 sir::Term::Return(ref value) => lir::Stmt::Return {
                     val: {
                         let val = self.decompose_value(bid, sbid, &mut lblock, value);
-                        self.operand_from_value(bid, &val)
+                        lir::Operand::Var(self.var_from_value(bid, &mut lblock, &val))
                     },
                 },
                 sir::Term::Break => lir::Stmt::Break {},
@@ -616,7 +677,7 @@ impl<'a> Builder<'a> {
             sir::Ty::Int => lir::Ty::Int,
             sir::Ty::Float => lir::Ty::Float,
             sir::Ty::Str => lir::Ty::Str,
-            sir::Ty::None => lir::Ty::Named(0xffffffff, self.lir.types.get_id(lir::Ty::Empty)),
+            sir::Ty::None => lir::Ty::Empty,
             sir::Ty::True => lir::Ty::True,
             sir::Ty::False => lir::Ty::False,
             sir::Ty::Never => lir::Ty::Never,
