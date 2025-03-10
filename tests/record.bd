@@ -1,0 +1,9 @@
+fn main -> none {
+  let record = record<str> "hello"
+
+  record.field |> std::io::println
+}
+
+fn record (field: 'a) -> { field: 'a } {
+  { field: field }
+}

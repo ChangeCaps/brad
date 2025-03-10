@@ -41,6 +41,8 @@ pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
         }
 
         for (input, local) in hir_body.input.iter().zip(inputs.iter()) {
+            builder.scope.push(*local);
+
             let place = mir::Place {
                 local: *local,
                 proj: Vec::new(),
@@ -140,15 +142,13 @@ impl<'a> Builder<'a> {
 
     fn drop_scope(&mut self, mut block: mir::Block) -> mir::Block {
         for local in self.scope.iter().rev().copied() {
-            let value = mir::Value::Use(mir::Operand::Copy(mir::Place {
+            let value = mir::Operand::Move(mir::Place {
                 local,
                 proj: Vec::new(),
                 is_mutable: false,
-            }));
+            });
 
-            let ty = self.locals[local].clone();
-
-            block.stmts.push(mir::Stmt::Drop(value, ty));
+            block.stmts.push(mir::Stmt::Drop(value));
         }
 
         block
@@ -284,6 +284,8 @@ impl<'a> Builder<'a> {
 
                 let value = unpack!(block = self.build_value(block, expr)?);
 
+                self.scope.push(local);
+
                 let place = mir::Place {
                     local,
                     proj: Vec::new(),
@@ -348,9 +350,23 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, mir::Operand::NONE))
             }
 
-            hir::ExprKind::Let(binding, ty, value) => {
-                let place = unpack!(block = self.build_place(block, value.as_ref().clone())?);
-                let place = unpack!(block = self.coerce_place(block, place, value.ty, ty)?);
+            hir::ExprKind::Let(binding, ty, expr) => {
+                let value = unpack!(block = self.build_value(block, expr.as_ref().clone())?);
+                let value = unpack!(block = self.coerce_value(block, value, expr.ty, ty.clone())?);
+
+                let ty = self.build_ty(ty);
+                let local = self.locals.push(ty);
+
+                self.scope.push(local);
+
+                let place = mir::Place {
+                    local,
+                    proj: Vec::new(),
+                    is_mutable: false,
+                };
+
+                block.stmts.push(mir::Stmt::Assign(place.clone(), value));
+
                 unpack!(block = self.build_binding(block, binding, place)?);
 
                 Ok(BlockAnd::new(block, mir::Operand::NONE))
@@ -376,6 +392,34 @@ impl<'a> Builder<'a> {
                 Ok(BlockAnd::new(block, mir::Operand::NONE))
             }
 
+            hir::ExprKind::Block(exprs) => {
+                let mut operand = None;
+
+                let scope = self.scope.len();
+
+                for expr in exprs {
+                    if let Some(operand) = operand {
+                        block.stmts.push(mir::Stmt::Drop(operand));
+                    }
+
+                    operand = Some(unpack!(block = self.build_operand(block, expr)?));
+                }
+
+                for local in self.scope.drain(scope..).rev() {
+                    let value = mir::Operand::Move(mir::Place {
+                        local,
+                        proj: Vec::new(),
+                        is_mutable: false,
+                    });
+
+                    block.stmts.push(mir::Stmt::Drop(value));
+                }
+
+                let operand = operand.unwrap_or(mir::Operand::NONE);
+
+                Ok(BlockAnd::new(block, operand))
+            }
+
             hir::ExprKind::Local(_)
             | hir::ExprKind::List(_)
             | hir::ExprKind::Tuple(_)
@@ -388,8 +432,7 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Call(_, _)
             | hir::ExprKind::Ref(_)
             | hir::ExprKind::Match(_, _)
-            | hir::ExprKind::Loop(_)
-            | hir::ExprKind::Block(_) => {
+            | hir::ExprKind::Loop(_) => {
                 let place = unpack!(block = self.build_place(block, expr)?);
                 Ok(BlockAnd::new(block, mir::Operand::Copy(place)))
             }
@@ -398,37 +441,6 @@ impl<'a> Builder<'a> {
 
     fn build_value(&mut self, mut block: mir::Block, expr: hir::Expr) -> BuildResult<mir::Value> {
         match expr.kind {
-            hir::ExprKind::Block(exprs) => {
-                let mut value = None;
-
-                let scope = self.scope.len();
-
-                for expr in exprs {
-                    if let Some(value) = value {
-                        let ty = self.build_ty(expr.ty.clone());
-                        block.stmts.push(mir::Stmt::Drop(value, ty));
-                    }
-
-                    value = Some(unpack!(block = self.build_value(block, expr)?));
-                }
-
-                for local in self.scope.drain(scope..).rev() {
-                    let value = mir::Value::Use(mir::Operand::Copy(mir::Place {
-                        local,
-                        proj: Vec::new(),
-                        is_mutable: false,
-                    }));
-
-                    let ty = self.locals[local].clone();
-
-                    block.stmts.push(mir::Stmt::Drop(value, ty));
-                }
-
-                let value = value.unwrap_or(mir::Value::NONE);
-
-                Ok(BlockAnd::new(block, value))
-            }
-
             hir::ExprKind::Tuple(exprs) => {
                 let mut values = Vec::new();
 
@@ -568,6 +580,7 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Match(_, _)
             | hir::ExprKind::Loop(_)
             | hir::ExprKind::Break(_)
+            | hir::ExprKind::Block(_)
             | hir::ExprKind::Let(_, _, _) => {
                 let operand = unpack!(block = self.build_operand(block, expr)?);
                 Ok(BlockAnd::new(block, mir::Value::Use(operand)))

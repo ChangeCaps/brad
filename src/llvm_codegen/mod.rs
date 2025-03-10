@@ -540,6 +540,9 @@ impl<'a> BodyCodegen<'a> {
             match term {
                 sir::Term::Return(value) => {
                     let value = self.value(value);
+
+                    self.collect();
+
                     LLVMBuildRet(self.builder, value);
                 }
 
@@ -550,9 +553,10 @@ impl<'a> BodyCodegen<'a> {
 
     unsafe fn stmt(&mut self, stmt: &sir::Stmt) {
         match stmt {
-            sir::Stmt::Drop(value, tid) => {
-                let value = self.value(value);
-                self.drop(value, *tid);
+            sir::Stmt::Drop(operand) => {
+                let tid = *operand.ty(&self.body().locals);
+                let operand = self.operand(operand);
+                self.drop(operand, tid);
             }
 
             sir::Stmt::Assign(place, value) => {

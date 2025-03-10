@@ -178,6 +178,11 @@ impl<'a> Builder<'a> {
             sir::Operand::Copy(ref place) => {
                 lir::Operand::Var(self.decompose_place(bid, block, place))
             }
+
+            sir::Operand::Move(ref place) => {
+                todo!()
+            }
+
             sir::Operand::Const(ref cst, tid) => lir::Operand::Const(
                 self.map_tid(tid.clone()),
                 match cst {
@@ -352,10 +357,10 @@ impl<'a> Builder<'a> {
 
     fn build_stmt(&mut self, bid: lir::Bid, block: &mut lir::Block, stmt: &sir::Stmt) -> lir::Stmt {
         match stmt {
-            sir::Stmt::Drop(value, _) => lir::Stmt::Drop {
+            sir::Stmt::Drop(operand) => lir::Stmt::Drop {
                 var: {
-                    let val = self.decompose_value(bid, block, value);
-                    self.var_from_value(bid, &val)
+                    let operand = self.decompose_operand(bid, block, operand);
+                    self.var_from_operand(bid, &operand)
                 },
             },
             sir::Stmt::Assign(place, value) => lir::Stmt::Eval {

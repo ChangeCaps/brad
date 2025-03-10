@@ -19,5 +19,8 @@ brad_str brad_str_concat(
     memcpy(result->data, a->data, a->length);
     memcpy(result->data + a->length, b->data, b->length);
 
+    brad_release((brad_ptr)a);
+    brad_release((brad_ptr)b);
+
     return result;
 }

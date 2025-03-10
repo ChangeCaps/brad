@@ -6,5 +6,5 @@ fn main -> none {
     |> string::append ", "
     |> string::append "world"
     |> string::append "!"
-    |> io::println 
+    |> io::println  
 }

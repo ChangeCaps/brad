@@ -37,6 +37,9 @@ impl BodyCodegen<'_> {
                     );
 
                     LLVMBuildStore(self.builder, *value, field);
+
+                    let tid = items[i].ty(&self.body().locals);
+                    self.drop(*value, *tid);
                 }
 
                 ptr
@@ -74,6 +77,9 @@ impl BodyCodegen<'_> {
                     );
 
                     LLVMBuildStore(self.builder, *value, field);
+
+                    let tid = fields[i].1.ty(&self.body().locals);
+                    self.drop(*value, *tid);
                 }
 
                 ptr
@@ -143,7 +149,6 @@ impl BodyCodegen<'_> {
                 let input_tid = *input.ty(&self.body().locals);
                 let input_ty = self.codegen.tid(input_tid);
                 let input = self.operand(input);
-                self.copy(input, input_tid);
 
                 let func_ty = LLVMStructTypeInContext(
                     self.context,
@@ -265,6 +270,7 @@ impl BodyCodegen<'_> {
 
                 LLVMPositionBuilderAtEnd(self.builder, append_block);
 
+                let func = self.copy(func, func_tid);
                 LLVMBuildStore(self.builder, func, output);
                 LLVMBuildBr(self.builder, end_block);
 

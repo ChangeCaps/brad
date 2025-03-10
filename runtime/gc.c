@@ -73,12 +73,43 @@ void brad_mark(
 ) {}
 
 void brad_collect() {
-    printf("Collecting garbage\n");
+    printf("Collecting garbage:\n\n");
 
     for (brad_size i = 0; i < brad_context.allocations.len; i++) {
+        if (!brad_context.allocations.allocations[i]) {
+            continue;
+        }
+
+        brad_allocation* allocation =
+            brad_allocation_from_ptr(brad_context.allocations.allocations[i]);
+
+        if (allocation->ref_count == 0) {
+            printf("Freeing %p\n", (void*)allocation);
+            free(allocation);
+
+            brad_context.allocations.allocations[i] = (brad_ptr)NULL;
+        }
+    }
+
+    printf("\n");
+    printf("Garbage collection complete\n");
+    printf("\n");
+    printf("Remaining allocations:\n");
+
+    for (brad_size i = 0; i < brad_context.allocations.len; i++) {
+        if (!brad_context.allocations.allocations[i]) {
+            continue;
+        }
+
+        brad_allocation* allocation =
+            brad_allocation_from_ptr(brad_context.allocations.allocations[i]);
+
         printf(
-            "Marking root %p\n",
-            (void*)brad_context.allocations.allocations[i]
+            "%p, ref count: %d\n",
+            (void*)brad_context.allocations.allocations[i],
+            (int)allocation->ref_count
         );
     }
+
+    printf("\n");
 }

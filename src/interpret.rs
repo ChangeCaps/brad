@@ -42,7 +42,7 @@ impl Interpreter {
 
     fn eval_stmt(&self, frame: &mut Frame, stmt: &sir::Stmt) -> Result<(), Flow> {
         match stmt {
-            sir::Stmt::Drop(_, _) => Ok(()),
+            sir::Stmt::Drop(_) => Ok(()),
 
             sir::Stmt::Assign(place, value) => {
                 let value = self.eval_value(frame, value);
@@ -368,6 +368,7 @@ impl Interpreter {
     fn eval_operand(&self, frame: &mut Frame, operand: &sir::Operand) -> Value {
         match operand {
             sir::Operand::Copy(place) => self.eval_place(frame, place),
+            sir::Operand::Move(place) => self.eval_place(frame, place),
             sir::Operand::Const(const_, _) => self.eval_const(const_),
         }
     }

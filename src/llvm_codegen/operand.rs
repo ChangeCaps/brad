@@ -13,7 +13,14 @@ impl BodyCodegen<'_> {
 
                 let place = self.place(place);
 
-                LLVMBuildLoad2(self.builder, ty, place, c"load".as_ptr())
+                let operand = LLVMBuildLoad2(self.builder, ty, place, c"load".as_ptr());
+                self.copy(operand, tid)
+            }
+
+            sir::Operand::Move(place) => {
+                let place = self.place(place);
+
+                LLVMBuildLoad2(self.builder, LLVMTypeOf(place), place, c"load".as_ptr())
             }
 
             sir::Operand::Const(r#const, _) => match r#const {
