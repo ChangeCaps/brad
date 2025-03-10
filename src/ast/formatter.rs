@@ -1,4 +1,4 @@
-use crate::ast::{Binding, Decl, Expr, Generics, Module, Pattern, Ty};
+use crate::ast::{Binding, Decl, Expr, Func, Generics, Module, Pattern, Ty};
 use std::{io, io::Write};
 
 const INDENT_SIZE: usize = 4;
@@ -39,6 +39,11 @@ where
         match decl {
             Decl::Func(func_decl) => {
                 writeln!(self.writer)?;
+
+                if (func_decl.is_extern) {
+                    write!(self.writer, "extern ")?;
+                }
+
                 write!(self.writer, "fn")?;
                 write!(self.writer, " {}", func_decl.name)?;
 
@@ -64,9 +69,14 @@ where
                     self.format_ty(ty)?;
                 };
 
-                if let Some(ref body) = func_decl.body {
-                    self.format_expr(body)?;
-                }
+                match func_decl {
+                    Func {
+                        body: Some(body),
+                        is_extern: false,
+                        ..
+                    } => self.format_expr(body)?,
+                    _ => {}
+                };
 
                 writeln!(self.writer)
             }
