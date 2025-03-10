@@ -166,7 +166,7 @@ pub enum UnaryOp {
 
 #[derive(Clone, Debug)]
 pub enum Operand<T = Ty> {
-    Copy(Place<T>),
+    Load(Place<T>),
     Const(Const, T),
 }
 
@@ -176,12 +176,12 @@ impl Operand {
 
 impl<T> Operand<T> {
     pub fn local(local: Local) -> Self {
-        Operand::Copy(Place::local(local))
+        Operand::Load(Place::local(local))
     }
 
     pub fn ty<'a>(&'a self, locals: &'a Locals<T>) -> &'a T {
         match self {
-            Operand::Copy(place) => place.ty(locals),
+            Operand::Load(place) => place.ty(locals),
             Operand::Const(_, ty) => ty,
         }
     }

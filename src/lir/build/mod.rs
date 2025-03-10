@@ -375,7 +375,7 @@ impl<'a> Builder<'a> {
             // }
 
             // this is a move
-            sir::Operand::Copy(ref place) => {
+            sir::Operand::Load(ref place) => {
                 lir::Operand::Var(lir::Var::from(self.read_place(bid, sbid, block, place)))
             }
 

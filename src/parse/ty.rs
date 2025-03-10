@@ -32,14 +32,15 @@ fn func(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
 fn union(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
     let first = tuple(input)?;
 
-    if !input.is(Token::Pipe) {
+    if !is_union(input) {
         return Ok(first);
     }
 
     let mut span = first.span();
     let mut tys = vec![first];
 
-    while input.is(Token::Pipe) {
+    while is_union(input) {
+        consume_newlines(input);
         input.consume();
 
         let term = tuple(input)?;
@@ -48,6 +49,16 @@ fn union(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
     }
 
     Ok(ast::Ty::Union { tys, span })
+}
+
+fn is_union(input: &Tokens) -> bool {
+    let mut offset = 0;
+
+    while input.nth_is(offset, Token::Newline) {
+        offset += 1;
+    }
+
+    input.nth_is(offset, Token::Pipe)
 }
 
 fn tuple(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {

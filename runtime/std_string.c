@@ -21,9 +21,6 @@ brad_str brad_str_concat(
     memcpy(result->data, a->data, a->length);
     memcpy(result->data + a->length, b->data, b->length);
 
-    brad_release((brad_ptr)a);
-    brad_release((brad_ptr)b);
-
     return result;
 }
 
@@ -35,6 +32,18 @@ brad_str brad_int_to_str(
         (brad_str)brad_alloc(new_size, brad_str_marker, "brad_int_to_str str");
 
     result->length = sprintf(result->data, "%ld", i);
+
+    return result;
+}
+
+brad_str brad_float_to_str(
+    brad_float f
+) {
+    brad_size new_size = sizeof(brad_str) + 32;
+    brad_str result = (brad_str
+    )brad_alloc(new_size, brad_str_marker, "brad_float_to_str str");
+
+    result->length = sprintf(result->data, "%f", f);
 
     return result;
 }

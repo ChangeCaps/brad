@@ -1,0 +1,126 @@
+type ident    = str
+type string   = str
+type integer  = int
+type floating = float
+
+type newline
+type eof
+
+type dotdot
+type eqeq
+type gteq
+type lteq
+type gtgt
+type ltlt
+type ampamp
+type pipepipe
+type pipegt
+type ltpipe
+type thin-arrow
+type thick-arrow
+type coloncolon
+
+type open-paren
+type open-bracket
+type open-brace
+type close-paren
+type close-bracket
+type close-brace
+type pound
+type bang
+type tilde
+type at
+type dollar
+type percent
+type caret
+type amp
+type pipe
+type star
+type slash
+type plus
+type minus
+type quote
+type question
+type under
+type semi
+type comma
+type dot
+type eq
+type gt
+type lt
+
+type alias_
+type as_
+type async_
+type await_
+type break_
+type extern_
+type false_
+type fn_
+type import_
+type int_
+type is_
+type let_
+type loop_
+type match_
+type mut_
+type none_
+type pub_
+type ref_
+type return_
+type str_
+type true_
+type type_
+
+type token = ident 
+           | string 
+           | integer 
+           | floating
+
+           | newline
+           | eof
+
+           | dotdot
+           | eqeq
+           | gteq
+           | lteq
+           | gtgt
+           | ltlt
+           | ampamp
+           | pipepipe
+           | pipegt
+           | ltpipe
+           | thin-arrow
+           | thick-arrow
+           | coloncolon
+
+           | open-paren
+           | open-bracket
+           | open-brace
+           | close-paren
+           | close-bracket
+           | close-brace
+
+
+           | alias_
+           | as_
+           | async_
+           | await_
+           | break_
+           | extern_
+           | false_
+           | fn_
+           | import_
+           | int_
+           | is_
+           | let_
+           | loop_
+           | match_
+           | mut_
+           | none_
+           | pub_
+           | ref_
+           | return_
+           | str_
+           | true_
+           | type_

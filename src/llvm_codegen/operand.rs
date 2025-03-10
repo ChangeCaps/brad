@@ -7,7 +7,7 @@ use super::BodyCodegen;
 impl BodyCodegen<'_> {
     pub unsafe fn operand(&mut self, operand: &sir::Operand) -> LLVMValueRef {
         match operand {
-            sir::Operand::Copy(place) => {
+            sir::Operand::Load(place) => {
                 let &tid = place.ty(&self.body().locals);
                 let ty = self.codegen.tid(tid);
 

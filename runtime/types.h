@@ -14,3 +14,4 @@ typedef struct {
 }* brad_str;
 
 typedef int64_t brad_int;
+typedef double brad_float;

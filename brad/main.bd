@@ -1,0 +1,4 @@
+fn main -> none {
+  let x: parse::token = parse::dotdot
+
+}

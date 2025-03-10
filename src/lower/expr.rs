@@ -327,7 +327,32 @@ impl<'a> BodyLowerer<'a> {
         )?;
 
         match item {
-            Resolved::Type(_) => todo!(),
+            Resolved::Type(ty) => match ty {
+                hir::Ty::Named(id, tys) => {
+                    if self.program[id].ty.is_some() {
+                        let diagnostic = Diagnostic::error("invalid::instance")
+                            .message("instancing is only allowed for zero-sized types")
+                            .label(ast.span, "found here");
+
+                        return Err(diagnostic);
+                    }
+
+                    Ok(hir::Expr {
+                        kind: hir::ExprKind::Named(id, tys.clone()),
+                        ty: hir::Ty::Named(id, tys),
+                        span: ast.span,
+                    })
+                }
+
+                _ => {
+                    let diagnostic = Diagnostic::error("unresolved::type")
+                        .message("expected named type in path")
+                        .label(ast.span, "found here");
+
+                    Err(diagnostic)
+                }
+            },
+
             Resolved::Func(body_id, generics) => {
                 let body = &self.program[body_id];
 

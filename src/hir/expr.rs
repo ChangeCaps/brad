@@ -1,6 +1,6 @@
 use crate::diagnostic::Span;
 
-use super::{BodyId, LocalId, Ty};
+use super::{BodyId, LocalId, NamedId, Ty};
 
 #[derive(Clone, Debug)]
 pub struct Expr {
@@ -26,6 +26,7 @@ pub enum ExprKind {
     True,
     False,
     None,
+    Named(NamedId, Vec<Ty>),
     String(&'static str),
     Local(LocalId),
     Func(BodyId, Vec<Ty>),

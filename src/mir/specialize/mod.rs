@@ -278,7 +278,7 @@ impl<'a> Specializer<'a> {
 
                     let field = sir::Value::Call(
                         sir::Place::local(temp),   // format function
-                        sir::Operand::Copy(field), // field value
+                        sir::Operand::Load(field), // field value
                     );
 
                     let temp = locals.push(str_tid);
@@ -290,7 +290,7 @@ impl<'a> Specializer<'a> {
                         &mut block,
                         concat.clone(),
                         output,
-                        sir::Operand::Copy(sir::Place::local(temp)),
+                        sir::Operand::Load(sir::Place::local(temp)),
                     );
 
                     if i + 1 < fields.len() {
@@ -398,7 +398,7 @@ impl<'a> Specializer<'a> {
 
                     let field = sir::Value::Call(
                         sir::Place::local(temp),   // format function
-                        sir::Operand::Copy(field), // field value
+                        sir::Operand::Load(field), // field value
                     );
 
                     let temp = locals.push(str_tid);
@@ -410,7 +410,7 @@ impl<'a> Specializer<'a> {
                         &mut block,
                         concat.clone(),
                         output,
-                        sir::Operand::Copy(sir::Place::local(temp)),
+                        sir::Operand::Load(sir::Place::local(temp)),
                     );
 
                     output = self.str_concat(
@@ -478,7 +478,7 @@ impl<'a> Specializer<'a> {
 
                     let value = sir::Value::Call(
                         sir::Place::local(temp),
-                        sir::Operand::Copy(sir::Place::local(local)),
+                        sir::Operand::Load(sir::Place::local(local)),
                     );
 
                     block.push(sir::Stmt::Drop(temp));
@@ -546,7 +546,7 @@ impl<'a> Specializer<'a> {
             sir::Value::Call(sir::Place::local(func_temp), rhs),
         ));
 
-        sir::Operand::Copy(sir::Place::local(output_temp))
+        sir::Operand::Load(sir::Place::local(output_temp))
     }
 
     fn str_concat_func(&mut self, locals: &mut sir::Locals, block: &mut sir::Block) -> sir::Place {
@@ -832,7 +832,7 @@ impl<'a> Specializer<'a> {
 
     fn operand(&mut self, operand: mir::Operand, generics: &[sir::Tid]) -> sir::Operand {
         match operand {
-            mir::Operand::Copy(place) => sir::Operand::Copy(self.place(place, generics)),
+            mir::Operand::Load(place) => sir::Operand::Load(self.place(place, generics)),
             mir::Operand::Const(r#const, ty) => sir::Operand::Const(r#const, self.ty(ty, generics)),
         }
     }

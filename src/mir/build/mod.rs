@@ -279,6 +279,7 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::True
             | hir::ExprKind::False
             | hir::ExprKind::None
+            | hir::ExprKind::Named(_, _)
             | hir::ExprKind::String(_)
             | hir::ExprKind::Func(_, _)
             | hir::ExprKind::List(_)
@@ -336,6 +337,13 @@ impl<'a> Builder<'a> {
                     hir::ExprKind::None => mir::Ty::None,
                     _ => unreachable!(),
                 };
+
+                let operand = mir::Operand::Const(mir::Const::None, ty);
+                Ok(BlockAnd::new(block, operand))
+            }
+
+            hir::ExprKind::Named(id, generics) => {
+                let ty = self.build_ty(hir::Ty::Named(id, generics));
 
                 let operand = mir::Operand::Const(mir::Const::None, ty);
                 Ok(BlockAnd::new(block, operand))
@@ -455,7 +463,7 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Match(_, _)
             | hir::ExprKind::Loop(_) => {
                 let place = unpack!(block = self.build_place(block, expr)?);
-                Ok(BlockAnd::new(block, mir::Operand::Copy(place)))
+                Ok(BlockAnd::new(block, mir::Operand::Load(place)))
             }
         }
     }
@@ -590,6 +598,7 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::True
             | hir::ExprKind::False
             | hir::ExprKind::None
+            | hir::ExprKind::Named(_, _)
             | hir::ExprKind::String(_)
             | hir::ExprKind::Local(_)
             | hir::ExprKind::List(_)
@@ -626,7 +635,7 @@ impl<'a> Builder<'a> {
 
                 self.scope.push(place.local);
 
-                let value = mir::Value::Use(mir::Operand::Copy(value));
+                let value = mir::Value::Use(mir::Operand::Load(value));
                 block.push(mir::Stmt::Assign(place, value));
 
                 Ok(BlockAnd::new(block, ()))
@@ -665,7 +674,7 @@ impl<'a> Builder<'a> {
 
         let tid = self.build_ty(to.clone());
 
-        let operand = mir::Operand::Copy(place.clone());
+        let operand = mir::Operand::Load(place.clone());
         let value = mir::Value::Use(operand);
         let value = unpack!(block = self.coerce_value(block, value, from, to)?);
 
@@ -706,7 +715,7 @@ impl<'a> Builder<'a> {
 
         block.push(mir::Stmt::Assign(place.clone(), value));
 
-        Ok(BlockAnd::new(block, mir::Operand::Copy(place)))
+        Ok(BlockAnd::new(block, mir::Operand::Load(place)))
     }
 
     fn coerce_value(
@@ -757,7 +766,7 @@ impl<'a> Builder<'a> {
 
                     block.push(mir::Stmt::Assign(place.clone(), value));
 
-                    let operand = mir::Operand::Copy(place);
+                    let operand = mir::Operand::Load(place);
                     let value = mir::Value::Coerce {
                         inputs: from_tys,
                         variants: tys,
@@ -780,7 +789,7 @@ impl<'a> Builder<'a> {
 
                 block.push(mir::Stmt::Assign(place.clone(), value));
 
-                let operand = mir::Operand::Copy(place);
+                let operand = mir::Operand::Load(place);
                 let value = mir::Value::Promote {
                     variant: from,
                     variants: tys,
