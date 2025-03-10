@@ -40,7 +40,7 @@ where
             Decl::Func(func_decl) => {
                 writeln!(self.writer)?;
 
-                if (func_decl.is_extern) {
+                if func_decl.is_extern {
                     write!(self.writer, "extern ")?;
                 }
 

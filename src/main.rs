@@ -36,7 +36,7 @@ pub struct FileArgs {
 #[derive(Args, Clone)]
 pub struct ModuleArgs {
     /// Module name to interpret, as a positional argument
-    #[arg(required=true)]
+    #[arg(required = true)]
     packages: Vec<String>,
     /// Output IR file, as an optional argument
     #[arg(short, long)]
