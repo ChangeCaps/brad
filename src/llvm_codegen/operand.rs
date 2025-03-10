@@ -17,12 +17,6 @@ impl BodyCodegen<'_> {
                 self.copy(operand, tid)
             }
 
-            sir::Operand::Move(place) => {
-                let place = self.place(place);
-
-                LLVMBuildLoad2(self.builder, LLVMTypeOf(place), place, c"load".as_ptr())
-            }
-
             sir::Operand::Const(r#const, _) => match r#const {
                 sir::Const::None => self.codegen.zero_size_value(),
 

@@ -5,6 +5,8 @@
 
 #include "gc.h"
 
+#define DEBUG
+
 brad_thread_context brad_context = {0};
 
 void brad_init() {

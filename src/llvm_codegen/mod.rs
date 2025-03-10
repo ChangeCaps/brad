@@ -542,10 +542,18 @@ impl<'a> BodyCodegen<'a> {
 
     unsafe fn stmt(&mut self, stmt: &sir::Stmt) {
         match stmt {
-            sir::Stmt::Drop(operand) => {
-                let tid = *operand.ty(&self.body().locals);
-                let operand = self.operand(operand);
-                self.drop(operand, tid);
+            sir::Stmt::Drop(local) => {
+                let tid = self.body().locals[*local];
+
+                let local = self.llvm_body().locals[local.0];
+                let value = LLVMBuildLoad2(
+                    self.builder,
+                    LLVMTypeOf(local),
+                    local,
+                    c"load_drop".as_ptr(),
+                );
+
+                self.drop(value, tid);
             }
 
             sir::Stmt::Assign(place, value) => {

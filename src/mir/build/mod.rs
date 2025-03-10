@@ -144,13 +144,7 @@ impl<'a> Builder<'a> {
 
     fn drop_scope(&mut self, mut block: mir::Block) -> mir::Block {
         for local in self.scope.iter().rev().copied() {
-            let value = mir::Operand::Move(mir::Place {
-                local,
-                proj: Vec::new(),
-                is_mutable: false,
-            });
-
-            block.push(mir::Stmt::Drop(value));
+            block.push(mir::Stmt::Drop(local));
         }
 
         block
@@ -158,13 +152,7 @@ impl<'a> Builder<'a> {
 
     fn drop_break_scope(&mut self, mut block: mir::Block) -> mir::Block {
         for local in self.scope[self.break_scope..].iter().rev() {
-            let value = mir::Operand::Move(mir::Place {
-                local: *local,
-                proj: Vec::new(),
-                is_mutable: false,
-            });
-
-            block.push(mir::Stmt::Drop(value));
+            block.push(mir::Stmt::Drop(*local));
         }
 
         block
@@ -229,13 +217,7 @@ impl<'a> Builder<'a> {
                             let value = unpack!(block = self.build_value(block, arm.expr)?);
 
                             for local in self.scope.drain(scope..).rev() {
-                                let value = mir::Operand::Move(mir::Place {
-                                    local,
-                                    proj: Vec::new(),
-                                    is_mutable: false,
-                                });
-
-                                block.push(mir::Stmt::Drop(value));
+                                block.push(mir::Stmt::Drop(local));
                             }
 
                             let output = mir::Place {
@@ -429,26 +411,31 @@ impl<'a> Builder<'a> {
             }
 
             hir::ExprKind::Block(exprs) => {
-                let mut operand = None;
+                let mut operand: Option<mir::Operand> = None;
 
                 let scope = self.scope.len();
 
                 for expr in exprs {
                     if let Some(operand) = operand {
-                        block.push(mir::Stmt::Drop(operand));
+                        let temp = self.locals.push(operand.ty(&self.locals).clone());
+
+                        block.push(mir::Stmt::Assign(
+                            mir::Place {
+                                local: temp,
+                                proj: Vec::new(),
+                                is_mutable: false,
+                            },
+                            mir::Value::Use(operand),
+                        ));
+
+                        block.push(mir::Stmt::Drop(temp));
                     }
 
                     operand = Some(unpack!(block = self.build_operand(block, expr)?));
                 }
 
                 for local in self.scope.drain(scope..).rev() {
-                    let value = mir::Operand::Move(mir::Place {
-                        local,
-                        proj: Vec::new(),
-                        is_mutable: false,
-                    });
-
-                    block.push(mir::Stmt::Drop(value));
+                    block.push(mir::Stmt::Drop(local));
                 }
 
                 let operand = operand.unwrap_or(mir::Operand::NONE);

@@ -29,7 +29,7 @@ impl<T> Block<T> {
 
 #[derive(Clone, Debug)]
 pub enum Stmt<T = Ty> {
-    Drop(Operand<T>),
+    Drop(Local),
 
     Assign(Place<T>, Value<T>),
 
@@ -167,7 +167,6 @@ pub enum UnaryOp {
 #[derive(Clone, Debug)]
 pub enum Operand<T = Ty> {
     Copy(Place<T>),
-    Move(Place<T>),
     Const(Const, T),
 }
 
@@ -183,7 +182,6 @@ impl<T> Operand<T> {
     pub fn ty<'a>(&'a self, locals: &'a Locals<T>) -> &'a T {
         match self {
             Operand::Copy(place) => place.ty(locals),
-            Operand::Move(place) => place.ty(locals),
             Operand::Const(_, ty) => ty,
         }
     }

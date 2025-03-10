@@ -31,8 +31,8 @@ impl<'a> Specializer<'a> {
         }
     }
 
-    fn body(&mut self, id: mir::Bid, generics: &[sir::Tid]) -> sir::Bid {
-        if let Some(&body) = self.bodies.get(&(id, generics.to_vec())) {
+    fn body(&mut self, bid: mir::Bid, generics: &[sir::Tid]) -> sir::Bid {
+        if let Some(&body) = self.bodies.get(&(bid, generics.to_vec())) {
             return body;
         }
 
@@ -48,21 +48,21 @@ impl<'a> Specializer<'a> {
             block: None,
         });
 
-        self.bodies.insert((id, generics.to_vec()), spec);
+        self.bodies.insert((bid, generics.to_vec()), spec);
 
-        if self.mir.bodies[id].attrs.find_value("intrinsic") == Some("string::format") {
-            self.sir.bodies[spec] = self.format(generics[0]);
+        if self.mir.bodies[bid].attrs.find_value("intrinsic") == Some("string::format") {
+            self.sir.bodies[spec] = self.format(bid, generics[0]);
 
             return spec;
         }
 
         let mut locals = sir::Locals::new();
 
-        for (_, ty) in self.mir.bodies[id].locals.iter() {
+        for (_, ty) in self.mir.bodies[bid].locals.iter() {
             locals.push(self.ty(ty.clone(), generics));
         }
 
-        let block = self.mir.bodies[id]
+        let block = self.mir.bodies[bid]
             .block
             .clone()
             .map(|b| self.block(b, generics));
@@ -74,16 +74,16 @@ impl<'a> Specializer<'a> {
                 .collect();
 
             if generics.is_empty() {
-                self.mir.bodies[id].name.clone()
+                self.mir.bodies[bid].name.clone()
             } else {
-                self.mir.bodies[id]
+                self.mir.bodies[bid]
                     .name
                     .as_ref()
                     .map(|name| format!("{}<{}>", name, generics.join(", ")))
             }
         };
 
-        let body = &self.mir.bodies[id];
+        let body = &self.mir.bodies[bid];
 
         self.sir.bodies[spec] = sir::Body {
             attrs: body.attrs.clone(),
@@ -99,11 +99,11 @@ impl<'a> Specializer<'a> {
         spec
     }
 
-    fn format(&mut self, tid: sir::Tid) -> sir::Body {
+    fn format(&mut self, bid: mir::Bid, tid: sir::Tid) -> sir::Body {
         let str_tid = self.sir.types.get_or_insert(&sir::Ty::Str);
         let int_tid = self.sir.types.get_or_insert(&sir::Ty::Int);
 
-        match self.sir.types[tid] {
+        match self.sir.types[tid].clone() {
             sir::Ty::Int => sir::Body {
                 attrs: Attributes::new().with(("link", "brad_int_to_str")),
                 is_extern: true,
@@ -222,16 +222,218 @@ impl<'a> Specializer<'a> {
                 }
             }
 
+            sir::Ty::Func(_, _) => {
+                let mut block = sir::Block::new();
+                block.term(sir::Term::Return(sir::Value::Use(sir::Operand::Const(
+                    sir::Const::String("fn"),
+                    str_tid,
+                ))));
+
+                sir::Body {
+                    attrs: Attributes::new(),
+                    is_extern: false,
+                    name: None,
+                    captures: 0,
+                    arguments: 0,
+                    output: str_tid,
+                    locals: sir::Locals::new(),
+                    block: Some(block),
+                }
+            }
+
             sir::Ty::Ref(_) => todo!(),
             sir::Ty::List(_) => todo!(),
-            sir::Ty::Func(_, _) => todo!(),
 
             sir::Ty::Tuple(_) => todo!(),
 
-            sir::Ty::Record(_) => todo!(),
+            sir::Ty::Record(fields) => {
+                let mut locals = sir::Locals::new();
+                let input = locals.push(tid);
+
+                let mut block = sir::Block::new();
+
+                let concat = self.str_concat_func(&mut locals, &mut block);
+
+                let open = sir::Operand::Const(sir::Const::String("{"), str_tid);
+                let close = sir::Operand::Const(sir::Const::String("}"), str_tid);
+                let space = sir::Operand::Const(sir::Const::String(" "), str_tid);
+                let colon = sir::Operand::Const(sir::Const::String(":"), str_tid);
+                let semi = sir::Operand::Const(sir::Const::String(";"), str_tid);
+
+                let mut output = open;
+
+                for (name, tid) in fields.into_iter() {
+                    output = self.str_concat(
+                        &mut locals,
+                        &mut block,
+                        concat.clone(),
+                        output,
+                        space.clone(),
+                    );
+
+                    output = self.str_concat(
+                        &mut locals,
+                        &mut block,
+                        concat.clone(),
+                        output,
+                        sir::Operand::Const(sir::Const::String(name), str_tid),
+                    );
+
+                    output = self.str_concat(
+                        &mut locals,
+                        &mut block,
+                        concat.clone(),
+                        output,
+                        colon.clone(),
+                    );
+
+                    output = self.str_concat(
+                        &mut locals,
+                        &mut block,
+                        concat.clone(),
+                        output,
+                        space.clone(),
+                    );
+
+                    let mut field = sir::Place::local(input);
+                    field.proj.push((sir::Proj::Field(name), tid));
+
+                    let format = self.body(bid, &[tid]);
+                    let format = sir::Value::Closure {
+                        body: format,
+                        generics: Vec::new(),
+                        captures: Vec::new(),
+                    };
+
+                    let format_ty = sir::Ty::Func(tid, str_tid);
+                    let format_tid = self.sir.types.get_or_insert(&format_ty);
+
+                    let temp = locals.push(format_tid);
+
+                    block.push(sir::Stmt::Assign(sir::Place::local(temp), format));
+
+                    let field = sir::Value::Call(
+                        sir::Place::local(temp),   // format function
+                        sir::Operand::Copy(field), // field value
+                    );
+
+                    let temp = locals.push(str_tid);
+
+                    block.push(sir::Stmt::Assign(sir::Place::local(temp), field));
+
+                    output = self.str_concat(
+                        &mut locals,
+                        &mut block,
+                        concat.clone(),
+                        output,
+                        sir::Operand::Copy(sir::Place::local(temp)),
+                    );
+
+                    output = self.str_concat(
+                        &mut locals,
+                        &mut block,
+                        concat.clone(),
+                        output,
+                        semi.clone(),
+                    );
+
+                    output = self.str_concat(
+                        &mut locals,
+                        &mut block,
+                        concat.clone(),
+                        output,
+                        space.clone(),
+                    );
+                }
+
+                output = self.str_concat(&mut locals, &mut block, concat.clone(), output, close);
+
+                for (local, _) in locals.iter() {
+                    block.push(sir::Stmt::Drop(local));
+                }
+
+                block.term(sir::Term::Return(sir::Value::Use(output)));
+
+                sir::Body {
+                    attrs: Attributes::new(),
+                    is_extern: false,
+                    name: None,
+                    captures: 0,
+                    arguments: 1,
+                    output: str_tid,
+                    locals,
+                    block: Some(block),
+                }
+            }
 
             sir::Ty::Union(_) => todo!(),
         }
+    }
+
+    fn str_concat(
+        &mut self,
+        locals: &mut sir::Locals,
+        block: &mut sir::Block,
+        func: sir::Place,
+        lhs: sir::Operand,
+        rhs: sir::Operand,
+    ) -> sir::Operand {
+        let str_tid = self.sir.types.get_or_insert(&sir::Ty::Str);
+
+        let str_str_ty = sir::Ty::Func(str_tid, str_tid);
+        let str_str_tid = self.sir.types.get_or_insert(&str_str_ty);
+
+        let func_temp = locals.push(str_str_tid);
+
+        block.push(sir::Stmt::Assign(
+            sir::Place::local(func_temp),
+            sir::Value::Call(func, lhs),
+        ));
+
+        let output_temp = locals.push(str_tid);
+
+        block.push(sir::Stmt::Assign(
+            sir::Place::local(output_temp),
+            sir::Value::Call(sir::Place::local(func_temp), rhs),
+        ));
+
+        sir::Operand::Copy(sir::Place::local(output_temp))
+    }
+
+    fn str_concat_func(&mut self, locals: &mut sir::Locals, block: &mut sir::Block) -> sir::Place {
+        let bid = self
+            .mir
+            .bodies
+            .iter()
+            .find_map(|(id, body)| {
+                body.attrs
+                    .find_value("link")
+                    .filter(|&v| v == "brad_str_concat")
+                    .map(|_| id)
+            })
+            .unwrap();
+
+        let bid = self.body(bid, &[]);
+
+        let str_tid = self.sir.types.get_or_insert(&sir::Ty::Str);
+
+        let str_str_ty = sir::Ty::Func(str_tid, str_tid);
+        let str_str_tid = self.sir.types.get_or_insert(&str_str_ty);
+
+        let str_str_str_ty = sir::Ty::Func(str_tid, str_str_tid);
+        let str_str_str_tid = self.sir.types.get_or_insert(&str_str_str_ty);
+
+        let local = locals.push(str_str_str_tid);
+        block.push(sir::Stmt::Assign(
+            sir::Place::local(local),
+            sir::Value::Closure {
+                body: bid,
+                generics: Vec::new(),
+                captures: Vec::new(),
+            },
+        ));
+
+        sir::Place::local(local)
     }
 
     fn block(&mut self, block: mir::Block, generics: &[sir::Tid]) -> sir::Block {
@@ -248,10 +450,7 @@ impl<'a> Specializer<'a> {
 
     fn stmt(&mut self, stmt: mir::Stmt, generics: &[sir::Tid]) -> sir::Stmt {
         match stmt {
-            mir::Stmt::Drop(operand) => {
-                let operand = self.operand(operand, generics);
-                sir::Stmt::Drop(operand)
-            }
+            mir::Stmt::Drop(local) => sir::Stmt::Drop(local),
 
             mir::Stmt::Assign(place, value) => {
                 let place = self.place(place, generics);
@@ -485,7 +684,6 @@ impl<'a> Specializer<'a> {
     fn operand(&mut self, operand: mir::Operand, generics: &[sir::Tid]) -> sir::Operand {
         match operand {
             mir::Operand::Copy(place) => sir::Operand::Copy(self.place(place, generics)),
-            mir::Operand::Move(place) => sir::Operand::Move(self.place(place, generics)),
             mir::Operand::Const(r#const, ty) => sir::Operand::Const(r#const, self.ty(ty, generics)),
         }
     }
