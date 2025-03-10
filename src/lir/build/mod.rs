@@ -362,15 +362,21 @@ impl<'a> Builder<'a> {
         operand: &sir::Operand,
     ) -> lir::Operand {
         match operand {
+            // this is a copy
+            // sir::Operand::DeepCopy(ref place) => {
+            //     let src = self.read_place(bid, sbid, block, place);
+            //     let tid = self.lir.bodies[bid][src];
+            //     let copy = self.push_local(bid, tid);
+            //     block.push(lir::Stmt::Copy {
+            //         dst: lir::Var::from(copy),
+            //         src: lir::Var::from(src),
+            //     });
+            //     lir::Operand::Var(lir::Var::from(copy))
+            // }
+
+            // this is a move
             sir::Operand::Copy(ref place) => {
-                let src = self.read_place(bid, sbid, block, place);
-                let tid = self.lir.bodies[bid][src];
-                let copy = self.push_local(bid, tid);
-                block.push(lir::Stmt::Copy {
-                    dst: lir::Var::from(copy),
-                    src: lir::Var::from(src),
-                });
-                lir::Operand::Var(lir::Var::from(copy))
+                lir::Operand::Var(lir::Var::from(self.read_place(bid, sbid, block, place)))
             }
 
             sir::Operand::Const(ref cst, tid) => lir::Operand::Const(
@@ -598,8 +604,7 @@ impl<'a> Builder<'a> {
         let mut lblock = lir::Block::new();
 
         for stmt in &sblock.stmts {
-            let val = self.build_stmt(bid, sbid, &mut lblock, &stmt);
-            lblock.push(val);
+            self.build_stmt(bid, sbid, &mut lblock, &stmt);
         }
 
         if let Some(ref term) = sblock.term {
@@ -623,33 +628,36 @@ impl<'a> Builder<'a> {
         sbid: sir::Bid,
         block: &mut lir::Block,
         stmt: &sir::Stmt,
-    ) -> lir::Stmt {
+    ) {
         match stmt {
-            sir::Stmt::Drop(operand) => {
-                //let op = self.decompose_operand(bid, sbid, block, operand);
-                //let tid = self.tid_from_operand(bid, &op);
-                //lir::Stmt::Drop { var: op, tid }
-                todo!("sorry")
-            }
+            // do nothing with drop (calculate later)
+            sir::Stmt::Drop(local) => {}
             sir::Stmt::Assign(place, value) => {
                 let src = self.decompose_value(bid, sbid, block, value);
-                self.write_place(bid, sbid, block, place, src)
+                let st = self.write_place(bid, sbid, block, place, src);
+                block.push(st);
             }
-            sir::Stmt::Loop(sblock) => lir::Stmt::Loop {
-                body: self.decompose_block(bid, sbid, sblock),
-            },
+            sir::Stmt::Loop(sblock) => {
+                let st = lir::Stmt::Loop {
+                    body: self.decompose_block(bid, sbid, sblock),
+                };
+                block.push(st);
+            }
             sir::Stmt::Match {
                 target,
                 cases,
                 default,
-            } => lir::Stmt::Match {
-                target: lir::Var::from(self.read_place(bid, sbid, block, target)),
-                cases: cases.iter().fold(Vec::new(), |mut vec, case| {
-                    vec.push(self.decompose_case(bid, sbid, case));
-                    vec
-                }),
-                default: self.decompose_block(bid, sbid, default),
-            },
+            } => {
+                let st = lir::Stmt::Match {
+                    target: lir::Var::from(self.read_place(bid, sbid, block, target)),
+                    cases: cases.iter().fold(Vec::new(), |mut vec, case| {
+                        vec.push(self.decompose_case(bid, sbid, case));
+                        vec
+                    }),
+                    default: self.decompose_block(bid, sbid, default),
+                };
+                block.push(st);
+            }
         }
     }
 

@@ -32,12 +32,9 @@ pub enum Stmt {
     /// return val is in local
     Break,
 
-    /// destroy val (deconstruct/free)
-    Drop { var: Operand, tid: Tid },
-
     /// deep copy src into dst
     /// src = dst.clone()
-    Copy { dst: Var, src: Var },
+    // Copy { dst: Var, src: Var },
 
     /// dst[index].access = val
     WriteIndex {
