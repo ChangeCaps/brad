@@ -489,8 +489,6 @@ impl<'a> Builder<'a> {
                     sir::BinaryOp::FMul => lir::Value::Binary(lir::BinaryOp::FMul, lhs, rhs),
                     sir::BinaryOp::FDiv => lir::Value::Binary(lir::BinaryOp::FDiv, lhs, rhs),
                     sir::BinaryOp::FMod => lir::Value::Binary(lir::BinaryOp::FMod, lhs, rhs),
-                    sir::BinaryOp::FEq => lir::Value::Binary(lir::BinaryOp::FEq, lhs, rhs),
-                    sir::BinaryOp::FNe => lir::Value::Binary(lir::BinaryOp::FNe, lhs, rhs),
                     sir::BinaryOp::FLt => lir::Value::Binary(lir::BinaryOp::FLt, lhs, rhs),
                     sir::BinaryOp::FLe => lir::Value::Binary(lir::BinaryOp::FLe, lhs, rhs),
                     sir::BinaryOp::FGt => lir::Value::Binary(lir::BinaryOp::FGt, lhs, rhs),

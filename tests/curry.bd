@@ -1,0 +1,13 @@
+import std::io
+
+fn main -> none {
+  let f = foo 1
+  let x = f 2
+  let y = f 3
+
+  std::assert <| x + y == 7
+}
+
+fn foo (a: int) (b: int) -> int {
+  a + b
+}

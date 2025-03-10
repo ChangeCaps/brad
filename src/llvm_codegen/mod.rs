@@ -57,6 +57,9 @@ struct GarbageContext {
     pub mark_ty: LLVMTypeRef,
     pub mark: LLVMValueRef,
 
+    pub get_marker_ty: LLVMTypeRef,
+    pub get_marker: LLVMValueRef,
+
     pub marker_ty: LLVMTypeRef,
     pub marker_ptr_ty: LLVMTypeRef,
 }
@@ -85,6 +88,9 @@ impl GarbageContext {
         let mark_ty = LLVMFunctionType(void, [byte_ptr].as_mut_ptr(), 1, 0);
         let mark = LLVMAddFunction(module, c"brad_mark".as_ptr(), mark_ty);
 
+        let get_marker_ty = LLVMFunctionType(marker_ptr_ty, [byte_ptr].as_mut_ptr(), 1, 0);
+        let get_marker = LLVMAddFunction(module, c"brad_get_marker".as_ptr(), get_marker_ty);
+
         Self {
             alloc_ty,
             alloc,
@@ -100,6 +106,9 @@ impl GarbageContext {
 
             mark_ty,
             mark,
+
+            get_marker_ty,
+            get_marker,
 
             marker_ty,
             marker_ptr_ty,
@@ -272,12 +281,15 @@ impl Codegen {
             }
 
             sir::Ty::Func(_, _) => {
-                let missing = LLVMInt64TypeInContext(self.context);
-
-                let mut elements = [missing, self.void_pointer_type(), self.zero_size_type()];
+                let mut elements = [
+                    self.i64_type(),          // allocation size
+                    self.i64_type(),          // missing captures
+                    self.void_pointer_type(), // function pointer
+                    self.zero_size_type(),    // captures
+                ];
 
                 let s = self.types[&tid].1.unwrap();
-                LLVMStructSetBody(s, elements.as_mut_ptr(), 3, 0);
+                LLVMStructSetBody(s, elements.as_mut_ptr(), 4, 0);
             }
 
             sir::Ty::Tuple(ref items) => {
@@ -475,13 +487,20 @@ impl<'a> BodyCodegen<'a> {
 
         let mut args = Vec::new();
 
-        for &local in self.llvm_body().locals.iter().take(self.body().arguments) {
+        for (i, &local) in self
+            .llvm_body()
+            .locals
+            .iter()
+            .enumerate()
+            .take(self.body().arguments)
+        {
             let local = LLVMBuildLoad2(
                 self.builder,
-                LLVMTypeOf(local),
+                inputs[i], // the input type
                 local,
                 c"load_extern_call".as_ptr(),
             );
+
             args.push(local);
         }
 

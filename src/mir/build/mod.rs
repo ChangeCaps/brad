@@ -550,8 +550,9 @@ impl<'a> Builder<'a> {
                     (hir::BinaryOp::Div, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Div,
                     (hir::BinaryOp::Mod, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Mod,
 
-                    (hir::BinaryOp::Eq, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Eq,
-                    (hir::BinaryOp::Ne, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Ne,
+                    (hir::BinaryOp::Eq, _, _) => mir::BinaryOp::Eq,
+                    (hir::BinaryOp::Ne, _, _) => mir::BinaryOp::Ne,
+
                     (hir::BinaryOp::Lt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Lt,
                     (hir::BinaryOp::Le, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Le,
                     (hir::BinaryOp::Gt, mir::Ty::Int, mir::Ty::Int) => mir::BinaryOp::Gt,
@@ -563,8 +564,6 @@ impl<'a> Builder<'a> {
                     (hir::BinaryOp::Div, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FDiv,
                     (hir::BinaryOp::Mod, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FMod,
 
-                    (hir::BinaryOp::Eq, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FEq,
-                    (hir::BinaryOp::Ne, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FNe,
                     (hir::BinaryOp::Lt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FLt,
                     (hir::BinaryOp::Le, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FLe,
                     (hir::BinaryOp::Gt, mir::Ty::Float, mir::Ty::Float) => mir::BinaryOp::FGt,

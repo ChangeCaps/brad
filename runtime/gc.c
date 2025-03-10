@@ -5,9 +5,23 @@
 
 #include "gc.h"
 
-#define DEBUG
-
 brad_thread_context brad_context = {0};
+
+void brad_init() {
+    brad_context.allocations.len = 0;
+    brad_context.allocations.cap = 0;
+    brad_context.allocations.allocations = NULL;
+}
+
+void brad_deinit() {
+    for (brad_size i = 0; i < brad_context.allocations.len; i++) {
+        if (!brad_context.allocations.allocations[i]) {
+            continue;
+        }
+
+        free((void*)brad_context.allocations.allocations[i]);
+    }
+}
 
 static void brad_push_allocation(
     brad_ptr ptr
@@ -87,6 +101,13 @@ void brad_mark(
 
     allocation->mark_count = 1;
     allocation->marker(ptr);
+}
+
+brad_marker brad_get_marker(
+    brad_ptr ptr
+) {
+    brad_allocation* allocation = brad_allocation_from_ptr(ptr);
+    return allocation->marker;
 }
 
 void brad_collect() {

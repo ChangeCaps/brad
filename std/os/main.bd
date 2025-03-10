@@ -1,0 +1,2 @@
+#[link = "brad_os_exit"]
+extern fn exit (code: int) -> !

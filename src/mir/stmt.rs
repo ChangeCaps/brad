@@ -21,6 +21,10 @@ impl<T> Block<T> {
             self.stmts.push(stmt);
         }
     }
+
+    pub fn term(&mut self, term: Term<T>) {
+        self.term = Some(term);
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -102,6 +106,12 @@ impl Value {
     pub const NONE: Self = Self::Use(Operand::NONE);
 }
 
+impl<T> Value<T> {
+    pub fn local(local: Local) -> Self {
+        Self::Use(Operand::local(local))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     /* integer operations */
@@ -133,8 +143,6 @@ pub enum BinaryOp {
     FDiv,
     FMod,
 
-    FEq,
-    FNe,
     FLt,
     FLe,
     FGt,
@@ -168,6 +176,10 @@ impl Operand {
 }
 
 impl<T> Operand<T> {
+    pub fn local(local: Local) -> Self {
+        Operand::Copy(Place::local(local))
+    }
+
     pub fn ty<'a>(&'a self, locals: &'a Locals<T>) -> &'a T {
         match self {
             Operand::Copy(place) => place.ty(locals),
@@ -194,6 +206,14 @@ pub struct Place<T = Ty> {
 }
 
 impl<T> Place<T> {
+    pub fn local(local: Local) -> Self {
+        Self {
+            local,
+            proj: Vec::new(),
+            is_mutable: false,
+        }
+    }
+
     pub fn ty<'a>(&'a self, locals: &'a Locals<T>) -> &'a T {
         match self.proj.last() {
             Some((_, ty)) => ty,

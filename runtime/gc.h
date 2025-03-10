@@ -29,8 +29,15 @@ typedef struct {
 
 extern brad_thread_context brad_context;
 
+void brad_init();
+void brad_deinit();
+
 brad_ptr brad_alloc(brad_size size, brad_marker marker);
+
 void brad_retain(brad_ptr ptr);
 void brad_release(brad_size count);
 void brad_collect();
+
 void brad_mark(brad_ptr ptr);
+
+brad_marker brad_get_marker(brad_ptr ptr);

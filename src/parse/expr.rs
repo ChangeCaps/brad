@@ -197,7 +197,7 @@ fn pipe_left(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
         consume_newlines(input);
 
         input.expect(Token::LtPipe)?;
-        let rhs = unary(input, true)?;
+        let rhs = tuple(input)?;
 
         let span = lhs.span().join(rhs.span());
 

@@ -1,6 +1,6 @@
 use std::collections::{hash_map::Entry, HashMap};
 
-use crate::{mir, sir};
+use crate::{attribute::Attributes, mir, sir};
 
 pub fn specialize(program: mir::Program, entry: mir::Bid) -> (sir::Program, sir::Bid) {
     let mut specializer = Specializer::new(&program);
@@ -11,8 +11,8 @@ pub fn specialize(program: mir::Program, entry: mir::Bid) -> (sir::Program, sir:
 }
 
 struct Specializer<'a> {
-    generic: &'a mir::Program,
-    specialized: sir::Program,
+    mir: &'a mir::Program,
+    sir: sir::Program,
 
     names: HashMap<sir::Tid, String>,
     named: HashMap<(u32, Vec<sir::Tid>), sir::Tid>,
@@ -22,8 +22,8 @@ struct Specializer<'a> {
 impl<'a> Specializer<'a> {
     fn new(generic: &'a mir::Program) -> Self {
         Self {
-            generic,
-            specialized: sir::Program::default(),
+            mir: generic,
+            sir: sir::Program::default(),
 
             names: HashMap::new(),
             named: HashMap::new(),
@@ -37,26 +37,32 @@ impl<'a> Specializer<'a> {
         }
 
         // we have to insert a dummy body and cache the id to avoid infinite recursion
-        let spec = self.specialized.bodies.push(sir::Body {
+        let spec = self.sir.bodies.push(sir::Body {
             attrs: Default::default(),
             is_extern: false,
             name: None,
             captures: 0,
             arguments: 0,
-            output: self.specialized.types.get_or_insert(&sir::Ty::None),
+            output: self.sir.types.get_or_insert(&sir::Ty::None),
             locals: sir::Locals::new(),
             block: None,
         });
 
         self.bodies.insert((id, generics.to_vec()), spec);
 
+        if self.mir.bodies[id].attrs.find_value("intrinsic") == Some("string::format") {
+            self.sir.bodies[spec] = self.format(generics[0]);
+
+            return spec;
+        }
+
         let mut locals = sir::Locals::new();
 
-        for (_, ty) in self.generic.bodies[id].locals.iter() {
+        for (_, ty) in self.mir.bodies[id].locals.iter() {
             locals.push(self.ty(ty.clone(), generics));
         }
 
-        let block = self.generic.bodies[id]
+        let block = self.mir.bodies[id]
             .block
             .clone()
             .map(|b| self.block(b, generics));
@@ -68,18 +74,18 @@ impl<'a> Specializer<'a> {
                 .collect();
 
             if generics.is_empty() {
-                self.generic.bodies[id].name.clone()
+                self.mir.bodies[id].name.clone()
             } else {
-                self.generic.bodies[id]
+                self.mir.bodies[id]
                     .name
                     .as_ref()
                     .map(|name| format!("{}<{}>", name, generics.join(", ")))
             }
         };
 
-        let body = &self.generic.bodies[id];
+        let body = &self.mir.bodies[id];
 
-        self.specialized.bodies[spec] = sir::Body {
+        self.sir.bodies[spec] = sir::Body {
             attrs: body.attrs.clone(),
             is_extern: body.is_extern,
             name,
@@ -91,6 +97,141 @@ impl<'a> Specializer<'a> {
         };
 
         spec
+    }
+
+    fn format(&mut self, tid: sir::Tid) -> sir::Body {
+        let str_tid = self.sir.types.get_or_insert(&sir::Ty::Str);
+        let int_tid = self.sir.types.get_or_insert(&sir::Ty::Int);
+
+        match self.sir.types[tid] {
+            sir::Ty::Int => sir::Body {
+                attrs: Attributes::new().with(("link", "brad_int_to_str")),
+                is_extern: true,
+                name: None,
+                captures: 0,
+                arguments: 1,
+                output: str_tid,
+                locals: sir::Locals::new().with(int_tid),
+                block: None,
+            },
+
+            sir::Ty::Float => sir::Body {
+                attrs: Attributes::new().with(("link", "brad_float_to_str")),
+                is_extern: true,
+                name: None,
+                captures: 0,
+                arguments: 1,
+                output: str_tid,
+                locals: sir::Locals::new().with(int_tid),
+                block: None,
+            },
+
+            sir::Ty::Str => {
+                let mut locals = sir::Locals::new();
+                let input = locals.push(str_tid);
+
+                let mut block = sir::Block::new();
+
+                block.term(sir::Term::Return(sir::Value::local(input)));
+
+                sir::Body {
+                    attrs: Attributes::new(),
+                    is_extern: false,
+                    name: None,
+                    captures: 0,
+                    arguments: 1,
+                    output: str_tid,
+                    locals,
+                    block: Some(block),
+                }
+            }
+
+            sir::Ty::True => {
+                let mut block = sir::Block::new();
+                block.term(sir::Term::Return(sir::Value::Use(sir::Operand::Const(
+                    sir::Const::String("true"),
+                    str_tid,
+                ))));
+
+                sir::Body {
+                    attrs: Attributes::new(),
+                    is_extern: false,
+                    name: None,
+                    captures: 0,
+                    arguments: 0,
+                    output: str_tid,
+                    locals: sir::Locals::new(),
+                    block: Some(block),
+                }
+            }
+
+            sir::Ty::False => {
+                let mut block = sir::Block::new();
+                block.term(sir::Term::Return(sir::Value::Use(sir::Operand::Const(
+                    sir::Const::String("false"),
+                    str_tid,
+                ))));
+
+                sir::Body {
+                    attrs: Attributes::new(),
+                    is_extern: false,
+                    name: None,
+                    captures: 0,
+                    arguments: 0,
+                    output: str_tid,
+                    locals: sir::Locals::new(),
+                    block: Some(block),
+                }
+            }
+
+            sir::Ty::None => {
+                let mut block = sir::Block::new();
+                block.term(sir::Term::Return(sir::Value::Use(sir::Operand::Const(
+                    sir::Const::String("none"),
+                    str_tid,
+                ))));
+
+                sir::Body {
+                    attrs: Attributes::new(),
+                    is_extern: false,
+                    name: None,
+                    captures: 0,
+                    arguments: 0,
+                    output: str_tid,
+                    locals: sir::Locals::new(),
+                    block: Some(block),
+                }
+            }
+
+            sir::Ty::Never => {
+                let mut block = sir::Block::new();
+                block.term(sir::Term::Return(sir::Value::Use(sir::Operand::Const(
+                    sir::Const::String("!"),
+                    str_tid,
+                ))));
+
+                sir::Body {
+                    attrs: Attributes::new(),
+                    is_extern: false,
+                    name: None,
+                    captures: 0,
+                    arguments: 0,
+                    output: str_tid,
+                    locals: sir::Locals::new(),
+                    block: Some(block),
+                }
+            }
+
+            sir::Ty::Ref(_) => todo!(),
+            sir::Ty::List(_) => todo!(),
+            sir::Ty::Func(_, _) => todo!(),
+
+            sir::Ty::Tuple(_) => todo!(),
+
+            sir::Ty::Record(_) => todo!(),
+
+            sir::Ty::Union(_) => todo!(),
+        }
     }
 
     fn block(&mut self, block: mir::Block, generics: &[sir::Tid]) -> sir::Block {
@@ -283,17 +424,17 @@ impl<'a> Specializer<'a> {
 
             mir::Ty::Named(idx, tys) => {
                 let tys: Vec<_> = tys.into_iter().map(|ty| self.ty(ty, generics)).collect();
-                let tid = self.ty(self.generic.types[idx].ty.clone(), &tys);
+                let tid = self.ty(self.mir.types[idx].ty.clone(), &tys);
 
                 match self.named.entry((idx, tys)) {
                     Entry::Occupied(entry) => return *entry.get(),
                     Entry::Vacant(entry) => {
-                        let ty = self.specialized.types[tid].clone();
-                        let tid = self.specialized.types.push(ty);
+                        let ty = self.sir.types[tid].clone();
+                        let tid = self.sir.types.push(ty);
                         entry.insert(tid);
 
                         if let Entry::Vacant(e) = self.names.entry(tid) {
-                            e.insert(self.generic.types.format(&mir));
+                            e.insert(self.mir.types.format(&mir));
                         }
 
                         return tid;
@@ -332,10 +473,10 @@ impl<'a> Specializer<'a> {
             }
         };
 
-        let tid = self.specialized.types.get_or_insert(&sir);
+        let tid = self.sir.types.get_or_insert(&sir);
 
         if let Entry::Vacant(e) = self.names.entry(tid) {
-            e.insert(self.generic.types.format(&mir));
+            e.insert(self.mir.types.format(&mir));
         }
 
         tid
@@ -376,6 +517,6 @@ impl<'a> Specializer<'a> {
     }
 
     fn finish(self) -> sir::Program {
-        self.specialized
+        self.sir
     }
 }

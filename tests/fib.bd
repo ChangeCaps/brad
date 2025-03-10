@@ -3,9 +3,7 @@ import std::io
 fn main -> none {
     let result = fib-rec 10 + fib-iter 10
 
-    match result == 110
-    | true  => io::println "Success"
-    | false => io::println "Failure"
+    std::assert <| result == 110
 }
 
 fn fib-rec (n: int) -> int {

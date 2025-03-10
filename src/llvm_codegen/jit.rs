@@ -86,6 +86,7 @@ impl Jit {
 
         self.load_object_file(dylib, "obj/runtime.o".into());
         self.load_object_file(dylib, "obj/std_io.o".into());
+        self.load_object_file(dylib, "obj/std_os.o".into());
         self.load_object_file(dylib, "obj/std_string.o".into());
 
         let ctx = LLVMOrcCreateNewThreadSafeContext();

@@ -181,7 +181,7 @@ fn attribute(input: &mut Tokens) -> Result<Attribute, Diagnostic> {
     Ok(Attribute {
         name: Cow::Borrowed(name),
         value,
-        span,
+        span: Some(span),
     })
 }
 

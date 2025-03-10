@@ -318,16 +318,6 @@ impl Interpreter {
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
                     },
 
-                    sir::BinaryOp::FEq => match (lhs, rhs) {
-                        (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs == rhs),
-                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
-                    },
-
-                    sir::BinaryOp::FNe => match (lhs, rhs) {
-                        (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs != rhs),
-                        (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),
-                    },
-
                     sir::BinaryOp::FLt => match (lhs, rhs) {
                         (Value::Float(lhs), Value::Float(rhs)) => self.create_bool(lhs < rhs),
                         (lhs, rhs) => panic!("expected floats, got {:?} and {:?}", lhs, rhs),

@@ -157,34 +157,51 @@ impl BodyCodegen<'_> {
                     _ => unreachable!(),
                 };
 
-                let func = self.place(func);
-                let func = LLVMBuildLoad2(self.builder, LLVMTypeOf(func), func, c"func".as_ptr());
+                let func_ty = LLVMStructTypeInContext(
+                    self.context,
+                    [
+                        self.i64_type(),          // allocation size
+                        self.i64_type(),          // missing
+                        self.void_pointer_type(), // function pointer
+                        self.zero_size_type(),    // captures
+                    ]
+                    .as_mut_ptr(),
+                    4,
+                    0,
+                );
+
+                let old_func = self.place(func);
+                let old_func = LLVMBuildLoad2(
+                    self.builder,
+                    LLVMTypeOf(old_func),
+                    old_func,
+                    c"func".as_ptr(),
+                );
+
+                let func_size_ptr = LLVMBuildStructGEP2(
+                    self.builder,
+                    func_ty,
+                    old_func,
+                    0, // size
+                    c"func_size".as_ptr(),
+                );
+                let func_size = LLVMBuildLoad2(
+                    self.builder,
+                    self.i64_type(),
+                    func_size_ptr,
+                    c"func_size".as_ptr(),
+                );
+
+                let marker = self.get_marker(old_func);
+                let func = self.alloc(func_size, marker);
+
+                LLVMBuildMemCpy(self.builder, func, 1, old_func, 1, func_size);
 
                 let input_tid = *input.ty(&self.body().locals);
                 let input_ty = self.codegen.tid(input_tid);
                 let input = self.operand(input);
 
-                let func_ty = LLVMStructTypeInContext(
-                    self.context,
-                    [
-                        self.void_pointer_type(), // function pointer
-                        self.i64_type(),          // missing
-                        self.zero_size_type(),    // captures
-                    ]
-                    .as_mut_ptr(),
-                    3,
-                    0,
-                );
-
-                let captures = LLVMBuildStructGEP2(
-                    self.builder,
-                    func_ty,
-                    func,
-                    2, // captures
-                    c"func_captures_ptr".as_ptr(),
-                );
-
-                let missing = LLVMBuildStructGEP2(
+                let missing_ptr = LLVMBuildStructGEP2(
                     self.builder,
                     func_ty,
                     func,
@@ -197,24 +214,32 @@ impl BodyCodegen<'_> {
                     LLVMBuildLoad2(
                         self.builder,
                         LLVMInt64TypeInContext(self.context),
-                        missing,
+                        missing_ptr,
                         c"func_missing".as_ptr(),
                     ),
                     LLVMSizeOf(input_ty),
                     c"new_missing".as_ptr(),
                 );
 
-                let input_location = LLVMBuildGEP2(
+                let captures_ptr = LLVMBuildStructGEP2(
+                    self.builder,
+                    func_ty,
+                    func,
+                    3, // captures
+                    c"func_captures_ptr".as_ptr(),
+                );
+
+                let input_ptr = LLVMBuildGEP2(
                     self.builder,
                     LLVMInt8TypeInContext(self.context),
-                    captures,
+                    captures_ptr,
                     [new_missing].as_mut_ptr(),
                     1,
                     c"input_location".as_ptr(),
                 );
 
-                LLVMBuildStore(self.builder, input, input_location);
-                LLVMBuildStore(self.builder, new_missing, missing);
+                LLVMBuildStore(self.builder, input, input_ptr);
+                LLVMBuildStore(self.builder, new_missing, missing_ptr);
 
                 let call_block = LLVMAppendBasicBlockInContext(
                     self.context,
@@ -254,7 +279,7 @@ impl BodyCodegen<'_> {
                     self.builder,
                     func_ty,
                     func,
-                    0, // function pointer
+                    2, // function pointer
                     c"func_ptr".as_ptr(),
                 );
 
@@ -269,7 +294,7 @@ impl BodyCodegen<'_> {
                     self.builder,
                     LLVMFunctionType(output_ty, [self.void_pointer_type()].as_mut_ptr(), 1, 0),
                     func_ptr,
-                    [captures].as_mut_ptr(),
+                    [captures_ptr].as_mut_ptr(),
                     1,
                     c"call".as_ptr(),
                 );
@@ -278,13 +303,14 @@ impl BodyCodegen<'_> {
                     LLVMBuildStore(self.builder, result, output);
                 }
 
+                self.drop(func, func_tid);
+
                 LLVMBuildBr(self.builder, end_block);
 
                 /* append block */
 
                 LLVMPositionBuilderAtEnd(self.builder, append_block);
 
-                let func = self.copy(func, func_tid);
                 LLVMBuildStore(self.builder, func, output);
                 LLVMBuildBr(self.builder, end_block);
 
@@ -296,6 +322,11 @@ impl BodyCodegen<'_> {
             }
 
             sir::Value::Binary(op, lhs, rhs) => {
+                let lhs_ty = *lhs.ty(&self.body().locals);
+                let rhs_ty = *rhs.ty(&self.body().locals);
+
+                assert_eq!(lhs_ty, rhs_ty);
+
                 let lhs = self.operand(lhs);
                 let rhs = self.operand(rhs);
 
@@ -308,20 +339,22 @@ impl BodyCodegen<'_> {
                     sir::BinaryOp::BAnd => LLVMBuildAnd(self.builder, lhs, rhs, c"and".as_ptr()),
                     sir::BinaryOp::BOr => LLVMBuildOr(self.builder, lhs, rhs, c"or".as_ptr()),
                     sir::BinaryOp::BXor => LLVMBuildXor(self.builder, lhs, rhs, c"xor".as_ptr()),
-                    sir::BinaryOp::Eq => self.int_to_bool(LLVMBuildICmp(
-                        self.builder,
-                        LLVMIntPredicate::LLVMIntEQ,
-                        lhs,
-                        rhs,
-                        c"eq".as_ptr(),
-                    )),
-                    sir::BinaryOp::Ne => self.int_to_bool(LLVMBuildICmp(
-                        self.builder,
-                        LLVMIntPredicate::LLVMIntNE,
-                        lhs,
-                        rhs,
-                        c"ne".as_ptr(),
-                    )),
+                    sir::BinaryOp::Eq => {
+                        let eq = self.eq(lhs, rhs, lhs_ty);
+
+                        self.drop(lhs, lhs_ty);
+                        self.drop(rhs, rhs_ty);
+
+                        self.int_to_bool(eq)
+                    }
+                    sir::BinaryOp::Ne => {
+                        let eq = self.eq(lhs, rhs, lhs_ty);
+
+                        self.drop(lhs, lhs_ty);
+                        self.drop(rhs, rhs_ty);
+
+                        self.int_to_bool(LLVMBuildNot(self.builder, eq, c"ne".as_ptr()))
+                    }
                     sir::BinaryOp::Lt => self.int_to_bool(LLVMBuildICmp(
                         self.builder,
                         LLVMIntPredicate::LLVMIntSLT,
@@ -357,20 +390,6 @@ impl BodyCodegen<'_> {
                     sir::BinaryOp::FMul => LLVMBuildFMul(self.builder, lhs, rhs, c"fmul".as_ptr()),
                     sir::BinaryOp::FDiv => LLVMBuildFDiv(self.builder, lhs, rhs, c"fdiv".as_ptr()),
                     sir::BinaryOp::FMod => LLVMBuildFRem(self.builder, lhs, rhs, c"fmod".as_ptr()),
-                    sir::BinaryOp::FEq => self.int_to_bool(LLVMBuildFCmp(
-                        self.builder,
-                        LLVMRealPredicate::LLVMRealOEQ,
-                        lhs,
-                        rhs,
-                        c"feq".as_ptr(),
-                    )),
-                    sir::BinaryOp::FNe => self.int_to_bool(LLVMBuildFCmp(
-                        self.builder,
-                        LLVMRealPredicate::LLVMRealONE,
-                        lhs,
-                        rhs,
-                        c"fne".as_ptr(),
-                    )),
                     sir::BinaryOp::FLt => self.int_to_bool(LLVMBuildFCmp(
                         self.builder,
                         LLVMRealPredicate::LLVMRealOLT,
@@ -419,28 +438,33 @@ impl BodyCodegen<'_> {
                 let closure_ty = LLVMStructTypeInContext(
                     self.context,
                     [
-                        self.void_pointer_type(),             // function pointer
-                        LLVMInt64TypeInContext(self.context), // missing
-                        self.bodies[body].captures_ty,        // captures
+                        self.i64_type(),               // allocation size
+                        self.i64_type(),               // missing captures
+                        self.void_pointer_type(),      // function pointer
+                        self.bodies[body].captures_ty, // captures
                     ]
                     .as_mut_ptr(),
-                    3,
+                    4,
                     0,
                 );
 
                 let closure_ptr = self.alloc_closure(*body);
 
-                let function = LLVMBuildStructGEP2(
+                let size_ptr = LLVMBuildStructGEP2(
                     self.builder,
                     closure_ty,
                     closure_ptr,
-                    0, // function pointer
-                    c"function_ptr".as_ptr(),
+                    0, // size
+                    c"size_ptr".as_ptr(),
                 );
 
-                LLVMBuildStore(self.builder, self.bodies[body].function, function);
+                LLVMBuildStore(
+                    self.builder,
+                    LLVMSizeOf(closure_ty), // allocation size
+                    size_ptr,
+                );
 
-                let missing = LLVMBuildStructGEP2(
+                let missing_ptr = LLVMBuildStructGEP2(
                     self.builder,
                     closure_ty,
                     closure_ptr,
@@ -450,13 +474,213 @@ impl BodyCodegen<'_> {
 
                 LLVMBuildStore(
                     self.builder,
-                    LLVMSizeOf(self.bodies[body].captures_ty),
-                    missing,
+                    LLVMSizeOf(self.bodies[body].captures_ty), // missing captures
+                    missing_ptr,
+                );
+
+                let function_ptr = LLVMBuildStructGEP2(
+                    self.builder,
+                    closure_ty,
+                    closure_ptr,
+                    2, // function pointer
+                    c"function_ptr".as_ptr(),
+                );
+
+                LLVMBuildStore(
+                    self.builder,
+                    self.bodies[body].function, // function pointer
+                    function_ptr,
                 );
 
                 closure_ptr
             }
         }
+    }
+
+    unsafe fn eq(&mut self, lhs: LLVMValueRef, rhs: LLVMValueRef, tid: sir::Tid) -> LLVMValueRef {
+        match self.program.types[tid] {
+            sir::Ty::Int => LLVMBuildICmp(
+                self.builder,
+                LLVMIntPredicate::LLVMIntEQ,
+                lhs,
+                rhs,
+                c"eq".as_ptr(),
+            ),
+
+            sir::Ty::Float => LLVMBuildFCmp(
+                self.builder,
+                LLVMRealPredicate::LLVMRealOEQ,
+                lhs,
+                rhs,
+                c"eq".as_ptr(),
+            ),
+
+            sir::Ty::True | sir::Ty::False | sir::Ty::None | sir::Ty::Never => {
+                // zero-sized types are always equal
+
+                LLVMConstInt(self.i64_type(), 1, 0)
+            }
+
+            sir::Ty::Str => {
+                todo!("string equality")
+            }
+
+            sir::Ty::Ref(_) => todo!("reference equality"),
+            sir::Ty::List(_) => todo!("list equality"),
+
+            sir::Ty::Func(_, _) => self.func_eq(lhs, rhs),
+
+            sir::Ty::Tuple(ref items) => {
+                let mut eq = LLVMConstInt(self.i64_type(), 1, 0);
+
+                for (i, item) in items.clone().into_iter().enumerate() {
+                    let lhs_field = LLVMBuildStructGEP2(
+                        self.builder,
+                        LLVMTypeOf(lhs),
+                        lhs,
+                        i as u32,
+                        c"lhs_field".as_ptr(),
+                    );
+
+                    let rhs_field = LLVMBuildStructGEP2(
+                        self.builder,
+                        LLVMTypeOf(rhs),
+                        rhs,
+                        i as u32,
+                        c"rhs_field".as_ptr(),
+                    );
+
+                    let field_eq = self.eq(lhs_field, rhs_field, item);
+
+                    eq = LLVMBuildAnd(self.builder, eq, field_eq, c"eq".as_ptr());
+                }
+
+                eq
+            }
+
+            sir::Ty::Record(ref fields) => {
+                let mut eq = LLVMConstInt(self.i64_type(), 1, 0);
+
+                for (i, (_, ty)) in fields.clone().into_iter().enumerate() {
+                    let lhs_field = LLVMBuildStructGEP2(
+                        self.builder,
+                        LLVMTypeOf(lhs),
+                        lhs,
+                        i as u32,
+                        c"lhs_field".as_ptr(),
+                    );
+
+                    let rhs_field = LLVMBuildStructGEP2(
+                        self.builder,
+                        LLVMTypeOf(rhs),
+                        rhs,
+                        i as u32,
+                        c"rhs_field".as_ptr(),
+                    );
+
+                    let field_eq = self.eq(lhs_field, rhs_field, ty);
+
+                    eq = LLVMBuildAnd(self.builder, eq, field_eq, c"eq".as_ptr());
+                }
+
+                eq
+            }
+
+            sir::Ty::Union(_) => todo!("union equality"),
+        }
+    }
+
+    unsafe fn func_eq(&mut self, lhs: LLVMValueRef, rhs: LLVMValueRef) -> LLVMValueRef {
+        let func_ty = LLVMStructTypeInContext(
+            self.context,
+            [
+                self.i64_type(),          // allocation size
+                self.i64_type(),          // missing
+                self.void_pointer_type(), // function pointer
+                self.zero_size_type(),    // captures
+            ]
+            .as_mut_ptr(),
+            4,
+            0,
+        );
+
+        let lhs_missing_ptr = LLVMBuildStructGEP2(
+            self.builder,
+            func_ty,
+            lhs,
+            1, // missing
+            c"lhs_missing_ptr".as_ptr(),
+        );
+
+        let lhs_missing = LLVMBuildLoad2(
+            self.builder,
+            self.i64_type(),
+            lhs_missing_ptr,
+            c"lhs_missing".as_ptr(),
+        );
+
+        let rhs_missing_ptr = LLVMBuildStructGEP2(
+            self.builder,
+            func_ty,
+            rhs,
+            1, // missing
+            c"rhs_missing_ptr".as_ptr(),
+        );
+
+        let rhs_missing = LLVMBuildLoad2(
+            self.builder,
+            self.i64_type(),
+            rhs_missing_ptr,
+            c"rhs_missing".as_ptr(),
+        );
+
+        let missing_eq = LLVMBuildICmp(
+            self.builder,
+            LLVMIntPredicate::LLVMIntEQ,
+            lhs_missing,
+            rhs_missing,
+            c"missing_eq".as_ptr(),
+        );
+
+        let lhs_ptr = LLVMBuildStructGEP2(
+            self.builder,
+            func_ty,
+            lhs,
+            2, // function pointer
+            c"lhs_ptr".as_ptr(),
+        );
+
+        let lhs_ptr = LLVMBuildLoad2(
+            self.builder,
+            self.void_pointer_type(),
+            lhs_ptr,
+            c"lhs_ptr".as_ptr(),
+        );
+
+        let rhs_ptr = LLVMBuildStructGEP2(
+            self.builder,
+            func_ty,
+            rhs,
+            2, // function pointer
+            c"rhs_ptr".as_ptr(),
+        );
+
+        let rhs_ptr = LLVMBuildLoad2(
+            self.builder,
+            self.void_pointer_type(),
+            rhs_ptr,
+            c"rhs_ptr".as_ptr(),
+        );
+
+        let function_eq = LLVMBuildICmp(
+            self.builder,
+            LLVMIntPredicate::LLVMIntEQ,
+            lhs_ptr,
+            rhs_ptr,
+            c"function_eq".as_ptr(),
+        );
+
+        LLVMBuildAnd(self.builder, missing_eq, function_eq, c"eq".as_ptr())
     }
 
     unsafe fn int_to_bool(&mut self, value: LLVMValueRef) -> LLVMValueRef {

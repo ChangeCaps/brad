@@ -82,6 +82,11 @@ impl<T> Locals<T> {
         Local(local)
     }
 
+    pub fn with(mut self, ty: T) -> Self {
+        self.locals.push(ty);
+        self
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (Local, &T)> {
         self.locals.iter().enumerate().map(|(i, ty)| (Local(i), ty))
     }

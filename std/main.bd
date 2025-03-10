@@ -1,8 +1,19 @@
-fn main -> int {
-  let r: str = "Hello, World!"
-  let x: int | float = 42
+import std::os
+import std::io
 
-  match x
-  | int => 1
-  | float => 0
+fn panic (msg: str) -> none {
+  io::println msg
+  os::exit 1
+}
+
+fn assert (cond: true | false) -> none {
+  match cond
+  | true  => none
+  | false => panic "assertion failed"
+}
+
+fn assert-eq (lhs: 'a) (rhs: 'a) -> none {
+  match lhs == rhs
+  | true  => none
+  | false => panic "assertion failed"
 }

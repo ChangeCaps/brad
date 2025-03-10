@@ -4,3 +4,6 @@ fn append (suffix: str) (s: str) -> str {
 
 #[link = "brad_str_concat"]
 extern fn prepend (prefix: str) (s: str) -> str
+
+#[intrinsic = "string::format"]
+extern fn format (value: 'a) -> str

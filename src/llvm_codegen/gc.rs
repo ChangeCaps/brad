@@ -47,12 +47,13 @@ impl BodyCodegen<'_> {
         let closure_ty = LLVMStructTypeInContext(
             self.context,
             [
+                self.i64_type(),                // allocation size
+                self.i64_type(),                // missing captures
                 self.void_pointer_type(),       // function pointer
-                self.i64_type(),                // missing
                 self.bodies[&body].captures_ty, // captures
             ]
             .as_mut_ptr(),
-            3,
+            4,
             0,
         );
 
@@ -254,5 +255,16 @@ impl BodyCodegen<'_> {
             1,
             c"".as_ptr(),
         );
+    }
+
+    pub unsafe fn get_marker(&mut self, value: LLVMValueRef) -> LLVMValueRef {
+        LLVMBuildCall2(
+            self.builder,
+            self.gc.get_marker_ty,
+            self.gc.get_marker,
+            [value].as_mut_ptr(),
+            1,
+            c"get_marker".as_ptr(),
+        )
     }
 }
