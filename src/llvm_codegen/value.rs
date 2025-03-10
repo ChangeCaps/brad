@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use llvm_sys::{core::*, prelude::*, LLVMIntPredicate, LLVMRealPredicate, LLVMTypeKind};
 
 use crate::sir;
@@ -294,48 +296,48 @@ impl BodyCodegen<'_> {
                     sir::BinaryOp::BAnd => LLVMBuildAnd(self.builder, lhs, rhs, c"and".as_ptr()),
                     sir::BinaryOp::BOr => LLVMBuildOr(self.builder, lhs, rhs, c"or".as_ptr()),
                     sir::BinaryOp::BXor => LLVMBuildXor(self.builder, lhs, rhs, c"xor".as_ptr()),
-                    sir::BinaryOp::Eq => LLVMBuildICmp(
+                    sir::BinaryOp::Eq => self.int_to_bool(LLVMBuildICmp(
                         self.builder,
                         LLVMIntPredicate::LLVMIntEQ,
                         lhs,
                         rhs,
                         c"eq".as_ptr(),
-                    ),
-                    sir::BinaryOp::Ne => LLVMBuildICmp(
+                    )),
+                    sir::BinaryOp::Ne => self.int_to_bool(LLVMBuildICmp(
                         self.builder,
                         LLVMIntPredicate::LLVMIntNE,
                         lhs,
                         rhs,
                         c"ne".as_ptr(),
-                    ),
-                    sir::BinaryOp::Lt => LLVMBuildICmp(
+                    )),
+                    sir::BinaryOp::Lt => self.int_to_bool(LLVMBuildICmp(
                         self.builder,
                         LLVMIntPredicate::LLVMIntSLT,
                         lhs,
                         rhs,
                         c"lt".as_ptr(),
-                    ),
-                    sir::BinaryOp::Le => LLVMBuildICmp(
+                    )),
+                    sir::BinaryOp::Le => self.int_to_bool(LLVMBuildICmp(
                         self.builder,
                         LLVMIntPredicate::LLVMIntSLE,
                         lhs,
                         rhs,
                         c"le".as_ptr(),
-                    ),
-                    sir::BinaryOp::Gt => LLVMBuildICmp(
+                    )),
+                    sir::BinaryOp::Gt => self.int_to_bool(LLVMBuildICmp(
                         self.builder,
                         LLVMIntPredicate::LLVMIntSGT,
                         lhs,
                         rhs,
                         c"gt".as_ptr(),
-                    ),
-                    sir::BinaryOp::Ge => LLVMBuildICmp(
+                    )),
+                    sir::BinaryOp::Ge => self.int_to_bool(LLVMBuildICmp(
                         self.builder,
                         LLVMIntPredicate::LLVMIntSGE,
                         lhs,
                         rhs,
                         c"ge".as_ptr(),
-                    ),
+                    )),
                     sir::BinaryOp::LShr => LLVMBuildAShr(self.builder, lhs, rhs, c"shr".as_ptr()),
                     sir::BinaryOp::LShl => LLVMBuildShl(self.builder, lhs, rhs, c"shr".as_ptr()),
                     sir::BinaryOp::FAdd => LLVMBuildFAdd(self.builder, lhs, rhs, c"fadd".as_ptr()),
@@ -343,48 +345,48 @@ impl BodyCodegen<'_> {
                     sir::BinaryOp::FMul => LLVMBuildFMul(self.builder, lhs, rhs, c"fmul".as_ptr()),
                     sir::BinaryOp::FDiv => LLVMBuildFDiv(self.builder, lhs, rhs, c"fdiv".as_ptr()),
                     sir::BinaryOp::FMod => LLVMBuildFRem(self.builder, lhs, rhs, c"fmod".as_ptr()),
-                    sir::BinaryOp::FEq => LLVMBuildFCmp(
+                    sir::BinaryOp::FEq => self.int_to_bool(LLVMBuildFCmp(
                         self.builder,
                         LLVMRealPredicate::LLVMRealOEQ,
                         lhs,
                         rhs,
                         c"feq".as_ptr(),
-                    ),
-                    sir::BinaryOp::FNe => LLVMBuildFCmp(
+                    )),
+                    sir::BinaryOp::FNe => self.int_to_bool(LLVMBuildFCmp(
                         self.builder,
                         LLVMRealPredicate::LLVMRealONE,
                         lhs,
                         rhs,
                         c"fne".as_ptr(),
-                    ),
-                    sir::BinaryOp::FLt => LLVMBuildFCmp(
+                    )),
+                    sir::BinaryOp::FLt => self.int_to_bool(LLVMBuildFCmp(
                         self.builder,
                         LLVMRealPredicate::LLVMRealOLT,
                         lhs,
                         rhs,
                         c"flt".as_ptr(),
-                    ),
-                    sir::BinaryOp::FLe => LLVMBuildFCmp(
+                    )),
+                    sir::BinaryOp::FLe => self.int_to_bool(LLVMBuildFCmp(
                         self.builder,
                         LLVMRealPredicate::LLVMRealOLE,
                         lhs,
                         rhs,
                         c"fle".as_ptr(),
-                    ),
-                    sir::BinaryOp::FGt => LLVMBuildFCmp(
+                    )),
+                    sir::BinaryOp::FGt => self.int_to_bool(LLVMBuildFCmp(
                         self.builder,
                         LLVMRealPredicate::LLVMRealOGT,
                         lhs,
                         rhs,
                         c"fgt".as_ptr(),
-                    ),
-                    sir::BinaryOp::FGe => LLVMBuildFCmp(
+                    )),
+                    sir::BinaryOp::FGe => self.int_to_bool(LLVMBuildFCmp(
                         self.builder,
                         LLVMRealPredicate::LLVMRealOGE,
                         lhs,
                         rhs,
                         c"fge".as_ptr(),
-                    ),
+                    )),
                     sir::BinaryOp::And => todo!("implement runtime booleans"),
                     sir::BinaryOp::Or => todo!("implement runtime booleans"),
                 }
@@ -443,5 +445,53 @@ impl BodyCodegen<'_> {
                 closure_ptr
             }
         }
+    }
+
+    unsafe fn int_to_bool(&mut self, value: LLVMValueRef) -> LLVMValueRef {
+        let true_tid = self.program.types[sir::Ty::True];
+        let false_tid = self.program.types[sir::Ty::False];
+
+        let bool_ty = sir::Ty::Union(BTreeSet::from([true_tid, false_tid]));
+        let bool_tid = self.program.types[bool_ty];
+
+        let bool_ty = self.codegen.tid(bool_tid);
+
+        let bool_ptr = self.alloc_single(bool_ty);
+
+        let true_block = LLVMAppendBasicBlockInContext(
+            self.context,
+            self.llvm_body().function,
+            c"true".as_ptr(),
+        );
+
+        let false_block = LLVMAppendBasicBlockInContext(
+            self.context,
+            self.llvm_body().function,
+            c"false".as_ptr(),
+        );
+
+        let end_block = LLVMAppendBasicBlockInContext(
+            self.context,
+            self.llvm_body().function,
+            c"end".as_ptr(), //
+        );
+
+        LLVMBuildCondBr(self.builder, value, true_block, false_block);
+
+        LLVMPositionBuilderAtEnd(self.builder, true_block);
+
+        let true_tag = LLVMConstInt(self.i64_type(), true_tid.0 as u64, 0);
+        LLVMBuildStore(self.builder, true_tag, bool_ptr);
+        LLVMBuildBr(self.builder, end_block);
+
+        LLVMPositionBuilderAtEnd(self.builder, false_block);
+
+        let false_tag = LLVMConstInt(self.i64_type(), false_tid.0 as u64, 0);
+        LLVMBuildStore(self.builder, false_tag, bool_ptr);
+        LLVMBuildBr(self.builder, end_block);
+
+        LLVMPositionBuilderAtEnd(self.builder, end_block);
+
+        bool_ptr
     }
 }

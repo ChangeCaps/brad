@@ -1,5 +1,7 @@
-fn main -> int {
-    fib-rec 10 - fib-iter 10
+fn main -> none {
+    fib-rec 10
+
+    none
 }
 
 fn fib-rec (n: int) -> int {
