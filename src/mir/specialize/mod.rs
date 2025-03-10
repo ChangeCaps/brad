@@ -357,13 +357,22 @@ impl<'a> Specializer<'a> {
         let proj = place
             .proj
             .into_iter()
-            .map(|(proj, ty)| (proj, self.ty(ty, generics)))
+            .map(|(proj, ty)| (self.proj(proj, generics), self.ty(ty, generics)))
             .collect();
 
         sir::Place {
             local,
             proj,
             is_mutable,
+        }
+    }
+
+    fn proj(&mut self, proj: mir::Proj, generics: &[sir::Tid]) -> sir::Proj {
+        match proj {
+            mir::Proj::Field(name) => sir::Proj::Field(name),
+            mir::Proj::Tuple(element) => sir::Proj::Tuple(element),
+            mir::Proj::Index(operand) => sir::Proj::Index(self.operand(operand, generics)),
+            mir::Proj::Deref => sir::Proj::Deref,
         }
     }
 
