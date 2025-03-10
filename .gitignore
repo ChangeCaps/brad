@@ -3,6 +3,7 @@ Cargo.lock
 /my-test
 /obj
 /a.out
+/run.log
 
 .venv
 __pycache__/

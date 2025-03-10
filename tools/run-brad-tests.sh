@@ -1,10 +1,11 @@
 #!/bin/bash
 
 for file in tests/*.bd; do
-  ./tools/compile-brad-debug.sh std $file 2> /dev/null > /dev/null
+   # redirect stderr to stdout
+   ./tools/compile-brad-debug.sh std $file 2>1 > run.log
 
   if [ $? -ne 0 ]; then
-    >&2 echo "Test $file failed with exit code $?"
+    >&2 echo "Test $file failed with exit code $? see run.log for more details"
     exit 1
   else
     echo "Test $file passed"
