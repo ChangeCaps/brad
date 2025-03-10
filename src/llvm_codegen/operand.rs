@@ -35,7 +35,7 @@ impl BodyCodegen<'_> {
                     let total_len = LLVMBuildAdd(self.builder, i64_size, len, c"len".as_ptr());
 
                     let marker = self.str_marker();
-                    let string = self.alloc(total_len, marker);
+                    let string = self.alloc(total_len, marker, "lit str");
 
                     LLVMBuildStore(self.builder, len, string);
 

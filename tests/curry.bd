@@ -5,8 +5,6 @@ fn main -> none {
   let x = f 2
   let y = f 3
 
-  std::debug::print<{ foo: int }> <| { foo: x }
-
   std::assert <| x + y == 7
 }
 

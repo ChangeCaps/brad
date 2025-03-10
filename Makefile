@@ -41,7 +41,7 @@ release: CFLAGS += -O3 -DNDEBUG
 release: runtime
 	@echo "Release build completed."
 
-debug: CFLAGS += -g -O0 -DDEBUG
+debug: CFLAGS += -g -Og -DDEBUG
 debug: runtime
 	@echo "Debug build completed."
 

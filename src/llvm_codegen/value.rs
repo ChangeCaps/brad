@@ -193,7 +193,7 @@ impl BodyCodegen<'_> {
                 );
 
                 let marker = self.get_marker(old_func);
-                let func = self.alloc(func_size, marker);
+                let func = self.alloc(func_size, marker, "call");
 
                 LLVMBuildMemCpy(self.builder, func, 1, old_func, 1, func_size);
 
@@ -240,6 +240,8 @@ impl BodyCodegen<'_> {
 
                 LLVMBuildStore(self.builder, input, input_ptr);
                 LLVMBuildStore(self.builder, new_missing, missing_ptr);
+
+                self.drop(input, input_tid);
 
                 let call_block = LLVMAppendBasicBlockInContext(
                     self.context,

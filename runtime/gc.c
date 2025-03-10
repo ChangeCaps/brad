@@ -5,8 +5,6 @@
 
 #include "gc.h"
 
-#define DEBUG
-
 brad_thread_context brad_context = {0};
 
 void brad_init() {
@@ -45,9 +43,11 @@ static void brad_push_allocation(
 
 brad_ptr brad_alloc(
     brad_size size,
-    brad_marker marker
+    brad_marker marker,
+    const char* name
 ) {
     brad_allocation* allocation = malloc(sizeof(brad_allocation) + size);
+    allocation->name = name;
     allocation->marker = marker;
     allocation->ref_count = 1;
 
@@ -98,7 +98,7 @@ void brad_mark(
     brad_allocation* allocation = brad_allocation_from_ptr(ptr);
 
 #ifdef DEBUG
-    printf("Marking %p\n", (void*)ptr);
+    printf("  marking %p\n", (void*)ptr);
 #endif
 
     allocation->mark_count = 1;
@@ -201,9 +201,10 @@ void brad_collect() {
             brad_allocation_from_ptr(brad_context.allocations.allocations[i]);
 
         printf(
-            "%p, ref count: %d\n",
+            "%p, ref count: %d, name: %s\n",
             (void*)brad_context.allocations.allocations[i],
-            (int)allocation->ref_count
+            (int)allocation->ref_count,
+            allocation->name
         );
 #endif
     }

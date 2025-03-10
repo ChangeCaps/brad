@@ -149,6 +149,7 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn jit(&self, module: &str, llvm_ir: String) -> Result<(), Diagnostic> {
+        println!("{}", llvm_ir);
         llvm_codegen::jit(llvm_ir.as_str(), format!("{}::main", module).as_str());
         Ok(())
     }

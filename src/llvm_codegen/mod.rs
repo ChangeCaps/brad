@@ -73,7 +73,13 @@ impl GarbageContext {
         let marker_ty = LLVMFunctionType(void, [byte_ptr].as_mut_ptr(), 1, 0);
         let marker_ptr_ty = LLVMPointerType(marker_ty, 0);
 
-        let alloc_ty = LLVMFunctionType(byte_ptr, [int64, marker_ptr_ty].as_mut_ptr(), 2, 0);
+        let alloc_ty = LLVMFunctionType(
+            byte_ptr,
+            [int64, marker_ptr_ty, byte_ptr].as_mut_ptr(),
+            3,
+            0,
+        );
+
         let alloc = LLVMAddFunction(module, c"brad_alloc".as_ptr(), alloc_ty);
 
         let retain_ty = LLVMFunctionType(void, [byte_ptr].as_mut_ptr(), 1, 0);
@@ -317,8 +323,10 @@ impl Codegen {
 
 struct LLVMBody {
     function: LLVMValueRef,
-    captures: Vec<LLVMTypeRef>,
+
+    captures: Vec<sir::Tid>,
     captures_ty: LLVMTypeRef,
+
     entry: LLVMBasicBlockRef,
     locals: Vec<LLVMValueRef>,
 }
@@ -334,18 +342,21 @@ impl LLVMBody {
 
         /* create the captures struct */
 
+        let mut capture_tys = Vec::new();
         let mut captures = Vec::new();
 
         for i in (0..body.captures + body.arguments).rev() {
             let local = body.locals[crate::mir::Local(i)];
+            captures.push(local);
+
             let ty = codegen.tid(local);
-            captures.push(ty);
+            capture_tys.push(ty);
         }
 
         let captures_ty = LLVMStructTypeInContext(
             codegen.context,
-            captures.as_mut_ptr(), // elements
-            captures.len() as u32, // element count
+            capture_tys.as_mut_ptr(), // elements
+            capture_tys.len() as u32, // element count
             0,
         );
 
@@ -403,8 +414,10 @@ impl LLVMBody {
 
         Self {
             function,
+
             captures,
             captures_ty,
+
             entry,
             locals,
         }

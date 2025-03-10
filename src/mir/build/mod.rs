@@ -41,8 +41,6 @@ pub fn build(hir: &hir::Program) -> Result<mir::Program, Diagnostic> {
         }
 
         for (input, local) in hir_body.input.iter().zip(inputs.iter()) {
-            builder.scope.push(*local);
-
             let place = mir::Place {
                 local: *local,
                 proj: Vec::new(),

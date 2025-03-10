@@ -132,6 +132,7 @@ impl<'a> Specializer<'a> {
 
                 let mut block = sir::Block::new();
 
+                block.push(sir::Stmt::Drop(input));
                 block.term(sir::Term::Return(sir::Value::local(input)));
 
                 sir::Body {
@@ -244,7 +245,90 @@ impl<'a> Specializer<'a> {
             sir::Ty::Ref(_) => todo!(),
             sir::Ty::List(_) => todo!(),
 
-            sir::Ty::Tuple(_) => todo!(),
+            sir::Ty::Tuple(fields) => {
+                let mut locals = sir::Locals::new();
+                let input = locals.push(tid);
+
+                let mut block = sir::Block::new();
+
+                let concat = self.str_concat_func(&mut locals, &mut block);
+
+                let comma = sir::Operand::Const(sir::Const::String(","), str_tid);
+                let space = sir::Operand::Const(sir::Const::String(" "), str_tid);
+
+                let mut output = sir::Operand::Const(sir::Const::String(""), str_tid);
+
+                for (i, tid) in fields.iter().copied().enumerate() {
+                    let mut field = sir::Place::local(input);
+                    field.proj.push((sir::Proj::Tuple(i), tid));
+
+                    let format = self.body(bid, &[tid]);
+                    let format = sir::Value::Closure {
+                        body: format,
+                        generics: Vec::new(),
+                        captures: Vec::new(),
+                    };
+
+                    let format_ty = sir::Ty::Func(tid, str_tid);
+                    let format_tid = self.sir.types.get_or_insert(&format_ty);
+
+                    let temp = locals.push(format_tid);
+
+                    block.push(sir::Stmt::Assign(sir::Place::local(temp), format));
+
+                    let field = sir::Value::Call(
+                        sir::Place::local(temp),   // format function
+                        sir::Operand::Copy(field), // field value
+                    );
+
+                    let temp = locals.push(str_tid);
+
+                    block.push(sir::Stmt::Assign(sir::Place::local(temp), field));
+
+                    output = self.str_concat(
+                        &mut locals,
+                        &mut block,
+                        concat.clone(),
+                        output,
+                        sir::Operand::Copy(sir::Place::local(temp)),
+                    );
+
+                    if i + 1 < fields.len() {
+                        output = self.str_concat(
+                            &mut locals,
+                            &mut block,
+                            concat.clone(),
+                            output,
+                            comma.clone(),
+                        );
+
+                        output = self.str_concat(
+                            &mut locals,
+                            &mut block,
+                            concat.clone(),
+                            output,
+                            space.clone(),
+                        );
+                    }
+                }
+
+                for (local, _) in locals.iter() {
+                    block.push(sir::Stmt::Drop(local));
+                }
+
+                block.term(sir::Term::Return(sir::Value::Use(output)));
+
+                sir::Body {
+                    attrs: Attributes::new(),
+                    is_extern: false,
+                    name: None,
+                    captures: 0,
+                    arguments: 1,
+                    output: str_tid,
+                    locals,
+                    block: Some(block),
+                }
+            }
 
             sir::Ty::Record(fields) => {
                 let mut locals = sir::Locals::new();
@@ -366,7 +450,72 @@ impl<'a> Specializer<'a> {
                 }
             }
 
-            sir::Ty::Union(_) => todo!(),
+            sir::Ty::Union(variants) => {
+                let mut locals = sir::Locals::new();
+                let input = locals.push(tid);
+
+                let mut block = sir::Block::new();
+
+                let mut cases = Vec::new();
+
+                for variant in variants {
+                    let mut block = sir::Block::new();
+                    let local = locals.push(variant);
+
+                    let format = self.body(bid, &[variant]);
+                    let format = sir::Value::Closure {
+                        body: format,
+                        generics: Vec::new(),
+                        captures: Vec::new(),
+                    };
+
+                    let format_ty = sir::Ty::Func(variant, str_tid);
+                    let format_tid = self.sir.types.get_or_insert(&format_ty);
+
+                    let temp = locals.push(format_tid);
+
+                    block.push(sir::Stmt::Assign(sir::Place::local(temp), format));
+
+                    let value = sir::Value::Call(
+                        sir::Place::local(temp),
+                        sir::Operand::Copy(sir::Place::local(local)),
+                    );
+
+                    block.push(sir::Stmt::Drop(temp));
+                    block.push(sir::Stmt::Drop(local));
+                    block.push(sir::Stmt::Drop(input));
+
+                    block.term(sir::Term::Return(value));
+
+                    cases.push(sir::Case {
+                        ty: variant,
+                        local,
+                        block,
+                    });
+                }
+
+                block.push(sir::Stmt::Match {
+                    target: sir::Place::local(input),
+                    cases,
+                    default: sir::Block::new(),
+                });
+
+                block.term(sir::Term::Return(sir::Value::Use(sir::Operand::Const(
+                    sir::Const::String(""),
+                    str_tid,
+                ))));
+
+                sir::Body {
+                    attrs: Attributes::new(),
+                    is_extern: false,
+                    name: Some(format!("std::string::format<{}>", self.names[&tid].clone())),
+                    captures: 0,
+                    arguments: 1,
+                    output: str_tid,
+                    locals,
+                    block: Some(block),
+                }
+            }
         }
     }
 
