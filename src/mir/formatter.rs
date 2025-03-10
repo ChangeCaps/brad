@@ -265,11 +265,11 @@ impl<'a, W: Write> Formatter<'a, W> {
 
     fn format_operand(&mut self, body: &mir::Body, operand: &mir::Operand) -> Result {
         match operand {
-            mir::Operand::Copy(place) => {
-                write!(self.writer, "copy ")?;
+            mir::Operand::Load(place) => {
+                write!(self.writer, "load ")?;
                 self.format_place(body, place)
             }
-            mir::Operand::Const(r#const, ty) => {
+            mir::Operand::Const(r#const, _) => {
                 write!(self.writer, "const(",)?;
                 match r#const {
                     Const::None => write!(self.writer, "none")?,
