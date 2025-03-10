@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-use ast::Formatter;
 use clap::{Args, Parser, Subcommand};
 use diagnostic::{Source, Sources};
 use parse::{Interner, Tokens};
@@ -66,7 +65,7 @@ pub enum Cmd {
 pub enum FmtCmd {
     Ast(FileArgs),
     // Hir(FileArgs),
-    // Mir(FileArgs),
+    Mir(ModuleArgs),
     // Lir(FileArgs),
 }
 
@@ -102,7 +101,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
                     command: FmtCmd::Ast(_),
                 } => {
                     let ast = parse::module(&mut tokens)?;
-                    let mut formatter = Formatter::new(std::io::stdout());
+                    let mut formatter = ast::Formatter::new(std::io::stdout());
                     formatter.format_module(&ast).unwrap();
                 }
                 _ => unreachable!(),
@@ -111,7 +110,11 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
             Ok(())
         }
 
-        Cmd::Interpret(f) | Cmd::Compile(f) => {
+        Cmd::Interpret(f)
+        | Cmd::Compile(f)
+        | Cmd::Fmt {
+            command: FmtCmd::Mir(f),
+        } => {
             let packages = f.packages.clone();
             let mut compiler = Compiler::new(sources);
 
@@ -126,10 +129,12 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
                 .to_str()
                 .unwrap();
 
+            let entrypoint = format!("{}::main", main_package);
+
             match &args.command {
-                Cmd::Interpret(_) => compiler.interpret(main_package),
+                Cmd::Interpret(_) => compiler.interpret(entrypoint.as_str()),
                 Cmd::Compile(_) => {
-                    let llvm_ir = compiler.compile(main_package)?;
+                    let llvm_ir = compiler.compile(entrypoint.clone().as_str())?;
 
                     if let Some(output) = &f.output {
                         std::fs::write(output, llvm_ir.clone()).unwrap();
@@ -138,9 +143,20 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
                     }
 
                     if !f.dry_run {
-                        compiler.jit(main_package, llvm_ir)?;
+                        compiler.jit(entrypoint.as_str(), llvm_ir)?;
                     };
 
+                    Ok(())
+                }
+                Cmd::Fmt {
+                    command: FmtCmd::Mir(_),
+                } => {
+                    compiler.tokenize()?;
+                    compiler.parse()?;
+                    let hir = compiler.lower()?;
+                    let mir = compiler.mir(hir)?;
+                    let mut formatter = mir::Formatter::new(std::io::stdout(), &mir);
+                    formatter.format_program().unwrap();
                     Ok(())
                 }
                 _ => unreachable!(),

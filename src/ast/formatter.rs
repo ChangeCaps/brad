@@ -3,31 +3,30 @@ use std::{io, io::Write};
 
 const INDENT_SIZE: usize = 4;
 
-pub struct Formatter<W> {
+pub struct Formatter<W: Write> {
     indent: usize,
     writer: W,
 }
 
-impl<W> Formatter<W>
-where
-    W: Write,
-{
+type Result = io::Result<()>;
+
+impl<W: Write> Formatter<W> {
     pub fn new(writer: W) -> Self {
         Formatter { indent: 0, writer }
     }
 
-    fn indent(&mut self, f: impl FnOnce(&mut Self) -> io::Result<()>) -> io::Result<()> {
+    fn indent(&mut self, f: impl FnOnce(&mut Self) -> Result) -> Result {
         self.indent += 1;
         let result = f(self);
         self.indent -= 1;
         result
     }
 
-    fn write_indent(&mut self) -> io::Result<()> {
+    fn write_indent(&mut self) -> Result {
         write!(self.writer, "\n{}", " ".repeat(INDENT_SIZE * self.indent))
     }
 
-    pub fn format_module(&mut self, module: &Module) -> io::Result<()> {
+    pub fn format_module(&mut self, module: &Module) -> Result {
         for decl in &module.decls {
             self.format_decl(decl)?;
         }
@@ -35,7 +34,7 @@ where
         Ok(())
     }
 
-    pub fn format_decl(&mut self, decl: &Decl) -> io::Result<()> {
+    pub fn format_decl(&mut self, decl: &Decl) -> Result {
         match decl {
             Decl::Func(func_decl) => {
                 writeln!(self.writer)?;
@@ -109,7 +108,7 @@ where
         }
     }
 
-    pub fn format_expr(&mut self, expr: &Expr) -> io::Result<()> {
+    pub fn format_expr(&mut self, expr: &Expr) -> Result {
         match expr {
             Expr::Literal(literal) => write!(self.writer, "{}", literal),
             Expr::List(list_expr) => {
@@ -231,7 +230,7 @@ where
         }
     }
 
-    pub fn format_binding(&mut self, binding: &Binding) -> io::Result<()> {
+    pub fn format_binding(&mut self, binding: &Binding) -> Result {
         match binding {
             Binding::Wild { .. } => write!(self.writer, "_"),
             Binding::Bind { name, mutable, .. } => write!(
@@ -253,7 +252,7 @@ where
         }
     }
 
-    pub fn format_ty(&mut self, ty: &Ty) -> io::Result<()> {
+    pub fn format_ty(&mut self, ty: &Ty) -> Result {
         match ty {
             Ty::Wild(_) => write!(self.writer, "_"),
             Ty::Int(_) => write!(self.writer, "int"),
@@ -312,7 +311,7 @@ where
         }
     }
 
-    fn format_generics(&mut self, generics: &Generics) -> io::Result<()> {
+    fn format_generics(&mut self, generics: &Generics) -> Result {
         write!(self.writer, "<")?;
 
         for (i, generic) in generics.generics.iter().enumerate() {
@@ -327,7 +326,7 @@ where
         Ok(())
     }
 
-    fn format_pattern(&mut self, pattern: &Pattern) -> io::Result<()> {
+    fn format_pattern(&mut self, pattern: &Pattern) -> Result {
         match pattern {
             Pattern::Ty { ty, binding, .. } => {
                 self.format_ty(ty)?;

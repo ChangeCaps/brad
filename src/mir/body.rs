@@ -130,6 +130,13 @@ impl<T> Bodies<T> {
             .enumerate()
             .map(|(i, body)| (Bid(i), body))
     }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (Bid, &mut Body<T>)> {
+        self.bodies
+            .iter_mut()
+            .enumerate()
+            .map(|(i, body)| (Bid(i), body))
+    }
 }
 
 impl<T> Index<Bid> for Bodies<T> {
