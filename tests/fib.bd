@@ -20,7 +20,7 @@ fn fib-iter (n: int) -> int {
     loop {
         match i >= n
         | true  => break
-        | false => {}
+        | false => none
 
         let tmp = a
         a = b

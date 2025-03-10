@@ -142,11 +142,12 @@ impl<'a> Compiler<'a> {
 
         let bid = mir.find_body(format!("{}::main", module).as_str())?;
         let (sir, main) = mir::specialize(mir, bid);
-        let lir = lir::build(&sir, main);
+        //let lir = lir::build(&sir, main);
         Ok(llvm_codegen::codegen(sir))
     }
 
     pub fn jit(&self, module: &str, llvm_ir: String) -> Result<(), Diagnostic> {
+        println!("{}", llvm_ir);
         llvm_codegen::jit(llvm_ir.as_str(), format!("{}::main", module).as_str());
         Ok(())
     }

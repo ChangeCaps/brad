@@ -6,7 +6,7 @@ if [ "$#" -lt 1 ]; then
 fi
 
 make clean
-make release
+make debug
 
 cargo run -r -- compile "$@" -d -o out.ll 2> /dev/null
 
@@ -21,9 +21,8 @@ define i32 @main() {
 EOF
 
 # Compile IR to object file
-llc -filetype=obj out.ll -o out.o
-clang -o a.out out.o obj/*.o -static -fuse-ld=lld
-rm out.ll out.o
+clang -o a.out out.ll -ggdb -g -Og obj/*.o
+rm out.ll
 
 # Run compiled binary
 ./a.out

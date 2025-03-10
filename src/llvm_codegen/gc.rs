@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use llvm_sys::{core::*, prelude::*};
+use llvm_sys::{core::*, prelude::*, LLVMIntPredicate};
 
 use crate::sir;
 
@@ -19,7 +19,7 @@ impl BodyCodegen<'_> {
 
         let marker = self.record_marker(fields);
 
-        self.alloc(LLVMSizeOf(record_ty), marker)
+        self.alloc(LLVMSizeOf(record_ty), marker, "record")
     }
 
     pub unsafe fn alloc_union(
@@ -40,7 +40,7 @@ impl BodyCodegen<'_> {
 
         let marker = self.union_marker(variant);
 
-        self.alloc(LLVMSizeOf(union_ty), marker)
+        self.alloc(LLVMSizeOf(union_ty), marker, "union")
     }
 
     pub unsafe fn alloc_closure(&mut self, body: sir::Bid) -> LLVMValueRef {
@@ -59,7 +59,7 @@ impl BodyCodegen<'_> {
 
         let marker = self.closure_marker(body);
 
-        self.alloc(LLVMSizeOf(closure_ty), marker)
+        self.alloc(LLVMSizeOf(closure_ty), marker, "closure")
     }
 
     pub unsafe fn record_marker(&mut self, field_tids: &[sir::Tid]) -> LLVMValueRef {
@@ -138,6 +138,13 @@ impl BodyCodegen<'_> {
             c"value".as_ptr(),
         );
 
+        let value = LLVMBuildLoad2(
+            self.builder,
+            LLVMTypeOf(value), //
+            value,
+            c"value".as_ptr(),
+        );
+
         self.mark_tid(value, variant);
 
         LLVMBuildRetVoid(self.builder);
@@ -155,6 +162,93 @@ impl BodyCodegen<'_> {
         let entry = LLVMAppendBasicBlock(func, c"entry".as_ptr());
 
         LLVMPositionBuilderAtEnd(self.builder, entry);
+
+        let closure_ty = LLVMStructTypeInContext(
+            self.context,
+            [
+                self.i64_type(),                // allocation size
+                self.i64_type(),                // missing captures
+                self.void_pointer_type(),       // function pointer
+                self.bodies[&body].captures_ty, // captures
+            ]
+            .as_mut_ptr(),
+            4,
+            0,
+        );
+
+        let input = LLVMGetParam(func, 0);
+
+        let missing_ptr = LLVMBuildStructGEP2(
+            self.builder,
+            closure_ty,
+            input,
+            1, // missing captures
+            c"missing".as_ptr(),
+        );
+
+        let missing = LLVMBuildLoad2(
+            self.builder,
+            self.i64_type(),
+            missing_ptr,
+            c"missing".as_ptr(),
+        );
+
+        let captures_ptr = LLVMBuildStructGEP2(
+            self.builder,
+            closure_ty,
+            input,
+            3, // captures
+            c"captures".as_ptr(),
+        );
+
+        let mut offset = LLVMConstInt(self.i64_type(), 0, 0);
+
+        for (i, tid) in self.bodies[&body].captures.clone().into_iter().enumerate() {
+            let mark_block = LLVMAppendBasicBlock(func, c"mark".as_ptr());
+            let next_block = LLVMAppendBasicBlock(func, c"next".as_ptr());
+
+            let do_mark = LLVMBuildICmp(
+                self.builder,
+                LLVMIntPredicate::LLVMIntULE,
+                missing,
+                offset,
+                c"do_mark".as_ptr(),
+            );
+
+            let ty = self.tid(tid);
+
+            offset = LLVMBuildAdd(
+                self.builder,
+                offset,
+                LLVMSizeOf(ty), //
+                c"offset".as_ptr(),
+            );
+
+            LLVMBuildCondBr(self.builder, do_mark, mark_block, next_block);
+
+            LLVMPositionBuilderAtEnd(self.builder, mark_block);
+
+            let capture = LLVMBuildStructGEP2(
+                self.builder,
+                self.bodies[&body].captures_ty,
+                captures_ptr,
+                i as u32, // field
+                c"value".as_ptr(),
+            );
+
+            let capture = LLVMBuildLoad2(
+                self.builder,
+                LLVMTypeOf(capture), //
+                capture,
+                c"value".as_ptr(),
+            );
+
+            self.mark_tid(capture, tid);
+
+            LLVMBuildBr(self.builder, next_block);
+
+            LLVMPositionBuilderAtEnd(self.builder, next_block);
+        }
 
         LLVMBuildRetVoid(self.builder);
 
@@ -202,13 +296,29 @@ impl BodyCodegen<'_> {
         }
     }
 
-    pub unsafe fn alloc(&mut self, count: LLVMValueRef, marker: LLVMValueRef) -> LLVMValueRef {
+    pub unsafe fn alloc(
+        &mut self,
+        count: LLVMValueRef,
+        marker: LLVMValueRef,
+        name: &str,
+    ) -> LLVMValueRef {
+        let content =
+            LLVMConstStringInContext2(self.context, name.as_ptr() as *const i8, name.len(), 0);
+
+        let string = LLVMAddGlobal(
+            self.module,
+            LLVMTypeOf(content), // type
+            c"alloc_string".as_ptr(),
+        );
+
+        LLVMSetInitializer(string, content);
+
         LLVMBuildCall2(
             self.builder,
             self.gc.alloc_ty,
             self.gc.alloc,
-            [count, marker].as_mut_ptr(),
-            2,
+            [count, marker, string].as_mut_ptr(),
+            3,
             c"alloc".as_ptr(),
         )
     }

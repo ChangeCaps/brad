@@ -167,7 +167,7 @@ impl Types {
 
             Ty::Tuple(tys) => {
                 let tys: Vec<_> = tys.iter().map(|ty| self.format(ty)).collect();
-                format!("({})", tys.join(", "))
+                format!("({})", tys.join(" * "))
             }
 
             Ty::Record(fields) => {

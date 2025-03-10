@@ -13,7 +13,8 @@ brad_str brad_str_concat(
     brad_str b
 ) {
     brad_size new_size = sizeof(brad_str) + a->length + b->length;
-    brad_str result = (brad_str)brad_alloc(new_size, brad_str_marker);
+    brad_str result =
+        (brad_str)brad_alloc(new_size, brad_str_marker, "brad_str_concat str");
 
     result->length = a->length + b->length;
 
@@ -30,7 +31,8 @@ brad_str brad_int_to_str(
     brad_int i
 ) {
     brad_size new_size = sizeof(brad_str) + 32;
-    brad_str result = (brad_str)brad_alloc(new_size, brad_str_marker);
+    brad_str result =
+        (brad_str)brad_alloc(new_size, brad_str_marker, "brad_int_to_str str");
 
     result->length = sprintf(result->data, "%ld", i);
 
