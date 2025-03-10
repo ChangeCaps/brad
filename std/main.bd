@@ -1,7 +1,7 @@
 import std::os
 import std::io
 
-fn panic (msg: str) -> none {
+fn panic (msg: str) -> ! {
   io::println msg
   os::exit 1
 }

@@ -86,6 +86,7 @@ impl Ty {
                 for ty in tys {
                     match ty.normalize() {
                         Ty::Union(tys) => new_tys.extend(tys),
+                        Ty::Never => {}
                         ty => _ = new_tys.insert(ty),
                     }
                 }
