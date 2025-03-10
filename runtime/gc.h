@@ -7,6 +7,7 @@ typedef void (*brad_marker)(brad_ptr ptr);
 typedef struct {
     brad_marker marker;
     brad_size ref_count;
+    brad_size mark_count;
     uint8_t data[];
 } brad_allocation;
 

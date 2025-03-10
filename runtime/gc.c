@@ -5,6 +5,8 @@
 
 #include "gc.h"
 
+#define DEBUG
+
 brad_thread_context brad_context = {0};
 
 static void brad_push_allocation(
@@ -76,11 +78,38 @@ void brad_release(
 
 void brad_mark(
     brad_ptr ptr
-) {}
+) {
+    brad_allocation* allocation = brad_allocation_from_ptr(ptr);
+
+#ifdef DEBUG
+    printf("Marking %p\n", (void*)ptr);
+#endif
+
+    allocation->mark_count = 1;
+    allocation->marker(ptr);
+}
 
 void brad_collect() {
 #ifdef DEBUG
     printf("Collecting garbage:\n\n");
+    printf("Unmarking all allocations:\n");
+#endif
+
+    for (brad_size i = 0; i < brad_context.allocations.len; i++) {
+        if (!brad_context.allocations.allocations[i]) {
+            continue;
+        }
+
+        brad_allocation* allocation =
+            brad_allocation_from_ptr(brad_context.allocations.allocations[i]);
+
+        allocation->mark_count = 0;
+    }
+
+#ifdef DEBUG
+    printf("\n");
+    printf("Marking all referenced allocations:\n");
+    printf("\n");
 #endif
 
     for (brad_size i = 0; i < brad_context.allocations.len; i++) {
@@ -92,8 +121,39 @@ void brad_collect() {
             brad_allocation_from_ptr(brad_context.allocations.allocations[i]);
 
         if (allocation->ref_count == 0) {
+            continue;
+        }
+
 #ifdef DEBUG
-            printf("Freeing %p\n", (void*)allocation);
+        printf(
+            "Marking root %p\n",
+            (void*)brad_context.allocations.allocations[i]
+        );
+#endif
+
+        brad_mark(brad_context.allocations.allocations[i]);
+    }
+
+#ifdef DEBUG
+    printf("\n");
+    printf("Freeing all unmarked allocations:\n");
+    printf("\n");
+#endif
+
+    for (brad_size i = 0; i < brad_context.allocations.len; i++) {
+        if (!brad_context.allocations.allocations[i]) {
+            continue;
+        }
+
+        brad_allocation* allocation =
+            brad_allocation_from_ptr(brad_context.allocations.allocations[i]);
+
+        if (allocation->mark_count == 0) {
+#ifdef DEBUG
+            printf(
+                "Freeing %p\n",
+                (void*)brad_context.allocations.allocations[i]
+            );
 #endif
             free(allocation);
 
@@ -103,7 +163,7 @@ void brad_collect() {
 
 #ifdef DEBUG
     printf("\n");
-    printf("Garbage collection complete\n");
+    printf("Garbage collection complete:\n");
     printf("\n");
     printf("Remaining allocations:\n");
 #endif

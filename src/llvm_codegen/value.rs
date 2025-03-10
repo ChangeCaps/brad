@@ -27,7 +27,12 @@ impl BodyCodegen<'_> {
                     0,
                 );
 
-                let ptr = self.alloc_single(ty);
+                let tids = items
+                    .iter()
+                    .map(|item| *item.ty(&self.body().locals))
+                    .collect::<Vec<_>>();
+
+                let ptr = self.alloc_record(&tids);
 
                 for (i, value) in values.iter().enumerate() {
                     let field = LLVMBuildStructGEP2(
@@ -67,7 +72,12 @@ impl BodyCodegen<'_> {
                     0,
                 );
 
-                let ptr = self.alloc_single(ty);
+                let tids = fields
+                    .iter()
+                    .map(|(_, ty)| *ty.ty(&self.body().locals))
+                    .collect::<Vec<_>>();
+
+                let ptr = self.alloc_record(&tids);
 
                 for (i, value) in values.iter().enumerate() {
                     let field = LLVMBuildStructGEP2(
@@ -88,7 +98,9 @@ impl BodyCodegen<'_> {
             }
 
             sir::Value::Promote {
-                variant, operand, ..
+                variant,
+                variants,
+                operand,
             } => {
                 let operand = self.operand(operand);
 
@@ -99,7 +111,7 @@ impl BodyCodegen<'_> {
                     0,
                 );
 
-                let ptr = self.alloc_single(union);
+                let ptr = self.alloc_union(*variant, variants);
 
                 let tag_ptr = LLVMBuildStructGEP2(
                     self.builder,
@@ -409,14 +421,14 @@ impl BodyCodegen<'_> {
                     [
                         self.void_pointer_type(),             // function pointer
                         LLVMInt64TypeInContext(self.context), // missing
-                        self.bodies[body].captures,           // captures
+                        self.bodies[body].captures_ty,        // captures
                     ]
                     .as_mut_ptr(),
                     3,
                     0,
                 );
 
-                let closure_ptr = self.alloc_single(closure_ty);
+                let closure_ptr = self.alloc_closure(*body);
 
                 let function = LLVMBuildStructGEP2(
                     self.builder,
@@ -438,7 +450,7 @@ impl BodyCodegen<'_> {
 
                 LLVMBuildStore(
                     self.builder,
-                    LLVMSizeOf(self.bodies[body].captures),
+                    LLVMSizeOf(self.bodies[body].captures_ty),
                     missing,
                 );
 
@@ -451,12 +463,7 @@ impl BodyCodegen<'_> {
         let true_tid = self.program.types[sir::Ty::True];
         let false_tid = self.program.types[sir::Ty::False];
 
-        let bool_ty = sir::Ty::Union(BTreeSet::from([true_tid, false_tid]));
-        let bool_tid = self.program.types[bool_ty];
-
-        let bool_ty = self.codegen.tid(bool_tid);
-
-        let bool_ptr = self.alloc_single(bool_ty);
+        let bool_ptr = self.alloc_union(true_tid, &BTreeSet::from([true_tid, false_tid]));
 
         let true_block = LLVMAppendBasicBlockInContext(
             self.context,

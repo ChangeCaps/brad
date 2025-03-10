@@ -1,6 +1,6 @@
 mod drop;
+mod gc;
 mod jit;
-mod mark;
 mod operand;
 mod place;
 mod value;
@@ -54,6 +54,9 @@ struct GarbageContext {
     pub collect_ty: LLVMTypeRef,
     pub collect: LLVMValueRef,
 
+    pub mark_ty: LLVMTypeRef,
+    pub mark: LLVMValueRef,
+
     pub marker_ty: LLVMTypeRef,
     pub marker_ptr_ty: LLVMTypeRef,
 }
@@ -79,6 +82,9 @@ impl GarbageContext {
         let collect_ty = LLVMFunctionType(void, [].as_mut_ptr(), 0, 0);
         let collect = LLVMAddFunction(module, c"brad_collect".as_ptr(), collect_ty);
 
+        let mark_ty = LLVMFunctionType(void, [byte_ptr].as_mut_ptr(), 1, 0);
+        let mark = LLVMAddFunction(module, c"brad_mark".as_ptr(), mark_ty);
+
         Self {
             alloc_ty,
             alloc,
@@ -91,6 +97,9 @@ impl GarbageContext {
 
             collect_ty,
             collect,
+
+            mark_ty,
+            mark,
 
             marker_ty,
             marker_ptr_ty,
@@ -177,7 +186,7 @@ impl Codegen {
             .to_string()
     }
 
-    fn tid(&self, tid: sir::Tid) -> LLVMTypeRef {
+    pub fn tid(&self, tid: sir::Tid) -> LLVMTypeRef {
         self.types[&tid].0
     }
 
@@ -296,7 +305,8 @@ impl Codegen {
 
 struct LLVMBody {
     function: LLVMValueRef,
-    captures: LLVMTypeRef,
+    captures: Vec<LLVMTypeRef>,
+    captures_ty: LLVMTypeRef,
     entry: LLVMBasicBlockRef,
     locals: Vec<LLVMValueRef>,
 }
@@ -320,14 +330,14 @@ impl LLVMBody {
             captures.push(ty);
         }
 
-        let captures = LLVMStructTypeInContext(
+        let captures_ty = LLVMStructTypeInContext(
             codegen.context,
             captures.as_mut_ptr(), // elements
             captures.len() as u32, // element count
             0,
         );
 
-        let mut input = LLVMPointerType(captures, 0);
+        let mut input = LLVMPointerType(captures_ty, 0);
         let output = codegen.tid(body.output);
 
         /* create the function type */
@@ -363,7 +373,7 @@ impl LLVMBody {
         for (i, local) in (0..body.captures + body.arguments).rev().enumerate() {
             let arg = LLVMBuildStructGEP2(
                 codegen.builder,
-                captures,
+                captures_ty,
                 input,
                 i as u32, // index
                 c"arg".as_ptr(),
@@ -382,6 +392,7 @@ impl LLVMBody {
         Self {
             function,
             captures,
+            captures_ty,
             entry,
             locals,
         }
@@ -424,57 +435,6 @@ impl<'a> BodyCodegen<'a> {
 
     unsafe fn llvm_body(&self) -> &LLVMBody {
         &self.bodies[&self.id]
-    }
-
-    unsafe fn alloc_single(&mut self, ty: LLVMTypeRef) -> LLVMValueRef {
-        let size = LLVMSizeOf(ty);
-        let marker = self.str_marker();
-
-        self.alloc(size, marker)
-    }
-
-    unsafe fn alloc(&mut self, count: LLVMValueRef, marker: LLVMValueRef) -> LLVMValueRef {
-        LLVMBuildCall2(
-            self.builder,
-            self.gc.alloc_ty,
-            self.gc.alloc,
-            [count, marker].as_mut_ptr(),
-            2,
-            c"alloc".as_ptr(),
-        )
-    }
-
-    unsafe fn retain(&mut self, value: LLVMValueRef) {
-        LLVMBuildCall2(
-            self.builder,
-            self.gc.retain_ty,
-            self.gc.retain,
-            [value].as_mut_ptr(),
-            1,
-            c"".as_ptr(),
-        );
-    }
-
-    unsafe fn release(&mut self, value: LLVMValueRef) {
-        LLVMBuildCall2(
-            self.builder,
-            self.gc.release_ty,
-            self.gc.release,
-            [value].as_mut_ptr(),
-            1,
-            c"".as_ptr(),
-        );
-    }
-
-    unsafe fn collect(&mut self) {
-        LLVMBuildCall2(
-            self.builder,
-            self.gc.collect_ty,
-            self.gc.collect,
-            [].as_mut_ptr(),
-            0,
-            c"".as_ptr(),
-        );
     }
 
     unsafe fn build(&mut self) {
