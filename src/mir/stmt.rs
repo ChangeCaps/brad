@@ -65,6 +65,9 @@ pub enum Value<T = Ty> {
     /// Use an operand directly.
     Use(Operand<T>),
 
+    /// Initialize a list.
+    List(Vec<Operand<T>>),
+
     /// Initialize a tuple.
     Tuple(Vec<Operand<T>>),
 

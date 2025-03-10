@@ -50,7 +50,7 @@ impl<'a> Specializer<'a> {
 
         self.bodies.insert((bid, generics.to_vec()), spec);
 
-        if self.mir.bodies[bid].attrs.find_value("intrinsic") == Some("string::format") {
+        if self.mir.bodies[bid].attrs.find_value("intrinsic") == Some("debug::format") {
             self.sir.bodies[spec] = self.format(bid, generics[0]);
 
             return spec;
@@ -508,7 +508,7 @@ impl<'a> Specializer<'a> {
                 sir::Body {
                     attrs: Attributes::new(),
                     is_extern: false,
-                    name: Some(format!("std::string::format<{}>", self.names[&tid].clone())),
+                    name: Some(format!("std::debug::format<{}>", self.names[&tid].clone())),
                     captures: 0,
                     arguments: 1,
                     output: str_tid,
@@ -653,6 +653,15 @@ impl<'a> Specializer<'a> {
                 let operand = self.operand(operand, generics);
 
                 sir::Value::Use(operand)
+            }
+
+            mir::Value::List(operands) => {
+                let operands = operands
+                    .into_iter()
+                    .map(|operand| self.operand(operand, generics))
+                    .collect();
+
+                sir::Value::List(operands)
             }
 
             mir::Value::Tuple(operands) => {

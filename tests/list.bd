@@ -1,0 +1,5 @@
+fn main -> none {
+  let x = [1] 
+
+  std::assert <| x[0] == 1
+}

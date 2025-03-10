@@ -11,6 +11,104 @@ impl BodyCodegen<'_> {
         match value {
             sir::Value::Use(operand) => self.operand(operand),
 
+            sir::Value::List(items) => {
+                let list_ty = LLVMStructTypeInContext(
+                    self.context,
+                    [
+                        self.i64_type(),       // size
+                        self.i64_type(),       // capacity
+                        self.zero_size_type(), // items
+                    ]
+                    .as_mut_ptr(),
+                    3,
+                    0,
+                );
+
+                let size = match items.first() {
+                    Some(operand) => {
+                        let item_tid = operand.ty(&self.body().locals);
+                        let item_ty = self.tid(*item_tid);
+
+                        let base_size = LLVMSizeOf(list_ty);
+                        let item_size = LLVMSizeOf(item_ty);
+                        let item_count = LLVMConstInt(self.i64_type(), items.len() as u64, 0);
+
+                        let size = LLVMBuildMul(
+                            self.builder,
+                            item_size,
+                            item_count,
+                            c"item_size".as_ptr(),
+                        );
+
+                        LLVMBuildAdd(self.builder, base_size, size, c"size".as_ptr())
+                    }
+
+                    None => LLVMSizeOf(list_ty),
+                };
+
+                let marker = self.str_marker();
+                let list_ptr = self.alloc(size, marker, "list");
+
+                let size_ptr = LLVMBuildStructGEP2(
+                    self.builder,
+                    list_ty,
+                    list_ptr,
+                    0, // size
+                    c"size_ptr".as_ptr(),
+                );
+
+                LLVMBuildStore(
+                    self.builder,
+                    LLVMConstInt(self.i64_type(), items.len() as u64, 0),
+                    size_ptr,
+                );
+
+                let capacity_ptr = LLVMBuildStructGEP2(
+                    self.builder,
+                    list_ty,
+                    list_ptr,
+                    1, // capacity
+                    c"capacity_ptr".as_ptr(),
+                );
+
+                LLVMBuildStore(
+                    self.builder,
+                    LLVMConstInt(self.i64_type(), items.len() as u64, 0),
+                    capacity_ptr,
+                );
+
+                let items_ptr = LLVMBuildStructGEP2(
+                    self.builder,
+                    list_ty,
+                    list_ptr,
+                    2, // items
+                    c"items_ptr".as_ptr(),
+                );
+
+                for (i, item) in items.iter().enumerate() {
+                    let item_tid = *item.ty(&self.body().locals);
+                    let item_ty = self.tid(item_tid);
+                    let item = self.operand(item);
+
+                    let index = LLVMConstInt(self.i64_type(), i as u64, 0);
+
+                    let item_ptr = LLVMBuildGEP2(
+                        self.builder,
+                        item_ty,
+                        items_ptr,
+                        [index].as_mut_ptr(),
+                        1,
+                        c"item_ptr".as_ptr(),
+                    );
+
+                    LLVMBuildStore(self.builder, item, item_ptr);
+
+                    self.drop(item, item_tid);
+                }
+
+                list_ptr
+            }
+
             sir::Value::Tuple(items) => {
                 let mut values = Vec::new();
                 let mut types = Vec::new();

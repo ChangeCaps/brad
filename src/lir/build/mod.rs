@@ -402,6 +402,9 @@ impl<'a> Builder<'a> {
             sir::Value::Use(ref operand) => {
                 lir::Value::Use(self.decompose_operand(bid, sbid, block, operand))
             }
+
+            sir::Value::List(_) => todo!(),
+
             sir::Value::Tuple(operands) => {
                 let ty = lir::Ty::Tuple(operands.iter().fold(Vec::new(), |mut acc, op| {
                     let val = self.decompose_operand(bid, sbid, block, op);

@@ -289,6 +289,20 @@ impl<'a, W: Write> Formatter<'a, W> {
                 write!(self.writer, "use ")?;
                 self.format_operand(body, operand)
             }
+
+            mir::Value::List(operands) => {
+                write!(self.writer, "list(")?;
+
+                for (i, operand) in operands.iter().enumerate() {
+                    if i > 0 {
+                        write!(self.writer, ", ")?;
+                    }
+                    self.format_operand(body, operand)?;
+                }
+
+                write!(self.writer, ")")
+            }
+
             mir::Value::Tuple(operands) => {
                 write!(self.writer, "tuple(")?;
                 for (i, operand) in operands.iter().enumerate() {
@@ -299,6 +313,7 @@ impl<'a, W: Write> Formatter<'a, W> {
                 }
                 write!(self.writer, ")")
             }
+
             mir::Value::Record(record) => {
                 write!(self.writer, "record(")?;
                 for (i, (name, operand)) in record.iter().enumerate() {
@@ -310,22 +325,28 @@ impl<'a, W: Write> Formatter<'a, W> {
                 }
                 write!(self.writer, ")")
             }
+
             mir::Value::Promote { .. } => todo!(),
+
             mir::Value::Coerce { .. } => todo!(),
+
             mir::Value::Call(place, operand) => {
                 self.format_place(body, place)?;
                 write!(self.writer, " = call ")?;
                 self.format_operand(body, operand)
             }
+
             mir::Value::Binary(op, lhs, rhs) => {
                 self.format_operand(body, lhs)?;
                 write!(self.writer, " {} ", op)?;
                 self.format_operand(body, rhs)
             }
+
             mir::Value::Unary(op, lhs) => {
                 write!(self.writer, "{}", op)?;
                 self.format_operand(body, lhs)
             }
+
             mir::Value::Closure {
                 body: bid,
                 generics,

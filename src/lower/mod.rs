@@ -365,7 +365,7 @@ impl Lowerer {
                 }
 
                 if let Some(body) = decl.body.clone() {
-                    let expr = lowerer.lower_expr(body)?;
+                    let expr = lowerer.lower_expr(body, Some(lowerer.body().output.clone()))?;
 
                     if !decl.is_extern && !lowerer.is_subty(&lowerer.body().output, &expr.ty) {
                         let diagnostic = Diagnostic::error("unresolved::type")

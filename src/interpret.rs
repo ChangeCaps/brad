@@ -86,6 +86,15 @@ impl Interpreter {
         match value {
             sir::Value::Use(operand) => self.eval_operand(frame, operand),
 
+            sir::Value::List(operands) => {
+                let values = operands
+                    .iter()
+                    .map(|operand| self.eval_operand(frame, operand))
+                    .collect();
+
+                Value::List(values)
+            }
+
             sir::Value::Tuple(operands) => {
                 let values = operands
                     .iter()

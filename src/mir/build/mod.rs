@@ -470,6 +470,17 @@ impl<'a> Builder<'a> {
 
     fn build_value(&mut self, mut block: mir::Block, expr: hir::Expr) -> BuildResult<mir::Value> {
         match expr.kind {
+            hir::ExprKind::List(exprs) => {
+                let mut values = Vec::new();
+
+                for expr in exprs {
+                    let value = unpack!(block = self.build_operand(block, expr)?);
+                    values.push(value);
+                }
+
+                Ok(BlockAnd::new(block, mir::Value::List(values)))
+            }
+
             hir::ExprKind::Tuple(exprs) => {
                 let mut values = Vec::new();
 
@@ -601,7 +612,6 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::Named(_, _)
             | hir::ExprKind::String(_)
             | hir::ExprKind::Local(_)
-            | hir::ExprKind::List(_)
             | hir::ExprKind::Index(_, _)
             | hir::ExprKind::Field(_, _)
             | hir::ExprKind::Assign(_, _)

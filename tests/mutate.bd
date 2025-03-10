@@ -1,0 +1,6 @@
+fn main -> none {
+  let mut x = 1
+  x = 2
+
+  std::assert <| x == 2
+}

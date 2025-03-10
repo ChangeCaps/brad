@@ -198,25 +198,29 @@ impl<'a> BodyLowerer<'a> {
         }
     }
 
-    pub fn lower_expr(&mut self, expr: ast::Expr) -> Result<hir::Expr, Diagnostic> {
+    pub fn lower_expr(
+        &mut self,
+        expr: ast::Expr,
+        ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
         match expr {
-            ast::Expr::Literal(e) => self.lower_literal(e),
-            ast::Expr::List(e) => self.lower_list(e),
-            ast::Expr::Record(e) => self.lower_record(e),
-            ast::Expr::Tuple(e) => self.lower_tuple(e),
-            ast::Expr::Path(e) => self.lower_path(e),
-            ast::Expr::Index(e) => self.lower_index(e),
-            ast::Expr::Field(e) => self.lower_field(e),
-            ast::Expr::Unary(e) => self.lower_unary(e),
-            ast::Expr::Binary(e) => self.lower_binary(e),
-            ast::Expr::Call(e) => self.lower_call(e),
-            ast::Expr::Assign(e) => self.lower_assign(e),
-            ast::Expr::Ref(e) => self.lower_ref(e),
-            ast::Expr::Match(e) => self.lower_match(e),
-            ast::Expr::Loop(e) => self.lower_loop(e),
-            ast::Expr::Break(e) => self.lower_break(e),
-            ast::Expr::Let(e) => self.lower_let(e),
-            ast::Expr::Block(e) => self.lower_block(e),
+            ast::Expr::Literal(e) => self.lower_literal(e, ty),
+            ast::Expr::List(e) => self.lower_list(e, ty),
+            ast::Expr::Record(e) => self.lower_record(e, ty),
+            ast::Expr::Tuple(e) => self.lower_tuple(e, ty),
+            ast::Expr::Path(e) => self.lower_path(e, ty),
+            ast::Expr::Index(e) => self.lower_index(e, ty),
+            ast::Expr::Field(e) => self.lower_field(e, ty),
+            ast::Expr::Unary(e) => self.lower_unary(e, ty),
+            ast::Expr::Binary(e) => self.lower_binary(e, ty),
+            ast::Expr::Call(e) => self.lower_call(e, ty),
+            ast::Expr::Assign(e) => self.lower_assign(e, ty),
+            ast::Expr::Ref(e) => self.lower_ref(e, ty),
+            ast::Expr::Match(e) => self.lower_match(e, ty),
+            ast::Expr::Loop(e) => self.lower_loop(e, ty),
+            ast::Expr::Break(e) => self.lower_break(e, ty),
+            ast::Expr::Let(e) => self.lower_let(e, ty),
+            ast::Expr::Block(e) => self.lower_block(e, ty),
         }
     }
 
@@ -224,7 +228,11 @@ impl<'a> BodyLowerer<'a> {
         self.program.types.format(ty)
     }
 
-    fn lower_literal(&mut self, ast: ast::Literal) -> Result<hir::Expr, Diagnostic> {
+    fn lower_literal(
+        &mut self,
+        ast: ast::Literal,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
         match ast {
             ast::Literal::Int { value, span } => Ok(hir::Expr {
                 kind: hir::ExprKind::Int(value),
@@ -259,16 +267,68 @@ impl<'a> BodyLowerer<'a> {
         }
     }
 
-    fn lower_list(&mut self, _ast: ast::ListExpr) -> Result<hir::Expr, Diagnostic> {
-        panic!("list expressions are not yet supported");
+    fn lower_list(
+        &mut self,
+        ast: ast::ListExpr,
+        ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        let mut ty = match ty {
+            Some(hir::Ty::List(ty)) => Some(*ty),
+            Some(_) => {
+                let diagnostic = Diagnostic::error("unresolved::type")
+                    .message("expected list type in list")
+                    .label(ast.span, "found here");
+
+                return Err(diagnostic);
+            }
+            None => None,
+        };
+
+        let mut items = Vec::new();
+
+        for expr in ast.items {
+            let expr = self.lower_expr(expr, ty.clone())?;
+
+            if let Some(ref mut ty) = ty {
+                if !self.is_subty(ty, &expr.ty) {
+                    let diagnostic = Diagnostic::error("unresolved::type")
+                        .message("expected type in list")
+                        .label(ast.span, "found here");
+
+                    return Err(diagnostic);
+                }
+            }
+
+            ty = Some(expr.ty.clone());
+
+            items.push(expr);
+        }
+
+        let Some(ty) = ty else {
+            let diagnostic = Diagnostic::error("unresolved::type")
+                .message("expected type in list")
+                .label(ast.span, "found here");
+
+            return Err(diagnostic);
+        };
+
+        Ok(hir::Expr {
+            kind: hir::ExprKind::List(items),
+            ty: hir::Ty::List(Box::new(ty)),
+            span: ast.span,
+        })
     }
 
-    fn lower_record(&mut self, ast: ast::RecordExpr) -> Result<hir::Expr, Diagnostic> {
+    fn lower_record(
+        &mut self,
+        ast: ast::RecordExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
         let mut fields = Vec::new();
         let mut inits = Vec::new();
 
         for init in ast.fields {
-            let value = self.lower_expr(init.value)?;
+            let value = self.lower_expr(init.value, None)?;
 
             fields.push(hir::Field {
                 name: init.name,
@@ -289,12 +349,16 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_tuple(&mut self, ast: ast::TupleExpr) -> Result<hir::Expr, Diagnostic> {
+    fn lower_tuple(
+        &mut self,
+        ast: ast::TupleExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
         let mut tys = Vec::new();
         let mut exprs = Vec::new();
 
         for expr in ast.items {
-            let expr = self.lower_expr(expr)?;
+            let expr = self.lower_expr(expr, None)?;
             tys.push(expr.ty.clone());
             exprs.push(expr);
         }
@@ -306,7 +370,11 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_path(&mut self, ast: ast::Path) -> Result<hir::Expr, Diagnostic> {
+    fn lower_path(
+        &mut self,
+        ast: ast::Path,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
         if ast.segments.len() == 1 {
             let segment = &ast.segments[0];
 
@@ -378,9 +446,13 @@ impl<'a> BodyLowerer<'a> {
         }
     }
 
-    fn lower_index(&mut self, ast: ast::IndexExpr) -> Result<hir::Expr, Diagnostic> {
-        let target = self.lower_expr(*ast.target)?;
-        let index = self.lower_expr(*ast.index)?;
+    fn lower_index(
+        &mut self,
+        ast: ast::IndexExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        let target = self.lower_expr(*ast.target, None)?;
+        let index = self.lower_expr(*ast.index, None)?;
 
         let hir::Ty::List(ref ty) = target.ty else {
             let diagnostic = Diagnostic::error("unresolved::type")
@@ -405,8 +477,12 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_field(&mut self, ast: ast::FieldExpr) -> Result<hir::Expr, Diagnostic> {
-        let target = self.lower_expr(*ast.target)?;
+    fn lower_field(
+        &mut self,
+        ast: ast::FieldExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        let target = self.lower_expr(*ast.target, None)?;
 
         let hir::Ty::Record(ref fields) = target.ty else {
             let diagnostic = Diagnostic::error("unresolved::type")
@@ -431,8 +507,12 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_unary(&mut self, ast: ast::UnaryExpr) -> Result<hir::Expr, Diagnostic> {
-        let expr = self.lower_expr(*ast.expr)?;
+    fn lower_unary(
+        &mut self,
+        ast: ast::UnaryExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        let expr = self.lower_expr(*ast.expr, None)?;
 
         let op = match ast.op {
             ast::UnaryOp::Neg => hir::UnaryOp::Neg,
@@ -461,9 +541,13 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_binary(&mut self, ast: ast::BinaryExpr) -> Result<hir::Expr, Diagnostic> {
-        let lhs = self.lower_expr(*ast.lhs)?;
-        let rhs = self.lower_expr(*ast.rhs)?;
+    fn lower_binary(
+        &mut self,
+        ast: ast::BinaryExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        let lhs = self.lower_expr(*ast.lhs, None)?;
+        let rhs = self.lower_expr(*ast.rhs, None)?;
 
         if lhs.ty != rhs.ty {
             let diagnostic = Diagnostic::error("unresolved::type")
@@ -522,9 +606,13 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_call(&mut self, ast: ast::CallExpr) -> Result<hir::Expr, Diagnostic> {
-        let target = self.lower_expr(*ast.target)?;
-        let input = self.lower_expr(*ast.input)?;
+    fn lower_call(
+        &mut self,
+        ast: ast::CallExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        let target = self.lower_expr(*ast.target, None)?;
+        let input = self.lower_expr(*ast.input, None)?;
 
         let hir::Ty::Func(ref i, ref o) = target.ty else {
             let diagnostic = Diagnostic::error("unresolved::type")
@@ -549,9 +637,13 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_assign(&mut self, ast: ast::AssignExpr) -> Result<hir::Expr, Diagnostic> {
-        let target = self.lower_expr(*ast.target)?;
-        let value = self.lower_expr(*ast.value)?;
+    fn lower_assign(
+        &mut self,
+        ast: ast::AssignExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        let target = self.lower_expr(*ast.target, None)?;
+        let value = self.lower_expr(*ast.value, None)?;
 
         if !self.is_subty(&target.ty, &value.ty) {
             let diagnostic = Diagnostic::error("unresolved::type")
@@ -568,8 +660,12 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_ref(&mut self, ast: ast::RefExpr) -> Result<hir::Expr, Diagnostic> {
-        let expr = self.lower_expr(*ast.expr)?;
+    fn lower_ref(
+        &mut self,
+        ast: ast::RefExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        let expr = self.lower_expr(*ast.expr, None)?;
 
         let ty = hir::Ty::Ref(Box::new(expr.ty.clone()));
         let kind = hir::ExprKind::Ref(Box::new(expr));
@@ -578,8 +674,12 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_match(&mut self, ast: ast::MatchExpr) -> Result<hir::Expr, Diagnostic> {
-        let target = self.lower_expr(*ast.target)?;
+    fn lower_match(
+        &mut self,
+        ast: ast::MatchExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        let target = self.lower_expr(*ast.target, None)?;
 
         let mut arms = Vec::new();
         let mut tys = BTreeSet::new();
@@ -598,7 +698,7 @@ impl<'a> BodyLowerer<'a> {
                 }
             };
 
-            let expr = self.lower_expr(arm.expr)?;
+            let expr = self.lower_expr(arm.expr, None)?;
 
             if !tys.contains(&expr.ty) {
                 tys.insert(expr.ty.clone());
@@ -618,14 +718,18 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_loop(&mut self, ast: ast::LoopExpr) -> Result<hir::Expr, Diagnostic> {
+    fn lower_loop(
+        &mut self,
+        ast: ast::LoopExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
         let old_looping = self.looping;
         let old_breaks = self.breaks.clone();
 
         self.looping = true;
         self.breaks.clear();
 
-        let body = self.lower_expr(*ast.body)?;
+        let body = self.lower_expr(*ast.body, None)?;
 
         let ty = match self.breaks.len() {
             0 => hir::Ty::Never,
@@ -641,7 +745,11 @@ impl<'a> BodyLowerer<'a> {
         Ok(hir::Expr { kind, ty, span })
     }
 
-    fn lower_break(&mut self, ast: ast::BreakExpr) -> Result<hir::Expr, Diagnostic> {
+    fn lower_break(
+        &mut self,
+        ast: ast::BreakExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
         if !self.looping {
             let diagnostic = Diagnostic::error("unresolved::break")
                 .message("break outside of loop")
@@ -652,7 +760,7 @@ impl<'a> BodyLowerer<'a> {
 
         match ast.value {
             Some(value) => {
-                let value = self.lower_expr(*value)?;
+                let value = self.lower_expr(*value, None)?;
                 self.breaks.insert(value.ty.clone());
 
                 let kind = hir::ExprKind::Break(Some(Box::new(value)));
@@ -673,8 +781,12 @@ impl<'a> BodyLowerer<'a> {
         }
     }
 
-    fn lower_let(&mut self, ast: ast::LetExpr) -> Result<hir::Expr, Diagnostic> {
-        let value = self.lower_expr(*ast.value)?;
+    fn lower_let(
+        &mut self,
+        ast: ast::LetExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        let value = self.lower_expr(*ast.value, None)?;
 
         let (binding, ty) = if let Some(ty) = ast.ty {
             let ty = self.lower_ty(&ty)?;
@@ -703,14 +815,18 @@ impl<'a> BodyLowerer<'a> {
         })
     }
 
-    fn lower_block(&mut self, ast: ast::BlockExpr) -> Result<hir::Expr, Diagnostic> {
+    fn lower_block(
+        &mut self,
+        ast: ast::BlockExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
         let mut ty = hir::Ty::None;
         let mut exprs = Vec::new();
 
         let scope = self.scope.len();
 
         for expr in ast.exprs {
-            let expr = self.lower_expr(expr)?;
+            let expr = self.lower_expr(expr, None)?;
             ty = expr.ty.clone();
             exprs.push(expr);
         }
