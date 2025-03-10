@@ -41,10 +41,13 @@ release: CFLAGS += -O3 -DNDEBUG
 release: runtime
 	@echo "Release build completed."
 
-debug: CFLAGS += -g -Og -DDEBUG
+debug: CFLAGS += -g -Og -ggdb -DDEBUG
 debug: runtime
 	@echo "Debug build completed."
 
 clean:
 	rm -rf $(OBJ_DIR)
 	@echo "Build artifacts cleaned."
+
+test:
+	@bash "tools/run-brad-tests.sh"
