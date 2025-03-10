@@ -6,6 +6,7 @@ use llvm_sys::{
     prelude::*,
 };
 use std::ffi::CString;
+use std::path::PathBuf;
 use std::ptr;
 
 pub struct Jit {
@@ -58,7 +59,7 @@ impl Jit {
         module
     }
 
-    unsafe fn load_object_file(&self, dylib: LLVMOrcJITDylibRef, path: std::path::PathBuf) -> () {
+    unsafe fn load_object_file(&self, dylib: LLVMOrcJITDylibRef, path: PathBuf) {
         assert!(path.exists(), "object file not found");
         let obj_path_str = CString::new(path.to_str().unwrap()).unwrap();
         let mut membuf = ptr::null_mut();

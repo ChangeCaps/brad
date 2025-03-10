@@ -107,11 +107,9 @@ impl<'a> Specializer<'a> {
 
     fn stmt(&mut self, stmt: mir::Stmt, generics: &[sir::Tid]) -> sir::Stmt {
         match stmt {
-            mir::Stmt::Drop(value, ty) => {
-                let value = self.value(value, generics);
-                let ty = self.ty(ty, generics);
-
-                sir::Stmt::Drop(value, ty)
+            mir::Stmt::Drop(operand) => {
+                let operand = self.operand(operand, generics);
+                sir::Stmt::Drop(operand)
             }
 
             mir::Stmt::Assign(place, value) => {
@@ -346,6 +344,7 @@ impl<'a> Specializer<'a> {
     fn operand(&mut self, operand: mir::Operand, generics: &[sir::Tid]) -> sir::Operand {
         match operand {
             mir::Operand::Copy(place) => sir::Operand::Copy(self.place(place, generics)),
+            mir::Operand::Move(place) => sir::Operand::Move(self.place(place, generics)),
             mir::Operand::Const(r#const, ty) => sir::Operand::Const(r#const, self.ty(ty, generics)),
         }
     }

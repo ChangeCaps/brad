@@ -139,6 +139,7 @@ impl<'a> Compiler<'a> {
         self.parse()?;
         let hir = self.lower()?;
         let mir = self.mir(hir)?;
+
         let bid = mir.find_body(format!("{}::main", module).as_str())?;
         let (sir, _) = mir::specialize(mir, bid);
         Ok(llvm_codegen::codegen(sir))

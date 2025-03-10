@@ -2,13 +2,46 @@
   {
     "arguments": [
       "/nix/store/ls0g67nsklb2vn3vc9dnksa1adfgq32a-clang-wrapper-19.1.7/bin/clang",
+      "-Wall",
+      "-Werror",
+      "-fpic",
       "-c",
       "-o",
-      "gc.o",
+      "obj/runtime.o",
       "runtime/gc.c"
     ],
     "directory": "/dev-storage/rust/brad",
     "file": "/dev-storage/rust/brad/runtime/gc.c",
-    "output": "/dev-storage/rust/brad/gc.o"
+    "output": "/dev-storage/rust/brad/obj/runtime.o"
+  },
+  {
+    "arguments": [
+      "/nix/store/ls0g67nsklb2vn3vc9dnksa1adfgq32a-clang-wrapper-19.1.7/bin/clang",
+      "-Wall",
+      "-Werror",
+      "-fpic",
+      "-c",
+      "-o",
+      "obj/std_io.o",
+      "runtime/std_io.c"
+    ],
+    "directory": "/dev-storage/rust/brad",
+    "file": "/dev-storage/rust/brad/runtime/std_io.c",
+    "output": "/dev-storage/rust/brad/obj/std_io.o"
+  },
+  {
+    "arguments": [
+      "/nix/store/ls0g67nsklb2vn3vc9dnksa1adfgq32a-clang-wrapper-19.1.7/bin/clang",
+      "-Wall",
+      "-Werror",
+      "-fpic",
+      "-c",
+      "-o",
+      "obj/std_string.o",
+      "runtime/std_string.c"
+    ],
+    "directory": "/dev-storage/rust/brad",
+    "file": "/dev-storage/rust/brad/runtime/std_string.c",
+    "output": "/dev-storage/rust/brad/obj/std_string.o"
   }
 ]

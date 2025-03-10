@@ -13,7 +13,14 @@ impl BodyCodegen<'_> {
 
                 let place = self.place(place);
 
-                LLVMBuildLoad2(self.builder, ty, place, c"load".as_ptr())
+                let operand = LLVMBuildLoad2(self.builder, ty, place, c"load".as_ptr());
+                self.copy(operand, tid)
+            }
+
+            sir::Operand::Move(place) => {
+                let place = self.place(place);
+
+                LLVMBuildLoad2(self.builder, LLVMTypeOf(place), place, c"load".as_ptr())
             }
 
             sir::Operand::Const(r#const, _) => match r#const {
@@ -29,11 +36,7 @@ impl BodyCodegen<'_> {
 
                 sir::Const::String(value) => {
                     let i64_size = LLVMSizeOf(self.i64_type());
-                    let len = LLVMConstInt(
-                        LLVMInt64TypeInContext(self.context),
-                        value.len() as u64, // length in bytes
-                        0,
-                    );
+                    let len = LLVMConstInt(self.i64_type(), value.len() as u64, 0);
 
                     let total_len = LLVMBuildAdd(self.builder, i64_size, len, c"len".as_ptr());
 

@@ -201,8 +201,15 @@ impl<'a> Builder<'a> {
     ) -> lir::Operand {
         match operand {
             sir::Operand::Copy(ref place) => {
+                panic!("deep copy is not a simple operation");
+                todo!()
+                // lir::Operand::Var(lir::Var::from(self.read_place(bid, sbid, block, place)))
+            }
+
+            sir::Operand::Move(ref place) => {
                 lir::Operand::Var(lir::Var::from(self.read_place(bid, sbid, block, place)))
             }
+
             sir::Operand::Const(ref cst, tid) => lir::Operand::Const(
                 self.map_tid(tid.clone()),
                 match cst {
@@ -361,14 +368,6 @@ impl<'a> Builder<'a> {
                 }
                 sir::Proj::Index(ref op) => {
                     let index = self.decompose_operand(bid, sbid, block, op);
-                    // let index = match op {
-                    //     sir::Operand::Copy(ref splace) => lir::Operand::Var(lir::Var::from(
-                    //         self.read_place(bid, sbid, block, splace),
-                    //     )),
-                    //     sir::Operand::Const(cst, sid) => {
-                    //         self.decompose_operand(bid, sbid, block, operand)
-                    //     }
-                    // };
                     if lplace.index.is_some() || lplace.deref {
                         let new = self.read_lplace(bid, block, &lplace);
                         lplace.from(new);
@@ -440,13 +439,11 @@ impl<'a> Builder<'a> {
         stmt: &sir::Stmt,
     ) -> lir::Stmt {
         match stmt {
-            sir::Stmt::Drop(value, tid) => lir::Stmt::Drop {
-                var: {
-                    let val = self.decompose_value(bid, sbid, block, value);
-                    self.operand_from_value(bid, &val)
-                },
-                tid: self.map_tid(tid.clone()),
-            },
+            sir::Stmt::Drop(operand) => {
+                let op = self.decompose_operand(bid, sbid, block, operand);
+                let tid = self.tid_from_operand(bid, &op);
+                lir::Stmt::Drop { var: op, tid }
+            }
             sir::Stmt::Assign(place, value) => {
                 let dst = self.decompose_place(bid, sbid, block, place);
                 let src = self.decompose_value(bid, sbid, block, value);

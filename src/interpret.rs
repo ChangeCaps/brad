@@ -42,7 +42,7 @@ impl Interpreter {
 
     fn eval_stmt(&self, frame: &mut Frame, stmt: &sir::Stmt) -> Result<(), Flow> {
         match stmt {
-            sir::Stmt::Drop(_, _) => Ok(()),
+            sir::Stmt::Drop(_) => Ok(()),
 
             sir::Stmt::Assign(place, value) => {
                 let value = self.eval_value(frame, value);
@@ -149,7 +149,49 @@ impl Interpreter {
                 let body = &self.sir.bodies[body];
 
                 if body.is_extern {
-                    todo!("Implement extern functions");
+                    if let Some(name) = body
+                        .attrs
+                        .attributes
+                        .iter()
+                        .filter(|a| a.name == "link" && a.value.is_some())
+                        .map(|a| a.value.clone().unwrap().to_string())
+                        .collect::<Vec<_>>()
+                        .first()
+                    {
+                        match name.as_str() {
+                            "brad_print" => {
+                                if let Value::String(string) = &captures[0] {
+                                    println!("{}", string);
+                                } else {
+                                    panic!("expected string, got {:?}", captures[0]);
+                                }
+
+                                return Value::None;
+                            }
+
+                            "brad_str_concat" => {
+                                if let (Value::String(lhs), Value::String(rhs)) =
+                                    (&captures[0], &captures[1])
+                                {
+                                    return Value::String(format!("{}{}", lhs, rhs));
+                                } else {
+                                    panic!(
+                                        "expected strings, got {:?} and {:?}",
+                                        captures[0], captures[1]
+                                    );
+                                }
+                            }
+
+                            _ => {}
+                        };
+
+                        println!("call external function: {}", name);
+                    }
+
+                    todo!(
+                        "call external function: {:?} that was not implemented",
+                        body
+                    );
                 }
 
                 let mut frame = Frame {
@@ -368,6 +410,7 @@ impl Interpreter {
     fn eval_operand(&self, frame: &mut Frame, operand: &sir::Operand) -> Value {
         match operand {
             sir::Operand::Copy(place) => self.eval_place(frame, place),
+            sir::Operand::Move(place) => self.eval_place(frame, place),
             sir::Operand::Const(const_, _) => self.eval_const(const_),
         }
     }
