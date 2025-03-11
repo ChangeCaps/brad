@@ -1,6 +1,5 @@
-use std::borrow::Cow;
-
 use crate::diagnostic::Span;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug, Default)]
 pub struct Attributes {

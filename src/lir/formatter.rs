@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use super::{Bid, Body, Program, Stmt, Tid, Ty};
+use super::{Bid, Program, Tid, Ty};
 
 pub struct Formatter<W> {
     writer: W,

@@ -1,6 +1,5 @@
-use std::fmt;
-
 use crate::diagnostic::Span;
+use std::fmt;
 
 use super::generic::Spec;
 

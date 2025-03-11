@@ -50,6 +50,7 @@ pub struct ModuleArgs {
 pub enum Cmd {
     Lex(FileArgs),
     Ast(FileArgs),
+    RandomAst,
     Fmt {
         #[command(subcommand)]
         command: FmtCmd,
@@ -73,6 +74,13 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
     let args = Cli::parse();
 
     match &args.command {
+        Cmd::RandomAst => {
+            let generator = ast::Generator::new();
+            let module = ast::Generator::generate(generator);
+            let mut formatter = ast::Formatter::new(std::io::stdout());
+            formatter.format_module(&module).unwrap();
+            Ok(())
+        }
         Cmd::Lex(f)
         | Cmd::Ast(f)
         | Cmd::Fmt {
