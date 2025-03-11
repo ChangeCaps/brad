@@ -159,11 +159,51 @@ impl<'a> Builder<'a> {
     fn build_place(&mut self, mut block: mir::Block, expr: hir::Expr) -> BuildResult<mir::Place> {
         match expr.kind {
             hir::ExprKind::Local(local) => {
-                let place = mir::Place {
+                let mut place = mir::Place {
                     local: self.build_local(local),
                     proj: Vec::new(),
                     is_mutable: self.body.locals[local].is_mutable,
                 };
+
+                if place.is_mutable {
+                    let ty = self.build_ty(expr.ty.clone());
+                    place.proj.push((mir::Proj::Deref, ty));
+                }
+
+                Ok(BlockAnd::new(block, place))
+            }
+
+            hir::ExprKind::Ref(expr) => {
+                let mut place = unpack!(block = self.build_place(block, *expr)?);
+
+                if matches!(place.proj.last(), Some((mir::Proj::Deref, _))) {
+                    place.proj.pop();
+                } else {
+                    panic!("Cannot take reference of non-reference");
+                }
+
+                place.is_mutable = false;
+
+                Ok(BlockAnd::new(block, place))
+            }
+
+            hir::ExprKind::Index(target, index) => {
+                let ty = self.build_ty(expr.ty.clone());
+
+                let mut target = unpack!(block = self.build_place(block, *target)?);
+                let index = unpack!(block = self.build_operand(block, *index)?);
+                target.proj.push((mir::Proj::Index(index), ty));
+
+                Ok(BlockAnd::new(block, target))
+            }
+
+            hir::ExprKind::Unary(hir::UnaryOp::Deref, expr) => {
+                let ty = self.build_ty(expr.ty.clone());
+
+                let mut place = unpack!(block = self.build_place(block, *expr)?);
+
+                place.proj.push((mir::Proj::Deref, ty));
+                place.is_mutable = true;
 
                 Ok(BlockAnd::new(block, place))
             }
@@ -285,12 +325,10 @@ impl<'a> Builder<'a> {
             | hir::ExprKind::List(_)
             | hir::ExprKind::Tuple(_)
             | hir::ExprKind::Record(_)
-            | hir::ExprKind::Index(_, _)
             | hir::ExprKind::Unary(_, _)
             | hir::ExprKind::Binary(_, _, _)
             | hir::ExprKind::Call(_, _)
             | hir::ExprKind::Assign(_, _)
-            | hir::ExprKind::Ref(_)
             | hir::ExprKind::Break(_)
             | hir::ExprKind::Let(_, _, _)
             | hir::ExprKind::Block(_) => {
@@ -523,9 +561,16 @@ impl<'a> Builder<'a> {
                     (hir::UnaryOp::Neg, mir::Ty::Int, _) => mir::UnaryOp::Neg,
                     (hir::UnaryOp::Neg, mir::Ty::Float, _) => mir::UnaryOp::FNeg,
                     (hir::UnaryOp::BitNot, mir::Ty::Int, _) => mir::UnaryOp::BNot,
-                    (hir::UnaryOp::Deref, mir::Ty::Ref(_), _) => mir::UnaryOp::Deref,
                     (hir::UnaryOp::Not, _, hir::Ty::True | hir::Ty::False | hir::Ty::None) => {
                         mir::UnaryOp::Not
+                    }
+                    (hir::UnaryOp::Deref, _, _) => {
+                        let place = unpack!(block = self.build_place(block, *expr)?);
+
+                        return Ok(BlockAnd::new(
+                            block,
+                            mir::Value::Ref(mir::Operand::Load(place)),
+                        ));
                     }
                     (_, expr_ty, _) => {
                         return Err(Diagnostic::error("invalid::type::operator")
@@ -643,9 +688,12 @@ impl<'a> Builder<'a> {
                     is_mutable: false,
                 };
 
-                self.scope.push(place.local);
+                let value = match self.body[local].is_mutable {
+                    true => mir::Value::Ref(mir::Operand::Load(value)),
+                    false => mir::Value::Use(mir::Operand::Load(value)),
+                };
 
-                let value = mir::Value::Use(mir::Operand::Load(value));
+                self.scope.push(place.local);
                 block.push(mir::Stmt::Assign(place, value));
 
                 Ok(BlockAnd::new(block, ()))
@@ -817,6 +865,12 @@ impl<'a> Builder<'a> {
         }
 
         let ty = self.build_ty(self.body.locals[hir].ty.clone());
+
+        let ty = match self.body[hir].is_mutable {
+            true => mir::Ty::Ref(Box::new(ty)),
+            false => ty,
+        };
+
         let local = self.locals.push(ty);
         self.local_map.insert(hir, local);
         local

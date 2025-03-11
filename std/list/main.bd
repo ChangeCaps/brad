@@ -1,0 +1,2 @@
+#[link = "brad_list_len"]
+extern fn len (list: ['a]) -> int

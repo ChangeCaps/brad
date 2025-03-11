@@ -290,6 +290,11 @@ impl<'a, W: Write> Formatter<'a, W> {
                 self.format_operand(body, operand)
             }
 
+            mir::Value::Ref(operand) => {
+                write!(self.writer, "ref ")?;
+                self.format_operand(body, operand)
+            }
+
             mir::Value::List(operands) => {
                 write!(self.writer, "list(")?;
 

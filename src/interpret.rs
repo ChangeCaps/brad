@@ -86,6 +86,8 @@ impl Interpreter {
         match value {
             sir::Value::Use(operand) => self.eval_operand(frame, operand),
 
+            sir::Value::Ref(_) => todo!(),
+
             sir::Value::List(operands) => {
                 let values = operands
                     .iter()
@@ -370,11 +372,6 @@ impl Interpreter {
                 },
 
                 sir::UnaryOp::Not => todo!("Implement runtime booleans (type ids)"),
-
-                sir::UnaryOp::Deref => match self.eval_operand(frame, operand) {
-                    Value::Ref(value) => *value,
-                    value => panic!("expected reference, got {:?}", value),
-                },
             },
 
             sir::Value::Closure { body, captures, .. } => {

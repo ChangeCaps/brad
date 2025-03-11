@@ -655,6 +655,12 @@ impl<'a> Specializer<'a> {
                 sir::Value::Use(operand)
             }
 
+            mir::Value::Ref(operand) => {
+                let operand = self.operand(operand, generics);
+
+                sir::Value::Ref(operand)
+            }
+
             mir::Value::List(operands) => {
                 let operands = operands
                     .into_iter()

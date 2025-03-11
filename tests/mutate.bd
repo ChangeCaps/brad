@@ -3,4 +3,12 @@ fn main -> none {
   x = 2
 
   std::assert <| x == 2
+
+  mutate ref x
+
+  std::assert <| x == 3
+}
+
+fn mutate (x: ref int) -> none {
+  *x = 3
 }

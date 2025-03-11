@@ -11,6 +11,18 @@ impl BodyCodegen<'_> {
         match value {
             sir::Value::Use(operand) => self.operand(operand),
 
+            sir::Value::Ref(operand) => {
+                let oprand = self.operand(operand);
+                let ty = *operand.ty(&self.body().locals);
+
+                let ptr = self.alloc_ref(ty);
+
+                LLVMBuildStore(self.builder, oprand, ptr);
+                self.drop(oprand, ty);
+
+                ptr
+            }
+
             sir::Value::List(items) => {
                 let list_ty = LLVMStructTypeInContext(
                     self.context,
@@ -530,7 +542,6 @@ impl BodyCodegen<'_> {
                     sir::UnaryOp::FNeg => LLVMBuildFNeg(self.builder, operand, c"fneg".as_ptr()),
                     sir::UnaryOp::BNot => LLVMBuildNot(self.builder, operand, c"not".as_ptr()),
                     sir::UnaryOp::Not => todo!("implement runtime booleans"),
-                    sir::UnaryOp::Deref => todo!(),
                 }
             }
 

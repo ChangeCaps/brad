@@ -65,6 +65,9 @@ pub enum Value<T = Ty> {
     /// Use an operand directly.
     Use(Operand<T>),
 
+    /// Initialize a reference.
+    Ref(Operand<T>),
+
     /// Initialize a list.
     List(Vec<Operand<T>>),
 
@@ -199,8 +202,6 @@ pub enum UnaryOp {
     BNot,
     // only bool
     Not,
-    // only ptrs
-    Deref,
 }
 
 impl std::fmt::Display for UnaryOp {
@@ -210,7 +211,6 @@ impl std::fmt::Display for UnaryOp {
             Self::FNeg => "-",
             Self::BNot => "~",
             Self::Not => "!",
-            Self::Deref => "*",
         };
 
         write!(f, "{}", s)

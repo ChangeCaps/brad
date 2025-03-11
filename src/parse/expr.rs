@@ -7,7 +7,6 @@ pub fn expr(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
 
     match token {
         Token::Let => let_(input),
-        Token::Ref => ref_(input),
         Token::Loop => loop_(input),
         Token::Match => match_(input),
         Token::Break => break_(input),
@@ -37,16 +36,6 @@ fn let_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
         value,
         span,
     }))
-}
-
-fn ref_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
-    let start = input.expect(Token::Ref)?;
-
-    let expr = Box::new(expr(input)?);
-
-    let span = start.join(expr.span());
-
-    Ok(ast::Expr::Ref(ast::RefExpr { expr, span }))
 }
 
 fn loop_(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
@@ -333,7 +322,14 @@ fn assign(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
 ///            | <access>
 /// ```
 fn unary(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
-    if let Some(op) = unary_op(input) {
+    if input.take(Token::Ref) {
+        let expr = unary(input, can_call)?;
+
+        Ok(ast::Expr::Ref(ast::RefExpr {
+            span: expr.span(),
+            expr: Box::new(expr),
+        }))
+    } else if let Some(op) = unary_op(input) {
         let expr = unary(input, can_call)?;
         let span = expr.span();
 

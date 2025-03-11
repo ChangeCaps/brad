@@ -1,0 +1,9 @@
+import std::list
+
+fn main -> none {
+  let x = [1; 2] 
+
+  std::assert <| x[0] == 1
+  std::assert <| x[1] == 2
+  std::assert <| list::len<int> x == 2
+}

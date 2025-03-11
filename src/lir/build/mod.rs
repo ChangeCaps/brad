@@ -403,6 +403,8 @@ impl<'a> Builder<'a> {
                 lir::Value::Use(self.decompose_operand(bid, sbid, block, operand))
             }
 
+            sir::Value::Ref(_) => todo!(),
+
             sir::Value::List(_) => todo!(),
 
             sir::Value::Tuple(operands) => {
@@ -509,7 +511,6 @@ impl<'a> Builder<'a> {
                     sir::UnaryOp::FNeg => lir::Value::Unary(lir::UnaryOp::FNeg, op),
                     sir::UnaryOp::BNot => lir::Value::Unary(lir::UnaryOp::BNot, op),
                     sir::UnaryOp::Not => lir::Value::Unary(lir::UnaryOp::Not, op),
-                    sir::UnaryOp::Deref => lir::Value::Unary(lir::UnaryOp::Deref, op),
                 }
             }
             sir::Value::Closure {

@@ -7,6 +7,12 @@ use crate::sir;
 use super::BodyCodegen;
 
 impl BodyCodegen<'_> {
+    pub unsafe fn alloc_ref(&mut self, tid: sir::Tid) -> LLVMValueRef {
+        let marker = self.ref_marker(tid);
+
+        self.alloc(LLVMSizeOf(self.void_pointer_type()), marker, "ref")
+    }
+
     pub unsafe fn alloc_record(&mut self, fields: &[sir::Tid]) -> LLVMValueRef {
         let mut tys: Vec<_> = fields.iter().map(|t| self.tid(*t)).collect();
 
@@ -60,6 +66,31 @@ impl BodyCodegen<'_> {
         let marker = self.closure_marker(body);
 
         self.alloc(LLVMSizeOf(closure_ty), marker, "closure")
+    }
+
+    pub unsafe fn ref_marker(&mut self, tid: sir::Tid) -> LLVMValueRef {
+        let current = LLVMGetInsertBlock(self.builder);
+
+        let func = LLVMAddFunction(self.module, c"ref_marker".as_ptr(), self.gc.marker_ty);
+
+        let entry = LLVMAppendBasicBlock(func, c"entry".as_ptr());
+
+        LLVMPositionBuilderAtEnd(self.builder, entry);
+
+        let value = LLVMBuildLoad2(
+            self.builder,
+            self.tid(tid), //
+            LLVMGetParam(func, 0),
+            c"value".as_ptr(),
+        );
+
+        self.mark_tid(value, tid);
+
+        LLVMBuildRetVoid(self.builder);
+
+        LLVMPositionBuilderAtEnd(self.builder, current);
+
+        func
     }
 
     pub unsafe fn record_marker(&mut self, field_tids: &[sir::Tid]) -> LLVMValueRef {
