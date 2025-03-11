@@ -6,7 +6,9 @@
 
 static void brad_str_marker(
     brad_ptr str
-) {}
+) {
+    (void)str;
+}
 
 brad_str brad_str_concat(
     brad_str a,
