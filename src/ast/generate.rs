@@ -5,7 +5,16 @@ use rand::prelude::IndexedRandom;
 use rand::Rng;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::mem::discriminant;
 use std::rc::Rc;
+
+const MAX_DEPTH: usize = 20;
+const MAX_DEPTH_FUNCTION: usize = 4;
+
+const MAX_EXPRS: usize = 10;
+
+const FUNCTIONS: usize = 10;
+const MAX_FUNCTION_ARGS: usize = 5;
 
 fn random_name(rng: &mut rand::rngs::ThreadRng) -> String {
     let len = rng.random_range(1..=10);
@@ -42,7 +51,8 @@ impl Generator {
 
     pub fn generate(self_rc: Rc<RefCell<Self>>) -> ast::Module {
         self_rc.borrow_mut().populate_types();
-        Self::populate_bodies(self_rc.clone(), 2);
+        // Controls function count
+        Self::populate_bodies(self_rc.clone(), FUNCTIONS);
 
         // Ensure self_rc is dropped before calling generate on the bodies
         let bodies = self_rc.borrow().bodies.clone();
@@ -60,6 +70,8 @@ impl Generator {
         self.types.clear();
         self.types.push(ast::Ty::Int(span));
         self.types.push(ast::Ty::Float(span));
+        self.types.push(ast::Ty::Str(span));
+        self.types.push(ast::Ty::None(span));
     }
 
     fn populate_bodies(self_rc: Rc<RefCell<Self>>, n: usize) {
@@ -68,10 +80,15 @@ impl Generator {
 
         for i in 0..(n + 1) {
             let (name, args) = if i != n {
-                (
-                    random_name(&mut rng),
-                    vec![self_rc.borrow().ty(&mut rng), self_rc.borrow().ty(&mut rng)],
-                )
+                let mut args = vec![];
+                // Controls function argument count
+                let argc = rng.random_range(1..=MAX_FUNCTION_ARGS);
+
+                for _ in 0..argc {
+                    args.push(self_rc.borrow().ty(&mut rng));
+                }
+
+                (random_name(&mut rng), args)
             } else {
                 ("main".to_string(), vec![])
             };
@@ -96,18 +113,6 @@ impl Generator {
     fn ty(&self, rng: &mut rand::rngs::ThreadRng) -> ast::Ty {
         // Select a random type
         self.types.choose(rng).unwrap().clone()
-    }
-
-    /// Select random function (excluding main)
-    fn func(&self, rng: &mut rand::rngs::ThreadRng) -> Rc<RefCell<BodyGenerator>> {
-        let values = self
-            .bodies
-            .iter()
-            .filter(|(name, _)| **name != "main")
-            .map(|(_, v)| v);
-        let values = values.collect::<Vec<_>>();
-        let x = values.choose(rng).unwrap();
-        Rc::clone(x)
     }
 }
 
@@ -179,10 +184,22 @@ impl BodyGenerator {
 
     fn generate(&self) -> ast::Func {
         let mut ctx = BodyGeneratorCtx::new(rand::rng());
+        let mut exprs = vec![];
+        // Controls number of attempt to generate an expression in the function body
+        let n = ctx.rng.random_range(1..=MAX_EXPRS);
 
-        let exprs = (0..ctx.rng.random_range(1..=10))
-            .map(|_| self.expr(&mut ctx))
-            .collect::<Vec<_>>();
+        for i in 0..n {
+            // Last argument is the output
+            let ty = if i == n - 1 {
+                self.output.clone()
+            } else {
+                self.generator.borrow().ty(&mut ctx.rng)
+            };
+
+            if let Some(expr) = self.expr(&mut ctx, &ty) {
+                exprs.push(expr);
+            }
+        }
 
         ast::Func {
             attrs: Default::default(),
@@ -196,69 +213,159 @@ impl BodyGenerator {
         }
     }
 
-    fn expr(&self, ctx: &mut BodyGeneratorCtx) -> ast::Expr {
-        let ty = self.generator.borrow().ty(&mut ctx.rng);
-
-        if ctx.depth > 3 {
-            return self.expr_literal(ctx, &ty);
+    fn expr(&self, ctx: &mut BodyGeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
+        // Give up if we are too deep.
+        if ctx.depth > MAX_DEPTH {
+            return None;
         }
+
+        let mut choices = vec![0, 1, 2];
+
+        // Condition for function call.
+        if ctx.depth < MAX_DEPTH_FUNCTION && ctx.rng.random_bool(0.5) {
+            choices.push(3);
+        };
 
         ctx.depth += 1;
 
-        let e = match [0, 1, 2, 3].choose(&mut ctx.rng).unwrap() {
-            0 => self.expr_call_function(ctx, &ty),
-            1 => self.expr_binary_op(ctx, &ty, &ty),
-            2 => self.expr_unary_op(ctx, &ty),
-            3 => self.expr_literal(ctx, &ty),
-            _ => unreachable!(),
-        };
+        let mut e: Option<ast::Expr> = None;
+
+        while e.is_none() {
+            if let Some(choice) = &mut choices.choose(&mut ctx.rng) {
+                e = match choice {
+                    0 => self.expr_binary_op(ctx, ty, ty),
+                    1 => self.expr_unary_op(ctx, ty),
+                    2 => self.expr_literal(ctx, ty),
+                    3 => self.expr_call_function(ctx, ty),
+                    _ => unreachable!(),
+                };
+
+                choices = choices.iter().filter(|c| *c != *choice).copied().collect();
+            } else {
+                return None;
+            }
+        }
 
         ctx.depth -= 1;
 
         e
     }
 
-    fn expr_call_function(&self, ctx: &mut BodyGeneratorCtx, _ty: &ast::Ty) -> ast::Expr {
+    fn expr_call_function(&self, ctx: &mut BodyGeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
         let generator = self.generator.borrow();
-        let func = generator.func(&mut ctx.rng);
-        let borrow = func.borrow();
-        let func_path = borrow.as_path();
 
-        ast::Expr::Call(ast::CallExpr {
-            target: Box::new(ast::Expr::Call(ast::CallExpr {
-                target: Box::new(ast::Expr::Path(func_path)),
-                input: Box::new(self.expr(ctx)),
-                span,
-            })),
-            input: Box::new(self.expr(ctx)),
-            span,
-        })
+        // Find fitting function.
+        let values = generator
+            .bodies
+            .iter()
+            .filter(|(name, v)| {
+                **name != "main"
+                    && **name != self.name
+                    && discriminant(ty) == discriminant(&v.borrow().output)
+            })
+            .map(|(_, v)| v)
+            .collect::<Vec<_>>();
+
+        let func = values.choose(&mut ctx.rng)?;
+
+        let borrow = func.borrow();
+        let func_args = borrow.args.clone();
+
+        let mut call_expr = ast::Expr::Path(borrow.as_path());
+
+        for arg in func_args {
+            let ty = match &arg.ty {
+                Some(ty) => ty,
+                None => &generator.ty(&mut ctx.rng),
+            };
+
+            if let Some(input_expr) = self.expr(ctx, ty) {
+                call_expr = ast::Expr::Call(ast::CallExpr {
+                    target: Box::new(call_expr),
+                    input: Box::new(input_expr),
+                    span,
+                });
+            } else {
+                return None;
+            }
+        }
+
+        Some(call_expr)
     }
 
     fn expr_binary_op(
         &self,
         ctx: &mut BodyGeneratorCtx,
-        _lhs: &ast::Ty,
-        _rhs: &ast::Ty,
-    ) -> ast::Expr {
-        ast::Expr::Binary(ast::BinaryExpr {
-            lhs: Box::new(self.expr(ctx)),
-            rhs: Box::new(self.expr(ctx)),
-            op: ast::BinaryOp::Add,
+        lhs: &ast::Ty,
+        rhs: &ast::Ty,
+    ) -> Option<ast::Expr> {
+        let choices = match (lhs, rhs) {
+            (ast::Ty::Int(_), ast::Ty::Int(_)) => {
+                vec![
+                    ast::BinaryOp::Add,
+                    ast::BinaryOp::Sub,
+                    ast::BinaryOp::Mul,
+                    ast::BinaryOp::Div,
+                    ast::BinaryOp::Mod,
+                    ast::BinaryOp::BitAnd,
+                    ast::BinaryOp::BitOr,
+                    ast::BinaryOp::BitXor,
+                    ast::BinaryOp::Shl,
+                    ast::BinaryOp::Shr,
+                ]
+            }
+            (ast::Ty::Float(_), ast::Ty::Float(_)) => {
+                vec![
+                    ast::BinaryOp::Add,
+                    ast::BinaryOp::Sub,
+                    ast::BinaryOp::Mul,
+                    ast::BinaryOp::Div,
+                    ast::BinaryOp::Mod,
+                ]
+            }
+            _ => {
+                return None;
+            }
+        };
+
+        let Some(lhs) = self.expr(ctx, lhs) else {
+            return None;
+        };
+
+        // We can return just the lhs if we got that at least.
+        let Some(rhs) = self.expr(ctx, rhs) else {
+            return Some(lhs);
+        };
+
+        Some(ast::Expr::Binary(ast::BinaryExpr {
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+            op: *choices.choose(&mut ctx.rng).unwrap(),
             span,
-        })
+        }))
     }
 
-    fn expr_unary_op(&self, ctx: &mut BodyGeneratorCtx, _ty: &ast::Ty) -> ast::Expr {
-        ast::Expr::Unary(ast::UnaryExpr {
-            op: ast::UnaryOp::Neg,
-            expr: Box::new(self.expr(ctx)),
-            span,
-        })
+    fn expr_unary_op(&self, ctx: &mut BodyGeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
+        let choices = match ty {
+            ast::Ty::Int(_) => vec![ast::UnaryOp::Neg, ast::UnaryOp::BitNot],
+            _ => {
+                return None;
+            }
+        };
+
+        if let Some(expr) = self.expr(ctx, ty) {
+            Some(ast::Expr::Unary(ast::UnaryExpr {
+                op: *choices.choose(&mut ctx.rng).unwrap(),
+                expr: Box::new(expr),
+                span,
+            }))
+        } else {
+            None
+        }
     }
 
-    fn expr_literal(&self, ctx: &mut BodyGeneratorCtx, ty: &ast::Ty) -> ast::Expr {
-        match ty {
+    fn expr_literal(&self, ctx: &mut BodyGeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
+        let l = match ty {
             ast::Ty::Int(_) => ast::Expr::Literal(ast::Literal::Int {
                 value: ctx.rng.random_range(0..=100),
                 span,
@@ -267,7 +374,21 @@ impl BodyGenerator {
                 value: ctx.rng.random_range(0.0..=100.0),
                 span,
             }),
-            _ => todo!(),
-        }
+
+            ast::Ty::Str(_) => ast::Expr::Literal(ast::Literal::String {
+                value: self
+                    .interner
+                    .borrow_mut()
+                    .intern(random_name(&mut ctx.rng).as_str()),
+                span,
+            }),
+            ast::Ty::None(_) => ast::Expr::Literal(ast::Literal::None { span }),
+
+            _ => {
+                panic!("Unsupported type: {:?}", ty);
+            }
+        };
+
+        Some(l)
     }
 }
