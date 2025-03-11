@@ -84,11 +84,11 @@ impl Jit {
     pub unsafe fn run(&self, module: LLVMModuleRef, entry: &str) {
         let dylib = LLVMOrcLLJITGetMainJITDylib(self.jit);
 
-        self.load_object_file(dylib, "obj/runtime.o".into());
-        self.load_object_file(dylib, "obj/std_io.o".into());
-        self.load_object_file(dylib, "obj/std_os.o".into());
-        self.load_object_file(dylib, "obj/std_string.o".into());
-        self.load_object_file(dylib, "obj/std_list.o".into());
+        self.load_object_file(dylib, "obj/debug/runtime.o".into());
+        self.load_object_file(dylib, "obj/debug/std_io.o".into());
+        self.load_object_file(dylib, "obj/debug/std_os.o".into());
+        self.load_object_file(dylib, "obj/debug/std_string.o".into());
+        self.load_object_file(dylib, "obj/debug/std_list.o".into());
 
         let ctx = LLVMOrcCreateNewThreadSafeContext();
         let tsm = LLVMOrcCreateNewThreadSafeModule(module, ctx);

@@ -59,6 +59,7 @@ impl Generator {
         // Testing with only ints
         self.types.clear();
         self.types.push(ast::Ty::Int(span));
+        self.types.push(ast::Ty::Float(span));
     }
 
     fn populate_bodies(self_rc: Rc<RefCell<Self>>, n: usize) {
@@ -256,10 +257,17 @@ impl BodyGenerator {
         })
     }
 
-    fn expr_literal(&self, ctx: &mut BodyGeneratorCtx, _ty: &ast::Ty) -> ast::Expr {
-        ast::Expr::Literal(ast::Literal::Int {
-            value: ctx.rng.random_range(0..=100),
-            span,
-        })
+    fn expr_literal(&self, ctx: &mut BodyGeneratorCtx, ty: &ast::Ty) -> ast::Expr {
+        match ty {
+            ast::Ty::Int(_) => ast::Expr::Literal(ast::Literal::Int {
+                value: ctx.rng.random_range(0..=100),
+                span,
+            }),
+            ast::Ty::Float(_) => ast::Expr::Literal(ast::Literal::Float {
+                value: ctx.rng.random_range(0.0..=100.0),
+                span,
+            }),
+            _ => todo!(),
+        }
     }
 }

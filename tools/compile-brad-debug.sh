@@ -7,10 +7,9 @@ if [ "$#" -lt 1 ]; then
   exit 1
 fi
 
-make clean
 make debug
 
-cargo run -r -- compile "$@" -d -o out.ll 2> /dev/null
+cargo run -- compile "$@" -d -o out.ll
 
 last_pkg=$(eval echo "\${$#}")
 entry_module=$(basename "$last_pkg" .bd)
@@ -23,7 +22,7 @@ define i32 @main() {
 EOF
 
 # Compile IR to object file
-clang -o a.out out.ll -ggdb -g -Og obj/*.o
+clang -o a.out out.ll -ggdb -g -Og obj/debug/*.o
 rm out.ll
 
 # Run compiled binary
