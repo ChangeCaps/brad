@@ -1,5 +1,3 @@
-#![feature(cfg_match)]
-
 use crate::{
     ast,
     diagnostic::{Diagnostic, Source, SourceId, Sources},
