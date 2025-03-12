@@ -1,4 +1,4 @@
-use llvm_sys::{core::*, prelude::*};
+use super::llvm_sys::{core::*, prelude::*};
 
 use crate::sir;
 

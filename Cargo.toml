@@ -4,12 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["llvm"]
-llvm = ["llvm-sys"]
+default = ["llvm19"]
+llvm19 = ["llvm", "llvm-sys-191"]
+llvm20 = ["llvm", "llvm-sys-201"]
+llvm = []
 
 [dependencies]
-cfg-if = "1.0.0"
 colored = "3.0"
 clap = { version = "4.5.31", features = ["derive"] }
-llvm-sys = { version = "191.0.0", optional = true }
+llvm-sys-191 = { package = "llvm-sys", version = "191.0.0", optional = true }
+llvm-sys-201 = { package = "llvm-sys", version = "201.0.0", optional = true }
 rand = "0.9.0"

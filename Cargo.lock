@@ -68,10 +68,10 @@ checksum = "5c8214115b7bf84099f1309324e63141d4c5d7cc26862f97a0a857dbefe165bd"
 name = "brad"
 version = "0.1.0"
 dependencies = [
- "cfg-if",
  "clap",
  "colored",
- "llvm-sys",
+ "llvm-sys 191.0.0",
+ "llvm-sys 201.0.0",
  "rand",
 ]
 
@@ -177,15 +177,29 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "libc"
-version = "0.2.170"
+version = "0.2.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "875b3680cb2f8f71bdcf9a30f38d48282f5d3c95cbf9b3fa57269bb5d5c06828"
+checksum = "c19937216e9d3aa9956d9bb8dfc0b0c8beb6058fc4f7a4dc4d850edf86a237d6"
 
 [[package]]
 name = "llvm-sys"
 version = "191.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "893cddf1adf0354b93411e413553dd4daf5c43195d73f1acfa1e394bdd371456"
+dependencies = [
+ "anyhow",
+ "cc",
+ "lazy_static",
+ "libc",
+ "regex-lite",
+ "semver",
+]
+
+[[package]]
+name = "llvm-sys"
+version = "201.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbcdcdf7065759545ca257f57d343f56654a79ad71698f44ad47ff78de265c4a"
 dependencies = [
  "anyhow",
  "cc",
@@ -221,9 +235,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.39"
+version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1f1914ce909e1658d9907913b4b91947430c7d9be598b15a1912935b8c04801"
+checksum = "1885c039570dc00dcb4ff087a89e185fd56bae234ddc7f056a945bf36467248d"
 dependencies = [
  "proc-macro2",
 ]

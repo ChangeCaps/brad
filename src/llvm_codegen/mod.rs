@@ -4,14 +4,19 @@ mod jit;
 mod operand;
 mod place;
 mod value;
+mod llvm_sys;
 
 use std::ops::DerefMut;
 use std::{collections::HashMap, ffi::CString, ops::Deref, ptr};
 
 use crate::sir;
 
-use llvm_sys::analysis::{LLVMVerifierFailureAction, LLVMVerifyModule};
-use llvm_sys::{core::*, prelude::*, target::*};
+use llvm_sys::{
+    analysis::{LLVMVerifierFailureAction, LLVMVerifyModule},
+    core::*,
+    prelude::*,
+    target::*
+};
 
 pub fn codegen(program: sir::Program) -> String {
     unsafe {

@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use llvm_sys::{core::*, prelude::*, LLVMIntPredicate};
+use super::llvm_sys::{core::*, prelude::*, LLVMIntPredicate};
 
 use crate::sir;
 

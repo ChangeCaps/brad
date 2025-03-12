@@ -1,3 +1,5 @@
+#![feature(cfg_match)]
+
 use crate::{
     ast,
     diagnostic::{Diagnostic, Source, SourceId, Sources},
@@ -145,23 +147,21 @@ impl<'a> Compiler<'a> {
         //let mut formatter = lir::Formatter::new(std::io::stdout());
         //formatter.format(&lir).unwrap();
 
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "llvm")] {
-                return Ok(crate::llvm_codegen::codegen(sir));
-            } else {
-                return Err(Diagnostic::error("LLVM codegen is disabled"));
-            }
+        #[cfg(feature = "llvm")]
+        {
+            return Ok(crate::llvm_codegen::codegen(sir));
         }
+
+        return Err(Diagnostic::error("LLVM codegen is disabled"));
     }
 
     pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Diagnostic> {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "llvm")] {
-                crate::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
-                return Ok(());
-            } else {
-                return Err(Diagnostic::error("LLVM codegen is disabled"));
-            }
+        #[cfg(feature = "llvm")]
+        {
+            crate::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
+            return Ok(());
         }
+
+        return Err(Diagnostic::error("LLVM codegen is disabled"));
     }
 }

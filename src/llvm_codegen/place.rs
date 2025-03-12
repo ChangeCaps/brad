@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use llvm_sys::{core::*, prelude::*};
+use super::llvm_sys::{core::*, prelude::*};
 
 use crate::sir;
 
