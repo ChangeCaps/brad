@@ -9,6 +9,5 @@ pub use body::*;
 #[allow(unused_imports)]
 pub use build::*;
 pub use program::*;
-pub use formatter::*;
 pub use stmt::*;
 pub use ty::*;

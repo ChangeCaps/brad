@@ -180,7 +180,7 @@ impl Types {
                 .iter()
                 .map(|ty| self.format(ty))
                 .collect::<Vec<_>>()
-                .join(", "),
+                .join(" * "),
             Ty::Union(tys) => tys
                 .iter()
                 .map(|ty| self.format(ty))

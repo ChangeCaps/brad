@@ -624,7 +624,11 @@ impl<'a> BodyLowerer<'a> {
 
         if !self.is_subty(i, &input.ty) {
             let diagnostic = Diagnostic::error("unresolved::type")
-                .message("expected input type in call")
+                .message(format!(
+                    "expected input type in call `{}`, found `{}`",
+                    self.format_ty(i),
+                    self.format_ty(&input.ty)
+                ))
                 .label(ast.span, "found here");
 
             return Err(diagnostic);
