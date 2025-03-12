@@ -1,10 +1,10 @@
 mod drop;
 mod gc;
 mod jit;
+mod llvm_sys;
 mod operand;
 mod place;
 mod value;
-mod llvm_sys;
 
 use std::ops::DerefMut;
 use std::{collections::HashMap, ffi::CString, ops::Deref, ptr};
@@ -15,7 +15,7 @@ use llvm_sys::{
     analysis::{LLVMVerifierFailureAction, LLVMVerifyModule},
     core::*,
     prelude::*,
-    target::*
+    target::*,
 };
 
 pub fn codegen(program: sir::Program) -> String {

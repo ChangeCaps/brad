@@ -1,9 +1,9 @@
 use super::llvm_sys::{
-    ir_reader::LLVMParseIRInContext,
     core::*,
     error::LLVMGetErrorMessage,
+    ir_reader::LLVMParseIRInContext,
     orc2::{lljit::*, *},
-    prelude::*
+    prelude::*,
 };
 use std::ffi::CString;
 use std::path::PathBuf;
