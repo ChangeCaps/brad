@@ -3,7 +3,6 @@ use crate::{
     diagnostic::{Diagnostic, Source, SourceId, Sources},
     hir,
     interpret::Interpreter,
-    llvm_codegen,
     lower::Lowerer,
     mir,
     parse::{self, Interner, Tokens},
@@ -145,11 +144,24 @@ impl<'a> Compiler<'a> {
         //let (lir, _) = lir::build(&sir, main)?;
         //let mut formatter = lir::Formatter::new(std::io::stdout());
         //formatter.format(&lir).unwrap();
-        Ok(llvm_codegen::codegen(sir))
+
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "llvm")] {
+                return Ok(crate::llvm_codegen::codegen(sir));
+            } else {
+                return Err(Diagnostic::error("LLVM codegen is disabled"));
+            }
+        }
     }
 
     pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Diagnostic> {
-        llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
-        Ok(())
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "llvm")] {
+                crate::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
+                return Ok(());
+            } else {
+                return Err(Diagnostic::error("LLVM codegen is disabled"));
+            }
+        }
     }
 }
