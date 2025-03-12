@@ -1,0 +1,9 @@
+import std::io
+
+fn main -> none {
+  let file = io::open "./tests/file_io.bd" "r"
+  let data = io::read file
+  io::close file
+  io::println data
+  none
+}

@@ -36,7 +36,7 @@ void brad_deinit();
 brad_ptr brad_alloc(brad_size size, brad_marker marker, const char* name);
 
 void brad_retain(brad_ptr ptr);
-void brad_release(brad_size count);
+void brad_release(brad_ptr ptr);
 void brad_collect();
 
 void brad_mark(brad_ptr ptr);

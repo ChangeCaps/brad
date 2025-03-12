@@ -1,47 +1,97 @@
 [
   {
     "arguments": [
-      "/nix/store/ls0g67nsklb2vn3vc9dnksa1adfgq32a-clang-wrapper-19.1.7/bin/clang",
+      "/usr/bin/clang",
+      "-g",
+      "-Og",
+      "-DDEBUG",
       "-Wall",
-      "-Werror",
-      "-fpic",
+      "-Wextra",
+      "-std=c11",
+      "-Iruntime",
       "-c",
       "-o",
-      "obj/runtime.o",
-      "runtime/gc.c"
-    ],
-    "directory": "/dev-storage/rust/brad",
-    "file": "/dev-storage/rust/brad/runtime/gc.c",
-    "output": "/dev-storage/rust/brad/obj/runtime.o"
-  },
-  {
-    "arguments": [
-      "/nix/store/ls0g67nsklb2vn3vc9dnksa1adfgq32a-clang-wrapper-19.1.7/bin/clang",
-      "-Wall",
-      "-Werror",
-      "-fpic",
-      "-c",
-      "-o",
-      "obj/std_io.o",
+      "obj/debug/std_io.o",
       "runtime/std_io.c"
     ],
-    "directory": "/dev-storage/rust/brad",
-    "file": "/dev-storage/rust/brad/runtime/std_io.c",
-    "output": "/dev-storage/rust/brad/obj/std_io.o"
+    "directory": "/home/javad/School/bachelors_project/brad",
+    "file": "/home/javad/School/bachelors_project/brad/runtime/std_io.c",
+    "output": "/home/javad/School/bachelors_project/brad/obj/debug/std_io.o"
   },
   {
     "arguments": [
-      "/nix/store/ls0g67nsklb2vn3vc9dnksa1adfgq32a-clang-wrapper-19.1.7/bin/clang",
+      "/usr/bin/clang",
+      "-g",
+      "-Og",
+      "-DDEBUG",
       "-Wall",
-      "-Werror",
-      "-fpic",
+      "-Wextra",
+      "-std=c11",
+      "-Iruntime",
       "-c",
       "-o",
-      "obj/std_string.o",
+      "obj/debug/std_list.o",
+      "runtime/std_list.c"
+    ],
+    "directory": "/home/javad/School/bachelors_project/brad",
+    "file": "/home/javad/School/bachelors_project/brad/runtime/std_list.c",
+    "output": "/home/javad/School/bachelors_project/brad/obj/debug/std_list.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-g",
+      "-Og",
+      "-DDEBUG",
+      "-Wall",
+      "-Wextra",
+      "-std=c11",
+      "-Iruntime",
+      "-c",
+      "-o",
+      "obj/debug/std_os.o",
+      "runtime/std_os.c"
+    ],
+    "directory": "/home/javad/School/bachelors_project/brad",
+    "file": "/home/javad/School/bachelors_project/brad/runtime/std_os.c",
+    "output": "/home/javad/School/bachelors_project/brad/obj/debug/std_os.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-g",
+      "-Og",
+      "-DDEBUG",
+      "-Wall",
+      "-Wextra",
+      "-std=c11",
+      "-Iruntime",
+      "-c",
+      "-o",
+      "obj/debug/std_string.o",
       "runtime/std_string.c"
     ],
-    "directory": "/dev-storage/rust/brad",
-    "file": "/dev-storage/rust/brad/runtime/std_string.c",
-    "output": "/dev-storage/rust/brad/obj/std_string.o"
+    "directory": "/home/javad/School/bachelors_project/brad",
+    "file": "/home/javad/School/bachelors_project/brad/runtime/std_string.c",
+    "output": "/home/javad/School/bachelors_project/brad/obj/debug/std_string.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/clang",
+      "-g",
+      "-Og",
+      "-DDEBUG",
+      "-Wall",
+      "-Wextra",
+      "-std=c11",
+      "-Iruntime",
+      "-c",
+      "-o",
+      "obj/debug/runtime.o",
+      "runtime/gc.c"
+    ],
+    "directory": "/home/javad/School/bachelors_project/brad",
+    "file": "/home/javad/School/bachelors_project/brad/runtime/gc.c",
+    "output": "/home/javad/School/bachelors_project/brad/obj/debug/runtime.o"
   }
 ]

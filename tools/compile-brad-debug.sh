@@ -8,7 +8,7 @@ if [ "$#" -lt 1 ]; then
 fi
 
 
-make clean debug
+make clean debug release build
 
 cargo run -- compile "$@" -d -o out.ll
 

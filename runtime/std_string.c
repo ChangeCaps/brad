@@ -4,12 +4,6 @@
 #include "gc.h"
 #include "std_string.h"
 
-static void brad_str_marker(
-    brad_ptr str
-) {
-    (void)str;
-}
-
 brad_str brad_str_concat(
     brad_str a,
     brad_str b
@@ -46,6 +40,19 @@ brad_str brad_float_to_str(
     )brad_alloc(new_size, brad_str_marker, "brad_float_to_str str");
 
     result->length = sprintf(result->data, "%f", f);
+
+    return result;
+}
+
+brad_str brad_str_from_c_str(
+    const char* c_str
+) {
+    brad_size new_size = sizeof(brad_str) + strlen(c_str);
+    brad_str result = (brad_str
+    )brad_alloc(new_size, brad_str_marker, "brad_str_from_c_str str");
+
+    result->length = strlen(c_str);
+    memcpy(result->data, c_str, result->length);
 
     return result;
 }
