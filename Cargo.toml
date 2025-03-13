@@ -5,9 +5,8 @@ edition = "2021"
 
 [features]
 default = ["llvm19"]
-llvm19 = ["llvm", "llvm-sys-191"]
-llvm20 = ["llvm", "llvm-sys-201"]
-llvm = []
+llvm19 = ["llvm-sys-191"]
+llvm20 = ["llvm-sys-201"]
 
 [dependencies]
 colored = "3.0"

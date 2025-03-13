@@ -14,7 +14,6 @@ mod diagnostic;
 mod hir;
 mod interpret;
 mod lir;
-#[cfg(feature = "llvm")]
 mod llvm_codegen;
 mod lower;
 mod mir;

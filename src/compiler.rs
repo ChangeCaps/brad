@@ -145,21 +145,11 @@ impl<'a> Compiler<'a> {
         //let mut formatter = lir::Formatter::new(std::io::stdout());
         //formatter.format(&lir).unwrap();
 
-        #[cfg(feature = "llvm")]
-        {
-            return Ok(crate::llvm_codegen::codegen(sir));
-        }
-
-        return Err(Diagnostic::error("LLVM codegen is disabled"));
+        Ok(crate::llvm_codegen::codegen(sir))
     }
 
     pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Diagnostic> {
-        #[cfg(feature = "llvm")]
-        {
-            crate::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
-            return Ok(());
-        }
-
-        return Err(Diagnostic::error("LLVM codegen is disabled"));
+        crate::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
+        Ok(())
     }
 }
