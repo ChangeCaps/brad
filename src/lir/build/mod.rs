@@ -635,7 +635,7 @@ impl<'a> Builder<'a> {
     ) {
         match stmt {
             // do nothing with drop (calculate later)
-            sir::Stmt::Drop(local) => {}
+            sir::Stmt::Drop(_) => {}
             sir::Stmt::Assign(place, value) => {
                 let src = self.decompose_value(bid, sbid, block, value);
                 let st = self.write_place(bid, sbid, block, place, src);

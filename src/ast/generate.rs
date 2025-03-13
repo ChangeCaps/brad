@@ -389,7 +389,7 @@ impl BodyGenerator {
             Box::new(|ctx, ty| ctx.with_complexity(5, |ctx| self.expr_block(ctx, ty))),
             Box::new(|ctx, ty| ctx.with_complexity(5, |ctx| self.expr_loop(ctx, ty))),
             Box::new(|ctx, ty| ctx.with_complexity(5, |ctx| self.expr_match(ctx, ty))),
-            Box::new(|ctx, ty| ctx.with_complexity(2, |ctx| self.expr_let(ctx))),
+            Box::new(|ctx, _| ctx.with_complexity(2, |ctx| self.expr_let(ctx))),
         ];
 
         let mut weights = vec![5, 1, 1, 1, 2];
