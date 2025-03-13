@@ -1,3 +1,6 @@
+//! TODO: @MagnusAH fix this.
+#![allow(unused_variables)]
+
 use std::io::{self, Write};
 
 use super::{Bid, Program, Tid, Ty};
