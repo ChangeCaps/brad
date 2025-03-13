@@ -1,7 +1,7 @@
 use super::SourceId;
 use std::fmt;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Span {
     pub source: SourceId,
     pub start: usize,

@@ -3,14 +3,14 @@ use std::fmt;
 
 use super::generic::Spec;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Path {
     pub segments: Vec<PathSegment>,
     pub spec: Option<Spec>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct PathSegment {
     pub name: &'static str,
     pub span: Span,

@@ -5,7 +5,7 @@ pub struct Source {
     pub file: PathBuf,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct SourceId(pub u32);
 
 pub struct Sources {

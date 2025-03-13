@@ -3,19 +3,19 @@ use std::slice;
 
 use super::Ty;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Generic {
     pub name: &'static str,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Generics {
     pub generics: Vec<Generic>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Spec {
     pub tys: Vec<Ty>,
     pub span: Span,

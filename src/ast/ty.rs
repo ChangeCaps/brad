@@ -2,7 +2,7 @@ use crate::diagnostic::Span;
 
 use super::{Generic, Path};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub enum Ty {
     Wild(Span),
 
@@ -56,7 +56,7 @@ pub enum Ty {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Field {
     pub name: &'static str,
     pub ty: Ty,
