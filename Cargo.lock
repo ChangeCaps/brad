@@ -70,8 +70,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "colored",
- "llvm-sys 191.0.0",
- "llvm-sys 201.0.0",
+ "llvm-sys",
  "rand",
 ]
 
@@ -186,20 +185,6 @@ name = "llvm-sys"
 version = "191.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "893cddf1adf0354b93411e413553dd4daf5c43195d73f1acfa1e394bdd371456"
-dependencies = [
- "anyhow",
- "cc",
- "lazy_static",
- "libc",
- "regex-lite",
- "semver",
-]
-
-[[package]]
-name = "llvm-sys"
-version = "201.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbcdcdf7065759545ca257f57d343f56654a79ad71698f44ad47ff78de265c4a"
 dependencies = [
  "anyhow",
  "cc",

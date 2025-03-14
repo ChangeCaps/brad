@@ -2,7 +2,8 @@
 
 pkgs.mkShell {
   buildInputs = [
-    pkgs.llvm
+    pkgs.llvm_19
+    pkgs.llvm_20
     pkgs.libxml2
     pkgs.lld
     pkgs.clang-tools
