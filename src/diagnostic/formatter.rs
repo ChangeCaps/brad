@@ -18,8 +18,11 @@ where
     }
 
     pub fn write(&mut self, diagnostic: &Diagnostic) -> io::Result<()> {
+        let indent = self.compute_indent(diagnostic);
+
         self.write_header(diagnostic)?;
-        self.write_labels(diagnostic)?;
+        self.write_labels(diagnostic, indent)?;
+        self.write_notes(diagnostic, indent)?;
 
         Ok(())
     }
@@ -46,22 +49,40 @@ where
         Ok(())
     }
 
-    fn write_labels(&mut self, diagnostic: &Diagnostic) -> io::Result<()> {
+    fn compute_indent(&self, diagnostic: &Diagnostic) -> usize {
+        diagnostic
+            .labels
+            .iter()
+            .map(|label| self.compute_label_indent(label))
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn compute_label_indent(&self, label: &Label) -> usize {
+        let s = &self.sources[label.span.source];
+        let (start_line, _) = line_column(&s.content, label.span.start);
+        start_line.to_string().len() + 1
+    }
+
+    fn write_labels(&mut self, diagnostic: &Diagnostic, indent: usize) -> io::Result<()> {
         for label in &diagnostic.labels {
-            self.write_label(diagnostic, label)?;
+            self.write_label(diagnostic, label, indent)?;
         }
 
         Ok(())
     }
 
-    fn write_label(&mut self, diagnostic: &Diagnostic, label: &Label) -> io::Result<()> {
+    fn write_label(
+        &mut self,
+        diagnostic: &Diagnostic,
+        label: &Label,
+        indent: usize,
+    ) -> io::Result<()> {
         let w = &mut self.writer;
         let s = &self.sources[label.span.source];
 
         let (start_line, start_column) = line_column(&s.content, label.span.start);
         let (end_line, _) = line_column(&s.content, label.span.end);
-
-        let indent = end_line.to_string().len() + 1;
 
         writeln!(
             w,
@@ -120,13 +141,23 @@ where
 
         Ok(())
     }
+
+    fn write_notes(&mut self, diagnostic: &Diagnostic, indent: usize) -> io::Result<()> {
+        let w = &mut self.writer;
+
+        for note in &diagnostic.notes {
+            let start = format!("{}=", " ".repeat(indent + 1)).blue();
+            writeln!(w, "{} {} {}", start, "note:".bold(), note.white())?;
+        }
+
+        Ok(())
+    }
 }
 
 fn severity_color(severity: Severity) -> Color {
     match severity {
         Severity::Error => Color::Red,
         Severity::Warning => Color::Yellow,
-        Severity::Note => Color::Blue,
         Severity::Help => Color::Green,
     }
 }

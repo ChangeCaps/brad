@@ -8,5 +8,7 @@ pkgs.mkShell {
     pkgs.lld
     pkgs.clang-tools
     pkgs.clang
+
+    pkgs.lua
   ];
 }

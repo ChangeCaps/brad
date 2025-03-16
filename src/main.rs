@@ -16,6 +16,7 @@ mod interpret;
 mod lir;
 mod llvm_codegen;
 mod lower;
+mod lua;
 mod mir;
 mod parse;
 mod sir;
@@ -51,6 +52,7 @@ pub struct ModuleArgs {
 pub enum Cmd {
     Lex(FileArgs),
     Ast(FileArgs),
+    Lua(FileArgs),
     RandomAst,
     Fmt {
         #[command(subcommand)]
@@ -83,8 +85,10 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
             formatter.format_module(&module).unwrap();
             Ok(())
         }
+
         Cmd::Lex(f)
         | Cmd::Ast(f)
+        | Cmd::Lua(f)
         | Cmd::Fmt {
             command: FmtCmd::Ast(f),
         } => {
@@ -107,6 +111,14 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
                     let ast = parse::module(&mut tokens)?;
                     println!("{:#?}", ast);
                 }
+                Cmd::Lua(_) => {
+                    let ast = parse::module(&mut tokens)?;
+
+                    let mut codegen = lua::Codegen::new();
+                    let lua = codegen.finish(ast)?;
+
+                    std::fs::write("out.lua", lua).unwrap();
+                }
                 Cmd::Fmt {
                     command: FmtCmd::Ast(_),
                 } => {
@@ -121,7 +133,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
         }
 
         Cmd::Solve(f) => {
-            solve::solve(sources, f.file.clone())?;
+            //solve::solve(sources, f.file.clone())?;
             Ok(())
         }
 

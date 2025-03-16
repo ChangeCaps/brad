@@ -12,7 +12,6 @@ pub use span::Span;
 pub enum Severity {
     Error,
     Warning,
-    Note,
     Help,
 }
 
@@ -21,7 +20,6 @@ impl fmt::Display for Severity {
         match self {
             Severity::Error => write!(f, "error"),
             Severity::Warning => write!(f, "warning"),
-            Severity::Note => write!(f, "note"),
             Severity::Help => write!(f, "help"),
         }
     }
@@ -33,6 +31,7 @@ pub struct Diagnostic {
     pub code: Option<String>,
     pub message: Option<String>,
     pub labels: Vec<Label>,
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -48,6 +47,7 @@ impl Diagnostic {
             code: None,
             message: None,
             labels: Vec::new(),
+            notes: Vec::new(),
         }
     }
 
@@ -57,10 +57,6 @@ impl Diagnostic {
 
     pub fn warn() -> Diagnostic {
         Diagnostic::new(Severity::Warning)
-    }
-
-    pub fn note() -> Diagnostic {
-        Diagnostic::new(Severity::Note)
     }
 
     pub fn help() -> Diagnostic {
@@ -92,6 +88,11 @@ impl Diagnostic {
             span,
         });
 
+        self
+    }
+
+    pub fn note(mut self, note: impl Into<String>) -> Diagnostic {
+        self.notes.push(note.into());
         self
     }
 }

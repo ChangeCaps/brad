@@ -1,71 +1,26 @@
-use std::{collections::HashMap, fmt, path::Path};
-
-use crate::{
-    diagnostic::{Diagnostic, Source, Sources},
-    parse::{Interner, Token, Tokens},
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt,
 };
 
+use crate::diagnostic::{Diagnostic, Span};
+
+pub use dnf::*;
+
+mod dnf;
+mod format;
 mod parse;
-
-pub fn solve(sources: &mut Sources, path: impl AsRef<Path>) -> Result<(), Diagnostic> {
-    let content = std::fs::read_to_string(path.as_ref()).unwrap();
-
-    let source = Source {
-        content,
-        file: path.as_ref().to_path_buf(),
-    };
-
-    let source = sources.push(source);
-
-    let mut interner = Interner::new();
-    let mut tokens = Tokens::tokenize(
-        &mut interner,
-        source,                   // source id
-        &sources[source].content, // source content
-    )?;
-
-    let mut context = Solver::new();
-
-    while !tokens.is(Token::Eof) {
-        let lhs = parse::ty(&mut tokens)?;
-
-        tokens.expect(Token::Lt)?;
-        tokens.expect(Token::Colon)?;
-
-        let rhs = parse::ty(&mut tokens)?;
-
-        tokens.expect(Token::Newline)?;
-
-        context.subty(&lhs, &rhs)?;
-    }
-
-    println!("\n--- constraints ---\n");
-
-    for (ident, var) in &context.variables {
-        let lbs: Vec<_> = var.lbs.iter().map(|ty| ty.to_string()).collect();
-        let ubs: Vec<_> = var.ubs.iter().map(|ty| ty.to_string()).collect();
-
-        if !lbs.is_empty() {
-            print!("{} <: ", lbs.join(", "));
-        }
-
-        print!("'{}", ident);
-
-        if !ubs.is_empty() {
-            print!(" <: {}", ubs.join(", "));
-        }
-
-        println!();
-    }
-
-    Ok(())
-}
 
 pub type Name = &'static str;
 pub type Field = &'static str;
-pub type Var = &'static str;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct App {
+    pub name: Name,
+    pub args: Vec<Ty>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Ty {
     /* algebraic data types */
     Union(Box<Ty>, Box<Ty>),
@@ -74,131 +29,159 @@ pub enum Ty {
 
     /* type constructors */
     Name(Name),
-    Record(HashMap<Field, Ty>),
+    Record(BTreeMap<Field, Ty>),
     Func(Box<Ty>, Box<Ty>),
-    Always,
-    Never,
+    App(App),
+    Top,
+    Bot,
 
     /* type variables */
     Var(Var),
 }
 
 impl Ty {
-    pub fn add(&mut self, other: Ty) {
-        let inter = Ty::Inter(Box::new(self.clone()), Box::new(other));
-        *self = inter.normalize();
+    pub fn union(lhs: Ty, rhs: Ty) -> Self {
+        Ty::Union(Box::new(lhs), Box::new(rhs))
     }
 
-    fn normalize(&self) -> Self {
+    pub fn inter(lhs: Ty, rhs: Ty) -> Self {
+        Ty::Inter(Box::new(lhs), Box::new(rhs))
+    }
+
+    pub fn neg(ty: Ty) -> Self {
+        Ty::Neg(Box::new(ty))
+    }
+
+    pub fn func(input: Ty, output: Ty) -> Self {
+        Ty::Func(Box::new(input), Box::new(output))
+    }
+
+    pub fn record(fields: impl Into<BTreeMap<Field, Ty>>) -> Self {
+        Ty::Record(fields.into())
+    }
+
+    pub fn app(name: Name, args: Vec<Ty>) -> Self {
+        Ty::App(App { name, args })
+    }
+
+    fn subst(&self, map: &HashMap<Ty, Ty>) -> Self {
+        if let Some(ty) = map.get(self) {
+            return ty.clone();
+        }
+
         match self {
-            Ty::Union(lhs, rhs) => Self::normalize_union(lhs, rhs),
-            Ty::Inter(lhs, rhs) => Self::normalize_inter(lhs, rhs),
+            Ty::Union(t1, t2) => Ty::union(t1.subst(map), t2.subst(map)),
+            Ty::Inter(t1, t2) => Ty::inter(t1.subst(map), t2.subst(map)),
+            Ty::Neg(ty) => Ty::neg(ty.subst(map)),
 
-            Ty::Neg(ty) => match ty.as_ref() {
-                Ty::Neg(ty) => ty.normalize(),
-                _ => Ty::Neg(Box::new(ty.normalize())),
-            },
-
-            Ty::Name(name) => Ty::Name(name),
+            Ty::Func(input, output) => Ty::func(input.subst(map), output.subst(map)),
 
             Ty::Record(fields) => {
-                let fields: HashMap<_, _> = fields
-                    .iter()
-                    .map(|(ident, ty)| (*ident, ty.normalize()))
+                let fields = fields.iter().map(|(f, ty)| (*f, ty.subst(map))).collect();
+
+                Ty::Record(fields)
+            }
+
+            Ty::App(app) => {
+                let args = app.args.iter().map(|ty| ty.subst(map)).collect();
+
+                Ty::App(App {
+                    name: app.name,
+                    args,
+                })
+            }
+
+            Ty::Top | Ty::Bot | Ty::Var(_) | Ty::Name(_) => self.clone(),
+        }
+    }
+
+    fn simplify(self) -> Self {
+        match self {
+            Ty::Union(t1, t2) => {
+                let t1 = t1.simplify();
+                let t2 = t2.simplify();
+
+                if t1 == t2 {
+                    return t1;
+                }
+
+                match (t1, t2) {
+                    (Ty::Top, _) | (_, Ty::Top) => Ty::Top,
+                    (Ty::Bot, ty) | (ty, Ty::Bot) => ty,
+
+                    (t1, t2) => Ty::union(t1, t2),
+                }
+            }
+
+            Ty::Inter(t1, t2) => {
+                let t1 = t1.simplify();
+                let t2 = t2.simplify();
+
+                if t1 == t2 {
+                    return t1;
+                }
+
+                match (t1, t2) {
+                    (Ty::Top, ty) | (ty, Ty::Top) => ty,
+                    (Ty::Bot, _) | (_, Ty::Bot) => Ty::Bot,
+
+                    (Ty::Union(t1, t2), ty) | (ty, Ty::Union(t1, t2)) => {
+                        let t1 = Ty::inter(*t1, ty.clone());
+                        let t2 = Ty::inter(*t2, ty);
+
+                        Ty::union(t1, t2).simplify()
+                    }
+
+                    (t1, t2) => Ty::inter(t1, t2),
+                }
+            }
+
+            Ty::Neg(ty) => match *ty {
+                Ty::Union(t1, t2) => {
+                    let t1 = Ty::Neg(t1);
+                    let t2 = Ty::Neg(t2);
+
+                    Ty::inter(t1, t2).simplify()
+                }
+
+                Ty::Inter(t1, t2) => {
+                    let t1 = Ty::Neg(t1);
+                    let t2 = Ty::Neg(t2);
+
+                    Ty::union(t1, t2).simplify()
+                }
+
+                Ty::Neg(ty) => *ty,
+                Ty::Top => Ty::Bot,
+                Ty::Bot => Ty::Top,
+
+                Ty::Name(_) | Ty::Record(_) | Ty::Func(_, _) | Ty::App(_) | Ty::Var(_) => {
+                    Self::Neg(ty)
+                }
+            },
+
+            Ty::Record(fields) => {
+                let fields = fields
+                    .into_iter()
+                    .map(|(f, ty)| (f, ty.simplify()))
                     .collect();
 
-                match fields.is_empty() {
-                    true => Ty::Never,
-                    false => Ty::Record(fields),
-                }
+                Ty::Record(fields)
             }
 
-            Ty::Func(lhs, rhs) => Ty::Func(Box::new(lhs.normalize()), Box::new(rhs.normalize())),
+            Ty::Func(input, ouput) => {
+                let input = input.simplify();
+                let ouput = ouput.simplify();
 
-            Ty::Always => Ty::Always,
-            Ty::Never => Ty::Never,
-
-            Ty::Var(ident) => Ty::Var(ident),
-        }
-    }
-
-    fn normalize_union(lhs: &Self, rhs: &Self) -> Self {
-        let lhs = lhs.normalize();
-        let rhs = rhs.normalize();
-
-        if lhs == rhs {
-            return lhs;
-        }
-
-        match (lhs, rhs) {
-            (Ty::Neg(neg), ty) | (ty, Ty::Neg(neg)) if *neg == ty => Ty::Always,
-
-            (Ty::Record(lfields), Ty::Record(rfields)) => {
-                let mut fields = HashMap::new();
-
-                for (lid, lty) in lfields {
-                    if let Some(rty) = rfields.get(lid) {
-                        let union =
-                            Ty::Union(Box::new(lty.clone()), Box::new(rty.clone())).normalize();
-
-                        fields.insert(lid, union);
-                    }
-                }
-
-                match fields.is_empty() {
-                    true => Ty::Never,
-                    false => Ty::Record(fields),
-                }
+                Ty::func(input, ouput)
             }
 
-            (Ty::Func(i1, o1), Ty::Func(i2, o2)) => {
-                let input = Ty::Union(i1, i2);
-                let output = Ty::Union(o1, o2);
+            Ty::App(app) => Ty::App(App {
+                name: app.name,
+                args: app.args.into_iter().map(|ty| ty.simplify()).collect(),
+            }),
 
-                Ty::Func(Box::new(input), Box::new(output))
-            }
-
-            (lhs, rhs) => Ty::Union(Box::new(lhs), Box::new(rhs)),
-        }
-    }
-
-    fn normalize_inter(lhs: &Self, rhs: &Self) -> Self {
-        let lhs = lhs.normalize();
-        let rhs = rhs.normalize();
-
-        if lhs == rhs {
-            return lhs;
-        }
-
-        match (lhs, rhs) {
-            (Ty::Neg(neg), ty) | (ty, Ty::Neg(neg)) if *neg == ty => Ty::Never,
-
-            (Ty::Record(lfields), Ty::Record(rfields)) => {
-                let mut fields = HashMap::new();
-
-                for (lid, lty) in lfields {
-                    if let Some(rty) = rfields.get(lid) {
-                        let inter =
-                            Ty::Inter(Box::new(lty.clone()), Box::new(rty.clone())).normalize();
-
-                        fields.insert(lid, inter);
-                    }
-                }
-
-                match fields.is_empty() {
-                    true => Ty::Never,
-                    false => Ty::Record(fields),
-                }
-            }
-
-            (Ty::Func(i1, o1), Ty::Func(i2, o2)) => {
-                let input = Ty::Inter(i1, i2);
-                let output = Ty::Inter(o1, o2);
-
-                Ty::Func(Box::new(input), Box::new(output))
-            }
-
-            (lhs, rhs) => Ty::Inter(Box::new(lhs), Box::new(rhs)),
+            Ty::Name(_) | Ty::Top | Ty::Bot | Ty::Var(_) => self,
         }
     }
 }
@@ -210,9 +193,10 @@ impl fmt::Display for Ty {
             Ty::Inter(lhs, rhs) => write!(f, "({} & {})", lhs, rhs),
             Ty::Neg(ty) => write!(f, "~{}", ty),
             Ty::Func(lhs, rhs) => write!(f, "({} -> {})", lhs, rhs),
-            Ty::Always => write!(f, "1"),
-            Ty::Never => write!(f, "!"),
-            Ty::Var(name) => write!(f, "'{}", name),
+
+            Ty::Top => write!(f, "⊤"),
+            Ty::Bot => write!(f, "⊥"),
+            Ty::Var(idx) => write!(f, "'{}", idx.index),
 
             Ty::Name(name) => write!(f, "{}", name),
 
@@ -224,19 +208,40 @@ impl fmt::Display for Ty {
 
                 write!(f, "{{{}}}", fields.join(", "))
             }
+
+            Ty::App(app) => {
+                let args: Vec<_> = app.args.iter().map(|ty| ty.to_string()).collect();
+
+                write!(f, "{}<{}>", app.name, args.join(", "))
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Options {
+    pub simplify_normal_forms: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            simplify_normal_forms: true,
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Solver {
-    /// Type variable constraints.
-    pub variables: HashMap<Var, Variable>,
+    variables: HashMap<usize, Variable>,
+    applicables: HashMap<Name, (Ty, Vec<Ty>)>,
+    cache: HashMap<(Ty, Ty), bool>,
+    options: Options,
+}
 
-    /// Name subtype relations.
-    ///
-    /// Note that this imples single inheritance.
-    pub subtypes: HashMap<Name, Name>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Var {
+    index: usize,
 }
 
 /// Constraints for a type variable.
@@ -247,203 +252,346 @@ pub struct Variable {
 }
 
 impl Solver {
-    pub fn new() -> Self {
+    pub fn new(options: Options) -> Self {
         Self {
             variables: HashMap::new(),
-            subtypes: HashMap::new(),
+            applicables: HashMap::new(),
+            cache: HashMap::new(),
+            options,
         }
     }
 
-    pub fn name(&mut self, lhs: &'static str, rhs: &'static str) {
-        self.subtypes.insert(lhs, rhs);
+    pub fn fresh_var(&mut self) -> Var {
+        let index = self.variables.len();
+
+        self.variables.insert(
+            index,
+            Variable {
+                lbs: Vec::new(),
+                ubs: Vec::new(),
+            },
+        );
+
+        Var { index }
     }
 
-    pub fn var(&mut self, ident: &'static str) -> &mut Variable {
-        self.variables.entry(ident).or_insert_with(|| Variable {
-            lbs: Vec::new(),
-            ubs: Vec::new(),
-        })
+    /// Add a type body and arguments of an applicable type.
+    pub fn add_applicable(&mut self, name: Name, body: Ty, args: Vec<Ty>) {
+        self.applicables.insert(name, (body, args));
     }
 
-    pub fn subty(&mut self, lhs: &Ty, rhs: &Ty) -> Result<(), Diagnostic> {
-        println!("denm: {} <: {}", lhs, rhs);
+    /// Get the arguments of an applicable type.
+    pub fn applicable_args(&self, name: Name) -> Option<&Vec<Ty>> {
+        self.applicables.get(name).map(|(_, args)| args)
+    }
 
-        let lhs = lhs.normalize();
-        let rhs = rhs.normalize();
+    pub fn var(&mut self, var: Var) -> &mut Variable {
+        self.variables.get_mut(&var.index).unwrap()
+    }
 
-        println!("norm: {} <: {}", lhs, rhs);
+    pub fn instance(&mut self, ty: &Ty) -> Ty {
+        self.inst(&mut HashMap::new(), ty)
+    }
 
-        if lhs == rhs {
+    fn inst(&mut self, map: &mut HashMap<Var, Var>, ty: &Ty) -> Ty {
+        match ty {
+            Ty::Var(var) => {
+                if let Some(&var) = map.get(var) {
+                    return Ty::Var(var);
+                }
+
+                let new_var = self.fresh_var();
+                map.insert(*var, new_var);
+
+                let var = self.var(*var).clone();
+
+                let lbs = var.lbs.iter().map(|ty| self.inst(map, ty)).collect();
+                let ubs = var.ubs.iter().map(|ty| self.inst(map, ty)).collect();
+
+                let var = self.var(new_var);
+
+                var.lbs = lbs;
+                var.ubs = ubs;
+
+                Ty::Var(new_var)
+            }
+
+            Ty::Union(t1, t2) => Ty::union(self.inst(map, t1), self.inst(map, t2)),
+            Ty::Inter(t1, t2) => Ty::inter(self.inst(map, t1), self.inst(map, t2)),
+            Ty::Neg(ty) => Ty::neg(self.inst(map, ty)),
+
+            Ty::Record(fields) => {
+                let fields = fields
+                    .iter()
+                    .map(|(f, ty)| (*f, self.inst(map, ty)))
+                    .collect();
+
+                Ty::Record(fields)
+            }
+
+            Ty::Func(input, output) => {
+                let input = self.inst(map, input);
+                let output = self.inst(map, output);
+
+                Ty::func(input, output)
+            }
+
+            Ty::App(app) => {
+                let args = app.args.iter().map(|ty| self.inst(map, ty)).collect();
+
+                Ty::App(App {
+                    name: app.name,
+                    args,
+                })
+            }
+
+            Ty::Top | Ty::Bot | Ty::Name(_) => ty.clone(),
+        }
+    }
+
+    pub fn subty(&mut self, lhs: &Ty, rhs: &Ty, span: Span) -> Result<(), Diagnostic> {
+        let lhs = lhs.clone().simplify();
+        let rhs = rhs.clone().simplify();
+
+        let key = (lhs.clone(), rhs.clone());
+
+        if self.cache.contains_key(&key) {
             return Ok(());
         }
 
-        match (&lhs, &rhs) {
-            (Ty::Never, _) => Ok(()),
-            (_, Ty::Always) => Ok(()),
+        self.cache.insert((lhs.clone(), rhs.clone()), false);
 
-            // { .. } <: { .. }
-            (Ty::Record(lfields), Ty::Record(rfields)) => {
-                for (lid, lty) in lfields {
-                    match rfields.get(lid) {
-                        Some(rty) => self.subty(lty, rty)?,
-                        None => {
-                            let diagnostic = Diagnostic::error("missing::field")
-                                .message(format!("missing field `{}`", lid));
+        self.constrain(&lhs, &rhs, span)?;
 
-                            return Err(diagnostic);
+        self.cache.insert((lhs.clone(), rhs.clone()), true);
+
+        Ok(())
+    }
+
+    fn expand(&self, app: &App) -> Result<Ty, Diagnostic> {
+        let (body, args) = self.applicables.get(&app.name).unwrap();
+
+        if args.len() != app.args.len() {
+            let diagnostic = Diagnostic::error("type::error").message(format!(
+                "expected {} arguments, found {}",
+                args.len(),
+                app.args.len()
+            ));
+
+            return Err(diagnostic);
+        }
+
+        let mut map = HashMap::new();
+
+        for (arg, ty) in args.iter().zip(app.args.iter()) {
+            map.insert(arg.clone(), ty.clone());
+        }
+
+        Ok(body.subst(&map))
+    }
+
+    fn constrain(&mut self, lhs: &Ty, rhs: &Ty, span: Span) -> Result<(), Diagnostic> {
+        let lhs = self.simplify_dnf(self.dnf(lhs));
+        let rhs = self.simplify_cnf(self.cnf(rhs));
+
+        for l in lhs.0.clone() {
+            'out: for r in rhs.0.clone() {
+                let Conjunct {
+                    mut lnf,
+                    mut vars,
+                    mut rnf,
+                    mut nvars,
+                } = self.inter_conjunct(l.clone(), r.clone().neg());
+
+                if let Some(&name) = vars.iter().next() {
+                    vars.remove(&name);
+
+                    let dis = Conjunct {
+                        lnf,
+                        vars,
+                        rnf,
+                        nvars,
+                    }
+                    .neg()
+                    .to_ty();
+
+                    let var = self.var(name);
+                    var.ubs.push(dis.clone());
+
+                    let var = self.var(name).clone();
+
+                    for lb in var.lbs.clone() {
+                        self.subty(&lb, &dis, span)?;
+                    }
+
+                    continue;
+                }
+
+                if let Some(&name) = nvars.iter().next() {
+                    nvars.remove(&name);
+
+                    let dis = Conjunct {
+                        lnf,
+                        vars,
+                        rnf,
+                        nvars,
+                    }
+                    .to_ty();
+
+                    let var = self.var(name);
+                    var.lbs.push(dis.clone());
+
+                    let var = self.var(name).clone();
+
+                    for ub in var.ubs.clone() {
+                        self.subty(&dis, &ub, span)?;
+                    }
+
+                    continue;
+                }
+
+                if rnf.is_top() || lnf.is_bot() {
+                    continue;
+                }
+
+                let Lnf::Base {
+                    names: ref ln,
+                    apps: ref mut la,
+                    base: ref lb,
+                } = lnf
+                else {
+                    unreachable!();
+                };
+
+                let Rnf::Base {
+                    names: ref rn,
+                    apps: ref mut ra,
+                    base: ref rb,
+                } = rnf
+                else {
+                    unreachable!();
+                };
+
+                if let Some(app) = la.first().cloned() {
+                    la.remove(&app);
+
+                    // this should not need to be here, but for whatever reason it does
+                    // frankly, it makes me want to puke
+                    //  - @hjalte 2025-03-16
+                    if lnf.is_bot() {
+                        lnf = Lnf::Top;
+                    }
+
+                    let rhs = Ty::union(Ty::neg(lnf.to_ty()), rnf.to_ty());
+                    let lhs = self.expand(&app)?;
+
+                    self.subty(&lhs, &rhs, span)?;
+
+                    continue;
+                }
+
+                if let Some(app) = ra.first().cloned() {
+                    ra.remove(&app);
+
+                    // this should not need to be here, but for whatever reason it does
+                    // frankly, it makes me want to puke
+                    //  - @hjalte 2025-03-16
+                    if rnf.is_top() {
+                        rnf = Rnf::Bot;
+                    }
+
+                    let lhs = Ty::inter(lnf.to_ty(), Ty::neg(rnf.to_ty()));
+                    let rhs = self.expand(&app)?;
+
+                    self.subty(&lhs, &rhs, span)?;
+
+                    continue;
+                }
+
+                for rn in rn {
+                    if ln.contains(rn) {
+                        continue 'out;
+                    }
+                }
+
+                match (lb, rb) {
+                    (LnfBase::Func(li, lo), RnfBase::Func(ri, ro)) => {
+                        self.subty(ri, li, span)?;
+                        self.subty(lo, ro, span)?;
+
+                        continue;
+                    }
+
+                    (LnfBase::Record(lf), RnfBase::Field(rf, rt)) => {
+                        if let Some(lt) = lf.get(rf) {
+                            self.subty(lt, rt, span)?;
+                            continue;
                         }
                     }
-                }
 
-                Ok(())
-            }
+                    (LnfBase::None, _) | (_, RnfBase::None) => {}
 
-            // a <: b & c => a <: b, a <: c
-            (lhs, Ty::Inter(r1, r2)) => {
-                self.subty(lhs, r1)?;
-                self.subty(lhs, r2)?;
+                    (lb, rb) => {
+                        let lkind = match lb {
+                            LnfBase::None => lnf.to_ty().to_string(),
+                            LnfBase::Record(_) => String::from("record"),
+                            LnfBase::Func(_, _) => String::from("function"),
+                        };
 
-                Ok(())
-            }
+                        let rkind = match rb {
+                            RnfBase::None => rnf.to_ty().to_string(),
+                            RnfBase::Field(_, _) => String::from("record"),
+                            RnfBase::Func(_, _) => String::from("function"),
+                        };
 
-            // a | b <: c => a <: c, b <: c
-            (Ty::Union(l1, l2), rhs) => {
-                self.subty(l1, rhs)?;
-                self.subty(l2, rhs)?;
+                        let diagnostic = Diagnostic::error("type::error")
+                            .message(format!(
+                                "type of kind `{}` cannot be a subtype of `{}`",
+                                lkind, rkind
+                            ))
+                            .note(format!(
+                                "required for `{} <: {}` to hold",
+                                self.format_ty(&lnf.to_ty()),
+                                self.format_ty(&rnf.to_ty()),
+                            ))
+                            .note(format!(
+                                "required for `{} <: {}` to hold",
+                                self.format_ty(&l.to_ty()),
+                                self.format_ty(&r.to_ty()),
+                            ))
+                            .note(format!(
+                                "required for `{} <: {}` to hold",
+                                self.format_ty(&lhs.to_ty()),
+                                self.format_ty(&rhs.to_ty()),
+                            ))
+                            .label(span, "originated here");
 
-                Ok(())
-            }
-
-            // ~lhs <: ~rhs => rhs <: lhs
-            (Ty::Neg(lhs), Ty::Neg(rhs)) => self.subty(rhs, lhs),
-
-            // 'a <: b
-            (Ty::Var(lhs), rhs) => self.subty_var_ty(lhs, rhs),
-
-            // a <: 'b
-            (lhs, Ty::Var(rhs)) => self.subty_ty_var(lhs, rhs),
-
-            // a & b <: c
-            (Ty::Inter(l1, l2), rhs) => self.subty_inter_ty(l1, l2, rhs),
-
-            // a <: b | c
-            (lhs, Ty::Union(r1, r2)) => self.subty_ty_union(lhs, r1, r2),
-
-            // a <: ~b
-            (lhs, Ty::Neg(rhs)) => self.subty_ty_neg(lhs, rhs),
-
-            // a -> b <: c -> d => c <: a, b <: d
-            (Ty::Func(l1, l2), Ty::Func(r1, r2)) => {
-                self.subty(r1, l1)?;
-                self.subty(l2, r2)?;
-
-                Ok(())
-            }
-
-            (lhs, rhs) => {
-                let diagnostic = Diagnostic::error("invalid::subtype")
-                    .message(format!("constraint `{} <: {}` is invalid", lhs, rhs));
-
-                Err(diagnostic)
-            }
-        }
-    }
-
-    fn subty_var_ty(&mut self, lhs: Name, rhs: &Ty) -> Result<(), Diagnostic> {
-        let var = self.var(lhs);
-        for ub in var.ubs.clone() {
-            self.subty(rhs, &ub)?;
-        }
-
-        let var = self.var(lhs);
-        var.ubs.push(rhs.clone());
-
-        for lb in var.lbs.clone() {
-            self.subty(&lb, rhs)?;
-        }
-
-        Ok(())
-    }
-
-    fn subty_ty_var(&mut self, lhs: &Ty, rhs: Name) -> Result<(), Diagnostic> {
-        let var = self.var(rhs);
-        for lb in var.lbs.clone() {
-            self.subty(lhs, &lb)?;
-        }
-
-        let var = self.var(rhs);
-        var.lbs.push(lhs.clone());
-
-        for rhs in var.ubs.clone() {
-            self.subty(lhs, &rhs)?;
-        }
-
-        Ok(())
-    }
-
-    fn subty_inter_ty(&mut self, l1: &Ty, l2: &Ty, rhs: &Ty) -> Result<(), Diagnostic> {
-        if l1 == rhs || l2 == rhs {
-            return Ok(());
-        }
-
-        match (l1, l2, rhs) {
-            (rhs @ Ty::Var(_), neg, lhs) | (neg, rhs @ Ty::Var(_), lhs) | (rhs, neg, lhs) => {
-                let lhs = Ty::Inter(
-                    Box::new(Ty::Neg(Box::new(neg.clone()))),
-                    Box::new(lhs.clone()),
-                );
-
-                self.subty(&lhs, rhs)
-            }
-        }
-    }
-
-    fn subty_ty_union(&mut self, lhs: &Ty, r1: &Ty, r2: &Ty) -> Result<(), Diagnostic> {
-        if r1 == lhs || r2 == lhs {
-            return Ok(());
-        }
-
-        match (lhs, r1, r2) {
-            // a <: b | c => a & ~b <: c
-            (rhs, lhs @ Ty::Var(_), neg) | (rhs, neg, lhs @ Ty::Var(_)) | (rhs, lhs, neg) => {
-                let rhs = Ty::Inter(
-                    Box::new(rhs.clone()),
-                    Box::new(Ty::Neg(Box::new(neg.clone()))),
-                );
-
-                self.subty(&rhs, lhs)
-            }
-        }
-    }
-
-    fn subty_ty_neg(&mut self, lhs: &Ty, rhs: &Ty) -> Result<(), Diagnostic> {
-        match (lhs, rhs) {
-            (Ty::Name(lid), Ty::Name(rid)) => match lid == rid {
-                false => Ok(()),
-                true => {
-                    let diagnostic = Diagnostic::error("invalid::negation")
-                        .message(format!("constraint `{} <: ~{}` is invalid", lhs, rhs));
-
-                    Err(diagnostic)
-                }
-            },
-
-            (Ty::Record(lfields), Ty::Record(rfields)) => {
-                for (lid, lty) in lfields {
-                    if let Some(rty) = rfields.get(lid) {
-                        let rty = Ty::Neg(Box::new(rty.clone()));
-
-                        self.subty(lty, &rty)?;
+                        return Err(diagnostic);
                     }
                 }
 
-                Ok(())
-            }
+                let diagnostic = Diagnostic::error("type::error")
+                    .message(format!(
+                        "type constraint `{} <: {}` does not hold",
+                        self.format_ty(&lnf.to_ty()),
+                        self.format_ty(&rnf.to_ty()),
+                    ))
+                    .note(format!(
+                        "required for `{} <: {}` to hold",
+                        self.format_ty(&l.to_ty()),
+                        self.format_ty(&r.to_ty()),
+                    ))
+                    .note(format!(
+                        "required for `{} <: {}` to hold",
+                        self.format_ty(&lhs.to_ty()),
+                        self.format_ty(&rhs.to_ty()),
+                    ))
+                    .label(span, "originated here");
 
-            (lhs, rhs) => {
-                let lhs = Ty::Neg(Box::new(lhs.clone()));
-                self.subty(&lhs, rhs)
+                return Err(diagnostic);
             }
         }
+
+        Ok(())
     }
 }
