@@ -3,7 +3,7 @@ use std::{
     fmt,
 };
 
-use crate::diagnostic::{Diagnostic, Span};
+use crate::diagnostic::{Diagnostic, Report, Span};
 
 pub use dnf::*;
 
@@ -256,12 +256,13 @@ impl Default for Options {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Solver {
+    options: Options,
     variables: HashMap<usize, Variable>,
     applicables: HashMap<Name, (Ty, Vec<Ty>)>,
     cache: HashMap<(Ty, Ty), bool>,
-    options: Options,
+    diagnostics: Vec<Diagnostic>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -279,10 +280,11 @@ pub struct Variable {
 impl Solver {
     pub fn new(options: Options) -> Self {
         Self {
+            options,
             variables: HashMap::new(),
             applicables: HashMap::new(),
             cache: HashMap::new(),
-            options,
+            diagnostics: Vec::new(),
         }
     }
 
@@ -312,6 +314,14 @@ impl Solver {
 
     pub fn var(&mut self, var: Var) -> &mut Variable {
         self.variables.get_mut(&var.index).unwrap()
+    }
+
+    pub fn finish(self) -> Result<(), Report> {
+        if self.diagnostics.is_empty() {
+            Ok(())
+        } else {
+            Err(Report::from(self.diagnostics))
+        }
     }
 
     pub fn instance(&mut self, ty: &Ty) -> Ty {
@@ -380,23 +390,24 @@ impl Solver {
         }
     }
 
-    pub fn subty(&mut self, lhs: &Ty, rhs: &Ty, span: Span) -> Result<(), Diagnostic> {
+    pub fn subty(&mut self, lhs: &Ty, rhs: &Ty, span: Span) {
         let lhs = lhs.clone().simplify();
         let rhs = rhs.clone().simplify();
 
         let key = (lhs.clone(), rhs.clone());
 
         if self.cache.contains_key(&key) {
-            return Ok(());
+            return;
         }
 
-        self.cache.insert((lhs.clone(), rhs.clone()), false);
+        self.cache.insert(key.clone(), false);
 
-        self.constrain(&lhs, &rhs, span)?;
+        if let Err(err) = self.constrain(&lhs, &rhs, span) {
+            self.diagnostics.push(err);
+            self.cache.remove(&key);
+        }
 
-        self.cache.insert((lhs.clone(), rhs.clone()), true);
-
-        Ok(())
+        self.cache.insert(key.clone(), true);
     }
 
     fn expand(&self, app: &App) -> Result<Ty, Diagnostic> {
@@ -425,6 +436,24 @@ impl Solver {
         let lhs = self.simplify_dnf(self.dnf(lhs));
         let rhs = self.simplify_cnf(self.cnf(rhs));
 
+        // (a & ~b) | (c & ~d) | .. <: (~e | f) & (~g | h) & ..
+        //
+        // (a & ~b) <: (~e | f) & (~g | h) & ..
+        // (c & ~d) <: (~e | f) & (~g | h) & ..
+        // ..
+        //
+        // a & ~b <: ~e | f
+        // a & ~b <: ~g | h
+        // c & ~d <: ~e | f
+        // c & ~d <: ~g | h
+        // ..
+        //
+        // a | e <: b & f
+        // a | g <: b & h
+        // c | e <: d & f
+        // c | g <: d & h
+        // ..
+
         for l in lhs.0.clone() {
             'out: for r in rhs.0.clone() {
                 let Conjunct {
@@ -433,6 +462,8 @@ impl Solver {
                     mut rnf,
                     mut nvars,
                 } = self.inter_conjunct(l.clone(), r.clone().neg());
+
+                // lnf & vars <: rnf & nvars
 
                 if let Some(&name) = vars.iter().next() {
                     vars.remove(&name);
@@ -452,7 +483,7 @@ impl Solver {
                     let var = self.var(name).clone();
 
                     for lb in var.lbs.clone() {
-                        self.subty(&lb, &dis, span)?;
+                        self.subty(&lb, &dis, span);
                     }
 
                     continue;
@@ -475,7 +506,7 @@ impl Solver {
                     let var = self.var(name).clone();
 
                     for ub in var.ubs.clone() {
-                        self.subty(&dis, &ub, span)?;
+                        self.subty(&dis, &ub, span);
                     }
 
                     continue;
@@ -516,7 +547,7 @@ impl Solver {
                     let rhs = Ty::union(Ty::neg(lnf.to_ty()), rnf.to_ty());
                     let lhs = self.expand(&app)?;
 
-                    self.subty(&lhs, &rhs, span)?;
+                    self.subty(&lhs, &rhs, span);
 
                     continue;
                 }
@@ -534,7 +565,7 @@ impl Solver {
                     let lhs = Ty::inter(lnf.to_ty(), Ty::neg(rnf.to_ty()));
                     let rhs = self.expand(&app)?;
 
-                    self.subty(&lhs, &rhs, span)?;
+                    self.subty(&lhs, &rhs, span);
 
                     continue;
                 }
@@ -547,15 +578,15 @@ impl Solver {
 
                 match (lb, rb) {
                     (LnfBase::Func(li, lo), RnfBase::Func(ri, ro)) => {
-                        self.subty(ri, li, span)?;
-                        self.subty(lo, ro, span)?;
+                        self.subty(ri, li, span);
+                        self.subty(lo, ro, span);
 
                         continue;
                     }
 
                     (LnfBase::Record(lf), RnfBase::Field(rf, rt)) => match lf.get(rf) {
                         Some(lt) => {
-                            self.subty(lt, rt, span)?;
+                            self.subty(lt, rt, span);
                             continue;
                         }
 
@@ -583,7 +614,7 @@ impl Solver {
 
                     (LnfBase::Tuple(lt), RnfBase::Tuple(rt)) if lt.len() == rt.len() => {
                         for (l, r) in lt.iter().zip(rt.iter()) {
-                            self.subty(l, r, span)?;
+                            self.subty(l, r, span);
                         }
 
                         continue;
@@ -611,8 +642,6 @@ impl Solver {
                         return Err(diagnostic);
                     }
 
-                    (LnfBase::None, _) | (_, RnfBase::None) => {}
-
                     (lb, rb) => {
                         let lkind = match lb {
                             LnfBase::None => lnf.to_ty().to_string(),
@@ -629,10 +658,7 @@ impl Solver {
                         };
 
                         let diagnostic = Diagnostic::error("type::error")
-                            .message(format!(
-                                "type of kind `{}` cannot be a subtype of `{}`",
-                                lkind, rkind
-                            ))
+                            .message(format!("a `{}` cannot be a subtype of `{}`", lkind, rkind))
                             .note(format!(
                                 "required for `{} <: {}` to hold",
                                 self.format_ty(&lnf.to_ty()),
@@ -653,26 +679,6 @@ impl Solver {
                         return Err(diagnostic);
                     }
                 }
-
-                let diagnostic = Diagnostic::error("type::error")
-                    .message(format!(
-                        "type constraint `{} <: {}` does not hold",
-                        self.format_ty(&lnf.to_ty()),
-                        self.format_ty(&rnf.to_ty()),
-                    ))
-                    .note(format!(
-                        "required for `{} <: {}` to hold",
-                        self.format_ty(&l.to_ty()),
-                        self.format_ty(&r.to_ty()),
-                    ))
-                    .note(format!(
-                        "required for `{} <: {}` to hold",
-                        self.format_ty(&lhs.to_ty()),
-                        self.format_ty(&rhs.to_ty()),
-                    ))
-                    .label(span, "originated here");
-
-                return Err(diagnostic);
             }
         }
 

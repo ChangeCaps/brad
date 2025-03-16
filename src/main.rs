@@ -73,7 +73,7 @@ pub enum FmtCmd {
     // Lir(FileArgs),
 }
 
-fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
+fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
     let args = Cli::parse();
 
     match &args.command {
@@ -113,7 +113,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
                 Cmd::Lua(_) => {
                     let ast = parse::module(&mut tokens)?;
 
-                    let mut codegen = lua::Codegen::new();
+                    let codegen = lua::Codegen::new();
                     let lua = codegen.finish(ast)?;
 
                     std::fs::write("out.lua", lua).unwrap();
@@ -153,7 +153,10 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
             let entrypoint = format!("{}::main", main_package);
 
             match &args.command {
-                Cmd::Interpret(_) => compiler.interpret(entrypoint.as_str()),
+                Cmd::Interpret(_) => {
+                    compiler.interpret(entrypoint.as_str())?;
+                    Ok(())
+                }
                 Cmd::Compile(_) => {
                     let llvm_ir = compiler.compile(entrypoint.clone().as_str())?;
 
@@ -192,6 +195,6 @@ fn main() {
     if let Err(diagnostic) = main2(&mut sources) {
         let mut writer = std::io::stdout();
         let mut formatter = diagnostic::Formatter::new(&mut writer, &sources);
-        formatter.write(&diagnostic).unwrap();
+        formatter.write_report(&diagnostic).unwrap();
     }
 }

@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     ast,
-    diagnostic::Diagnostic,
+    diagnostic::{Diagnostic, Report},
     solve::{Options, Solver, Ty},
 };
 
@@ -84,6 +84,7 @@ pub struct Codegen {
     solver: Solver,
     types: HashSet<&'static str>,
     funcs: HashMap<&'static str, (Ty, bool)>,
+    code: String,
 }
 
 impl Codegen {
@@ -92,10 +93,11 @@ impl Codegen {
             solver: Solver::new(Options::default()),
             types: HashSet::new(),
             funcs: HashMap::new(),
+            code: String::new(),
         }
     }
 
-    pub fn finish(&mut self, ast: ast::Module) -> Result<String, Diagnostic> {
+    pub fn finish(mut self, ast: ast::Module) -> Result<String, Report> {
         for decl in &ast.decls {
             match decl {
                 ast::Decl::Type(ast) => {
@@ -110,157 +112,197 @@ impl Codegen {
             }
         }
 
-        let mut code = String::new();
-
-        code.push_str(LUA_PRELUDE);
-        code.push('\n');
+        self.code.push_str(LUA_PRELUDE);
+        self.code.push('\n');
 
         for decl in &ast.decls {
             match decl {
                 ast::Decl::Type(ast) => {
-                    let name = Ty::Name(ast.name);
+                    self.codegen_ty(ast)?;
+                }
 
-                    let mut ctx = Vec::new();
+                ast::Decl::Alias(ast) => {
+                    self.codegen_alias(ast)?;
+                }
 
-                    if let Some(generics) = &ast.generics {
-                        for generic in &generics.generics {
-                            let ty = Ty::Var(self.solver.fresh_var());
-                            ctx.push((generic.name, ty.clone()));
-                        }
-                    }
+                _ => {}
+            }
+        }
 
-                    let ty = match ast.ty {
-                        Some(ref ty) => {
-                            let ty = self.lower_ty(&mut ctx, ty)?;
+        let mut report = Report::new();
 
-                            let constructor = format!(
-                                "M['{name}'] = function()
+        for decl in &ast.decls {
+            if let ast::Decl::Func(ast) = decl {
+                if let Err(err) = self.codegen_function(ast) {
+                    report.push(err);
+                }
+            }
+        }
+
+        if !report.is_empty() {
+            return Err(report);
+        }
+
+        self.code.push_str("print(dump(M.main()))");
+        self.solver.finish()?;
+
+        Ok(self.code)
+    }
+
+    fn codegen_ty(&mut self, ast: &ast::Type) -> Result<(), Diagnostic> {
+        let name = Ty::Name(ast.name);
+
+        let mut ctx = Vec::new();
+
+        if let Some(generics) = &ast.generics {
+            for generic in &generics.generics {
+                let ty = Ty::Var(self.solver.fresh_var());
+                ctx.push((generic.name, ty.clone()));
+            }
+        }
+
+        let ty = match ast.ty {
+            Some(ref ty) => {
+                let ty = self.lower_ty(&mut ctx, ty)?;
+
+                let constructor = format!(
+                    "M['{name}'] = function()
   return function(super)
     return add_type_tag(super, '{name}')
   end
 end\n\n",
-                                name = ast.name
-                            );
-                            code.push_str(&constructor);
+                    name = ast.name
+                );
+                self.code.push_str(&constructor);
 
-                            let output = Ty::inter(name.clone(), ty.clone());
+                let output = Ty::inter(name.clone(), ty.clone());
 
-                            let func = Ty::func(ty, output.clone());
-                            self.funcs.insert(ast.name, (func, true));
+                let func = Ty::func(ty, output.clone());
+                self.funcs.insert(ast.name, (func, true));
 
-                            output
-                        }
+                output
+            }
 
-                        None => name,
-                    };
+            None => {
+                let constructor = format!(
+                    "M['{name}'] = function()
+  local value = {{}}
+  setmetatable(value, {{ __type_tags = {{ ['{name}'] = true }} }})
+  return value
+end\n\n",
+                    name = ast.name
+                );
+                self.code.push_str(&constructor);
 
-                    let args = ctx.iter().map(|(_, ty)| ty.clone()).collect();
-                    self.solver.add_applicable(ast.name, ty, args);
-                }
+                self.funcs.insert(ast.name, (name.clone(), true));
 
-                ast::Decl::Alias(ast) => {
-                    let mut ctx = Vec::new();
+                name
+            }
+        };
 
-                    if let Some(generics) = &ast.generics {
-                        for generic in &generics.generics {
-                            let ty = Ty::Var(self.solver.fresh_var());
-                            ctx.push((generic.name, ty.clone()));
-                        }
-                    }
+        let args = ctx.iter().map(|(_, ty)| ty.clone()).collect();
+        self.solver.add_applicable(ast.name, ty, args);
 
-                    let ty = self.lower_ty(&mut ctx, &ast.ty)?;
+        Ok(())
+    }
 
-                    let args = ctx.iter().map(|(_, ty)| ty.clone()).collect();
-                    self.solver.add_applicable(ast.name, ty.clone(), args);
-                }
+    fn codegen_alias(&mut self, ast: &ast::Alias) -> Result<(), Diagnostic> {
+        let mut ctx = Vec::new();
 
-                _ => {}
+        if let Some(generics) = &ast.generics {
+            for generic in &generics.generics {
+                let ty = Ty::Var(self.solver.fresh_var());
+                ctx.push((generic.name, ty.clone()));
             }
         }
 
-        for decl in &ast.decls {
-            if let ast::Decl::Func(ast) = decl {
-                let mut codegen = ExprCodegen {
-                    codegen: self,
-                    generics: vec![],
-                    stmts: vec![],
-                    scope: vec![],
-                    next_ident: 0,
-                };
+        let ty = self.lower_ty(&mut ctx, &ast.ty)?;
 
-                // resolve explicit generics
-                if let Some(generics) = &ast.generics {
-                    for generic in &generics.generics {
-                        let ty = Ty::Var(codegen.solver.fresh_var());
-                        codegen.generics.push((generic.name, ty.clone()));
-                    }
-                }
+        let args = ctx.iter().map(|(_, ty)| ty.clone()).collect();
+        self.solver.add_applicable(ast.name, ty.clone(), args);
 
-                // lower the output type
-                let output = match ast.output {
-                    Some(ref ty) => codegen.codegen.lower_ty(&mut codegen.generics, ty)?,
-                    None => Ty::Var(codegen.solver.fresh_var()),
-                };
+        Ok(())
+    }
 
-                // generate the function body
-                let mut body = String::new();
+    fn codegen_function(&mut self, ast: &ast::Func) -> Result<(), Diagnostic> {
+        let mut codegen = ExprCodegen {
+            codegen: self,
+            generics: vec![],
+            stmts: vec![],
+            scope: vec![],
+            next_ident: 0,
+        };
 
-                // generate the function header
-                for (i, _) in ast.args.iter().enumerate() {
-                    body.push_str(&format!("return function(arg{})\n", i));
-                }
-
-                // lower the function type and register arguments
-                let mut func_ty = output.clone();
-
-                for (i, arg) in ast.args.iter().enumerate().rev() {
-                    let ty = match arg.ty {
-                        Some(ref ty) => codegen.codegen.lower_ty(&mut codegen.generics, ty)?,
-                        None => Ty::Var(codegen.solver.fresh_var()),
-                    };
-
-                    func_ty = Ty::func(ty.clone(), func_ty);
-
-                    // generate the argument binding
-                    codegen.binding(&ty, &arg.binding, &format!("arg{}", i))?;
-                }
-
-                // register the function as incomplete, disabling subsumption checking
-                codegen.funcs.insert(ast.name, (func_ty.clone(), false));
-
-                // generate the function body
-                let (value, ty) = codegen.expr(ast.body.as_ref().unwrap())?;
-
-                // constrain the output type, to the type of the body
-                let span = ast.output.as_ref().map_or(ast.span, |ty| ty.span());
-                codegen.solver.subty(&ty, &output, span)?;
-
-                // append the statemetns in the body
-                for stmt in codegen.stmts {
-                    body.push_str(&format!("  {}", stmt));
-                    body.push('\n');
-                }
-
-                // generate the return statement
-                body.push_str(&format!("  return {}\n", value));
-
-                // close the function body
-                for _ in &ast.args {
-                    body.push_str("end\n");
-                }
-
-                // push the function to the generated code
-                code.push_str(&format!("M['{}'] = function()\n{}end\n\n", ast.name, body));
-
-                // register the function as complete
-                println!("{}: {}", ast.name, self.solver.format_ty(&func_ty));
-                self.funcs.insert(ast.name, (func_ty, true));
+        // resolve explicit generics
+        if let Some(generics) = &ast.generics {
+            for generic in &generics.generics {
+                let ty = Ty::Var(codegen.solver.fresh_var());
+                codegen.generics.push((generic.name, ty.clone()));
             }
         }
 
-        code.push_str("print(dump(M.main()))");
+        // lower the output type
+        let output = match ast.output {
+            Some(ref ty) => codegen.codegen.lower_ty(&mut codegen.generics, ty)?,
+            None => Ty::Var(codegen.solver.fresh_var()),
+        };
 
-        Ok(code)
+        // generate the function body
+        let mut body = String::new();
+
+        // generate the function header
+        for (i, _) in ast.args.iter().enumerate() {
+            body.push_str(&format!("return function(arg{})\n", i));
+        }
+
+        // lower the function type and register arguments
+        let mut func_ty = output.clone();
+
+        for (i, arg) in ast.args.iter().enumerate().rev() {
+            let ty = match arg.ty {
+                Some(ref ty) => codegen.codegen.lower_ty(&mut codegen.generics, ty)?,
+                None => Ty::Var(codegen.solver.fresh_var()),
+            };
+
+            func_ty = Ty::func(ty.clone(), func_ty);
+
+            // generate the argument binding
+            codegen.binding(&ty, &arg.binding, &format!("arg{}", i))?;
+        }
+
+        // register the function as incomplete, disabling subsumption checking
+        codegen.funcs.insert(ast.name, (func_ty.clone(), false));
+
+        // generate the function body
+        let (value, ty) = codegen.expr(ast.body.as_ref().unwrap())?;
+
+        // constrain the output type, to the type of the body
+        let span = ast.output.as_ref().map_or(ast.span, |ty| ty.span());
+        codegen.solver.subty(&ty, &output, span);
+
+        // append the statemetns in the body
+        for stmt in codegen.stmts {
+            body.push_str(&format!("  {}", stmt));
+            body.push('\n');
+        }
+
+        // generate the return statement
+        body.push_str(&format!("  return {}\n", value));
+
+        // close the function body
+        for _ in &ast.args {
+            body.push_str("end\n");
+        }
+
+        // push the function to the generated code
+        let func = format!("M['{}'] = function()\n{}end\n\n", ast.name, body);
+        self.code.push_str(&func);
+
+        // register the function as complete
+        println!("{}: {}", ast.name, self.solver.format_ty(&func_ty));
+        self.funcs.insert(ast.name, (func_ty, true));
+
+        Ok(())
     }
 
     fn lower_ty(&mut self, ctx: &mut dyn GenericContext, ty: &ast::Ty) -> Result<Ty, Diagnostic> {
@@ -457,7 +499,9 @@ impl ExprCodegen<'_> {
                     tys.push(ty.clone());
                 }
 
-                self.solver.subty(ty, &Ty::Tuple(tys), *span)
+                self.solver.subty(ty, &Ty::Tuple(tys), *span);
+
+                Ok(())
             }
         }
     }
@@ -578,7 +622,7 @@ impl ExprCodegen<'_> {
 
         let record_ty = Ty::record([(ast.name, ty.clone())]);
 
-        self.solver.subty(&target_ty, &record_ty, ast.span)?;
+        self.solver.subty(&target_ty, &record_ty, ast.span);
 
         Ok((format!("{}.{}", target, ast.name), ty))
     }
@@ -593,8 +637,8 @@ impl ExprCodegen<'_> {
             | ast::BinaryOp::Mul
             | ast::BinaryOp::Div
             | ast::BinaryOp::Mod => {
-                self.solver.subty(&lhs_ty, &Ty::Name("int"), ast.span)?;
-                self.solver.subty(&rhs_ty, &Ty::Name("int"), ast.span)?;
+                self.solver.subty(&lhs_ty, &Ty::Name("int"), ast.span);
+                self.solver.subty(&rhs_ty, &Ty::Name("int"), ast.span);
 
                 let op = match ast.op {
                     ast::BinaryOp::Add => "+",
@@ -617,8 +661,8 @@ impl ExprCodegen<'_> {
             ast::BinaryOp::Shr => todo!(),
 
             ast::BinaryOp::Eq | ast::BinaryOp::Ne => {
-                self.solver.subty(&lhs_ty, &rhs_ty, ast.span)?;
-                self.solver.subty(&rhs_ty, &lhs_ty, ast.span)?;
+                self.solver.subty(&lhs_ty, &rhs_ty, ast.span);
+                self.solver.subty(&rhs_ty, &lhs_ty, ast.span);
 
                 let op = match ast.op {
                     ast::BinaryOp::Eq => "==",
@@ -635,8 +679,8 @@ impl ExprCodegen<'_> {
             ast::BinaryOp::And | ast::BinaryOp::Or => {
                 let ty = Ty::union(Ty::Name("true"), Ty::Name("false"));
 
-                self.solver.subty(&lhs_ty, &ty, ast.span)?;
-                self.solver.subty(&rhs_ty, &ty, ast.span)?;
+                self.solver.subty(&lhs_ty, &ty, ast.span);
+                self.solver.subty(&rhs_ty, &ty, ast.span);
 
                 let op = match ast.op {
                     ast::BinaryOp::And => "and",
@@ -653,8 +697,8 @@ impl ExprCodegen<'_> {
             }
 
             ast::BinaryOp::Lt | ast::BinaryOp::Le | ast::BinaryOp::Gt | ast::BinaryOp::Ge => {
-                self.solver.subty(&lhs_ty, &Ty::Name("int"), ast.span)?;
-                self.solver.subty(&rhs_ty, &Ty::Name("int"), ast.span)?;
+                self.solver.subty(&lhs_ty, &Ty::Name("int"), ast.span);
+                self.solver.subty(&rhs_ty, &Ty::Name("int"), ast.span);
 
                 let op = match ast.op {
                     ast::BinaryOp::Lt => "<",
@@ -680,7 +724,7 @@ impl ExprCodegen<'_> {
 
         let func_ty = Ty::func(input_ty, output.clone());
 
-        self.solver.subty(&target_ty, &func_ty, ast.span)?;
+        self.solver.subty(&target_ty, &func_ty, ast.span);
 
         Ok((format!("{}({})", target, input), output))
     }
@@ -689,7 +733,7 @@ impl ExprCodegen<'_> {
         let (value, value_ty) = self.expr(&ast.value)?;
         let (target, target_ty) = self.expr(&ast.target)?;
 
-        self.solver.subty(&value_ty, &target_ty, ast.span)?;
+        self.solver.subty(&value_ty, &target_ty, ast.span);
         self.stmts.push(format!("{} = {}", target, value));
 
         Ok((String::from("nil"), Ty::Name("none")))
@@ -785,7 +829,7 @@ impl ExprCodegen<'_> {
 
         self.stmts.push("end".to_string());
 
-        self.solver.subty(&target_ty, &input, ast.span)?;
+        self.solver.subty(&target_ty, &input, ast.span);
 
         Ok((res, output))
     }
@@ -795,8 +839,8 @@ impl ExprCodegen<'_> {
 
         if let Some(ref expected) = ast.ty {
             let expected = self.lower_ty(expected)?;
-            self.solver.subty(&ty, &expected, ast.span)?;
-            self.solver.subty(&expected, &ty, ast.span)?;
+            self.solver.subty(&ty, &expected, ast.span);
+            self.solver.subty(&expected, &ty, ast.span);
         }
 
         self.binding(&ty, &ast.binding, &expr)?;

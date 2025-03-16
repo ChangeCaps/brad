@@ -10,8 +10,8 @@ fn prepend x xs {
 
 fn map f xs {
   match xs
-  | none               => list none
-  | list as head, tail => list <| f head, map f tail
+  | none            => list none
+  | _ as head, tail => list <| f head, map f tail
 }
 
 fn mul x y {

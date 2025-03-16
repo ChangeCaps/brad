@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use colored::{Color, Colorize};
 
-use super::{Diagnostic, Label, Severity, Sources};
+use super::{Diagnostic, Label, Report, Severity, Sources};
 
 pub struct Formatter<'a, W> {
     writer: W,
@@ -17,7 +17,15 @@ where
         Formatter { writer, sources }
     }
 
-    pub fn write(&mut self, diagnostic: &Diagnostic) -> io::Result<()> {
+    pub fn write_report(&mut self, report: &Report) -> io::Result<()> {
+        for diagnostic in &report.diagnostics {
+            self.write_diagnostic(diagnostic)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn write_diagnostic(&mut self, diagnostic: &Diagnostic) -> io::Result<()> {
         let indent = self.compute_indent(diagnostic);
 
         self.write_header(diagnostic)?;

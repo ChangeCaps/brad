@@ -12,20 +12,22 @@ pub struct Dnf(pub Vec<Conjunct>);
 pub struct Cnf(pub Vec<Disjunct>);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Disjunct {
-    pub rnf: Rnf,
-    pub vars: BTreeSet<Var>,
-
-    pub lnf: Lnf,
-    pub nvars: BTreeSet<Var>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Conjunct {
     pub lnf: Lnf,
     pub vars: BTreeSet<Var>,
 
+    /* negated */
     pub rnf: Rnf,
+    pub nvars: BTreeSet<Var>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Disjunct {
+    pub rnf: Rnf,
+    pub vars: BTreeSet<Var>,
+
+    /* negated */
+    pub lnf: Lnf,
     pub nvars: BTreeSet<Var>,
 }
 
@@ -355,6 +357,7 @@ impl Solver {
 
             Ty::Var(var) => Dnf::var(*var),
 
+            // (a | b | ..) | (c | d | ..) | .. => a | b | c | d | ..
             Ty::Union(t1, t2) => {
                 let Dnf(dnf1) = self.dnf(t1);
                 let Dnf(dnf2) = self.dnf(t2);
@@ -372,6 +375,7 @@ impl Solver {
                 self.simplify_dnf(Dnf(conjuncts))
             }
 
+            // (a | b | ..) & (c | d | ..) & .. => (a & c & ..) | (a & d & ..) | ..
             Ty::Inter(t1, t2) => {
                 let Dnf(dnf1) = self.dnf(t1);
                 let Dnf(dnf2) = self.dnf(t2);
@@ -429,6 +433,7 @@ impl Solver {
 
             Ty::Var(var) => Cnf::var(*var),
 
+            // (a & b & ..) & (c & d & ..) & .. => a & b & c & d & ..
             Ty::Inter(t1, t2) => {
                 let Cnf(cnf1) = self.cnf(t1);
                 let Cnf(cnf2) = self.cnf(t2);
@@ -446,6 +451,7 @@ impl Solver {
                 self.simplify_cnf(Cnf(disjuncts))
             }
 
+            // (a | b | ..) & (c | d | ..) & .. => (a & c & ..) | (a & d & ..) | ..
             Ty::Union(t1, t2) => {
                 let Cnf(cnf1) = self.cnf(t1);
                 let Cnf(cnf2) = self.cnf(t2);
