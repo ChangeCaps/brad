@@ -58,7 +58,6 @@ pub enum Cmd {
         #[command(subcommand)]
         command: FmtCmd,
     },
-    Solve(FileArgs),
     // Hir(ModuleArgs),
     // Mir(ModuleArgs),
     // Lir(ModuleArgs),
@@ -129,11 +128,6 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Diagnostic> {
                 _ => unreachable!(),
             };
 
-            Ok(())
-        }
-
-        Cmd::Solve(f) => {
-            //solve::solve(sources, f.file.clone())?;
             Ok(())
         }
 

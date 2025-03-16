@@ -91,6 +91,16 @@ impl Solver {
                 write!(w, " }}")?;
             }
 
+            Ty::Tuple(fields) => {
+                for (i, ty) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(w, " * ")?;
+                    }
+
+                    self.format_ty_inner(w, ty, vars, seen, 0)?;
+                }
+            }
+
             Ty::Func(input, output) => {
                 self.format_ty_inner(w, input, vars, seen, self.prec(ty))?;
                 write!(w, " -> ")?;
@@ -168,6 +178,7 @@ impl Solver {
             Ty::Func(_, _) => 3,
             Ty::Inter(_, _) => 2,
             Ty::Union(_, _) => 1,
+            Ty::Tuple(_) => 0,
         }
     }
 

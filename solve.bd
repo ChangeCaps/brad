@@ -1,22 +1,17 @@
-type list<'a> = none | { head: 'a; tail: list<'a> }
+type list<'a> = none | 'a * list<'a>
 
 fn one x {
-  list { head: x; tail: list none }
+  list <| x, list none
 }
 
 fn prepend x xs {
-  list { head: x; tail: xs }
+  list <| x, xs
 }
 
 fn map f xs {
   match xs
-  | none => list none
-  | list as c => {
-    list {
-      head: f c.head
-      tail: map f c.tail
-    }
-  }
+  | none               => list none
+  | list as head, tail => f head, map f tail
 }
 
 fn mul x y {

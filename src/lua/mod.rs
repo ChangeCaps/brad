@@ -319,7 +319,15 @@ end\n\n",
             }
 
             ast::Ty::List { .. } => todo!(),
-            ast::Ty::Tuple { .. } => todo!(),
+
+            ast::Ty::Tuple { tys, .. } => {
+                let tys = tys
+                    .iter()
+                    .map(|ty| self.lower_ty(ctx, ty))
+                    .collect::<Result<_, _>>()?;
+
+                Ty::Tuple(tys)
+            }
 
             ast::Ty::Union { tys, .. } => {
                 let mut tys = tys.iter().map(|ty| self.lower_ty(ctx, ty));
@@ -436,27 +444,41 @@ impl ExprCodegen<'_> {
 
                 Ok(())
             }
-            ast::Binding::Tuple { .. } => unimplemented!("tuple bindings"),
+            ast::Binding::Tuple { bindings, span } => {
+                let temp = self.fresh_ident();
+                self.stmts.push(format!("local {temp} = {expr}"));
+
+                let mut tys = Vec::new();
+
+                for (i, binding) in bindings.iter().enumerate() {
+                    let ty = Ty::Var(self.solver.fresh_var());
+                    self.binding(&ty, binding, &format!("{temp}[{i}]"))?;
+
+                    tys.push(ty.clone());
+                }
+
+                self.solver.subty(ty, &Ty::Tuple(tys), *span)
+            }
         }
     }
 
     fn expr(&mut self, ast: &ast::Expr) -> Result<(String, Ty), Diagnostic> {
         match ast {
             ast::Expr::Literal(ast) => self.literal_expr(ast),
-            ast::Expr::List(list_expr) => todo!(),
+            ast::Expr::List(_list_expr) => todo!(),
             ast::Expr::Record(ast) => self.record_expr(ast),
-            ast::Expr::Tuple(tuple_expr) => todo!(),
+            ast::Expr::Tuple(ast) => self.tuple_expr(ast),
             ast::Expr::Path(ast) => self.path_expr(ast),
-            ast::Expr::Index(index_expr) => todo!(),
+            ast::Expr::Index(_index_expr) => todo!(),
             ast::Expr::Field(ast) => self.field_expr(ast),
-            ast::Expr::Unary(unary_expr) => todo!(),
+            ast::Expr::Unary(_unary_expr) => todo!(),
             ast::Expr::Binary(ast) => self.binary_expr(ast),
             ast::Expr::Call(ast) => self.call_expr(ast),
             ast::Expr::Assign(ast) => self.assign_expr(ast),
-            ast::Expr::Ref(ref_expr) => todo!(),
+            ast::Expr::Ref(_ref_expr) => todo!(),
             ast::Expr::Match(ast) => self.match_expr(ast),
-            ast::Expr::Loop(loop_expr) => todo!(),
-            ast::Expr::Break(break_expr) => todo!(),
+            ast::Expr::Loop(_loop_expr) => todo!(),
+            ast::Expr::Break(_break_expr) => todo!(),
             ast::Expr::Let(ast) => self.let_expr(ast),
             ast::Expr::Block(ast) => self.block_expr(ast),
         }
@@ -495,6 +517,32 @@ impl ExprCodegen<'_> {
         (self.stmts).push(format!("setmetatable({temp}, {{ __type_tags = {{}} }})"));
 
         Ok((temp, Ty::Record(types)))
+    }
+
+    fn tuple_expr(&mut self, ast: &ast::TupleExpr) -> Result<(String, Ty), Diagnostic> {
+        let mut types = Vec::new();
+        let mut items = Vec::new();
+
+        for item in &ast.items {
+            let (value, ty) = self.expr(item)?;
+
+            types.push(ty);
+            items.push(value);
+        }
+
+        let items = items
+            .into_iter()
+            .enumerate()
+            .map(|(i, item)| format!("[{i}] = {item}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let temp = self.fresh_ident();
+
+        (self.stmts).push(format!("local {temp} = {{{items}}}"));
+        (self.stmts).push(format!("setmetatable({temp}, {{ __type_tags = {{}} }})"));
+
+        Ok((temp, Ty::Tuple(types)))
     }
 
     fn path_expr(&mut self, ast: &ast::Path) -> Result<(String, Ty), Diagnostic> {

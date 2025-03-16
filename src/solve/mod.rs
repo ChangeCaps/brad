@@ -9,7 +9,6 @@ pub use dnf::*;
 
 mod dnf;
 mod format;
-mod parse;
 
 pub type Name = &'static str;
 pub type Field = &'static str;
@@ -30,6 +29,7 @@ pub enum Ty {
     /* type constructors */
     Name(Name),
     Record(BTreeMap<Field, Ty>),
+    Tuple(Vec<Ty>),
     Func(Box<Ty>, Box<Ty>),
     App(App),
     Top,
@@ -56,6 +56,10 @@ impl Ty {
         Ty::Func(Box::new(input), Box::new(output))
     }
 
+    pub fn tuple(tys: impl Into<Vec<Ty>>) -> Self {
+        Ty::Tuple(tys.into())
+    }
+
     pub fn record(fields: impl Into<BTreeMap<Field, Ty>>) -> Self {
         Ty::Record(fields.into())
     }
@@ -80,6 +84,12 @@ impl Ty {
                 let fields = fields.iter().map(|(f, ty)| (*f, ty.subst(map))).collect();
 
                 Ty::Record(fields)
+            }
+
+            Ty::Tuple(tys) => {
+                let tys = tys.iter().map(|ty| ty.subst(map)).collect();
+
+                Ty::Tuple(tys)
             }
 
             Ty::App(app) => {
@@ -155,9 +165,12 @@ impl Ty {
                 Ty::Top => Ty::Bot,
                 Ty::Bot => Ty::Top,
 
-                Ty::Name(_) | Ty::Record(_) | Ty::Func(_, _) | Ty::App(_) | Ty::Var(_) => {
-                    Self::Neg(ty)
-                }
+                Ty::Name(_)
+                | Ty::Record(_)
+                | Ty::Tuple(_)
+                | Ty::Func(_, _)
+                | Ty::App(_)
+                | Ty::Var(_) => Self::Neg(ty),
             },
 
             Ty::Record(fields) => {
@@ -167,6 +180,12 @@ impl Ty {
                     .collect();
 
                 Ty::Record(fields)
+            }
+
+            Ty::Tuple(tys) => {
+                let tys = tys.into_iter().map(|ty| ty.simplify()).collect();
+
+                Ty::Tuple(tys)
             }
 
             Ty::Func(input, ouput) => {
@@ -207,6 +226,12 @@ impl fmt::Display for Ty {
                     .collect();
 
                 write!(f, "{{{}}}", fields.join(", "))
+            }
+
+            Ty::Tuple(tys) => {
+                let tys: Vec<_> = tys.iter().map(|ty| ty.to_string()).collect();
+
+                write!(f, "({})", tys.join(", "))
             }
 
             Ty::App(app) => {
@@ -327,6 +352,12 @@ impl Solver {
                     .collect();
 
                 Ty::Record(fields)
+            }
+
+            Ty::Tuple(tys) => {
+                let tys = tys.iter().map(|ty| self.inst(map, ty)).collect();
+
+                Ty::Tuple(tys)
             }
 
             Ty::Func(input, output) => {
@@ -522,11 +553,62 @@ impl Solver {
                         continue;
                     }
 
-                    (LnfBase::Record(lf), RnfBase::Field(rf, rt)) => {
-                        if let Some(lt) = lf.get(rf) {
+                    (LnfBase::Record(lf), RnfBase::Field(rf, rt)) => match lf.get(rf) {
+                        Some(lt) => {
                             self.subty(lt, rt, span)?;
                             continue;
                         }
+
+                        None => {
+                            let fields = lf.keys().map(|f| format!("`{}`", f)).collect::<Vec<_>>();
+
+                            let diagnostic = Diagnostic::error("type::error")
+                                .message(format!("expected field `{}` in record", rf))
+                                .note(format!("available fields are: {}", fields.join(", ")))
+                                .note(format!(
+                                    "required for `{} <: {}` to hold",
+                                    self.format_ty(&lnf.to_ty()),
+                                    self.format_ty(&rnf.to_ty()),
+                                ))
+                                .note(format!(
+                                    "required for `{} <: {}` to hold",
+                                    self.format_ty(&lhs.to_ty()),
+                                    self.format_ty(&rhs.to_ty()),
+                                ))
+                                .label(span, "originated here");
+
+                            return Err(diagnostic);
+                        }
+                    },
+
+                    (LnfBase::Tuple(lt), RnfBase::Tuple(rt)) if lt.len() == rt.len() => {
+                        for (l, r) in lt.iter().zip(rt.iter()) {
+                            self.subty(l, r, span)?;
+                        }
+
+                        continue;
+                    }
+
+                    (LnfBase::Tuple(lt), RnfBase::Tuple(rt)) => {
+                        let diagnostic = Diagnostic::error("type::error")
+                            .message(format!(
+                                "expected tuple of length `{}`, found tuple of length `{}`",
+                                lt.len(),
+                                rt.len()
+                            ))
+                            .note(format!(
+                                "required for `{} <: {}` to hold",
+                                self.format_ty(&lnf.to_ty()),
+                                self.format_ty(&rnf.to_ty()),
+                            ))
+                            .note(format!(
+                                "required for `{} <: {}` to hold",
+                                self.format_ty(&lhs.to_ty()),
+                                self.format_ty(&rhs.to_ty()),
+                            ))
+                            .label(span, "originated here");
+
+                        return Err(diagnostic);
                     }
 
                     (LnfBase::None, _) | (_, RnfBase::None) => {}
@@ -536,12 +618,14 @@ impl Solver {
                             LnfBase::None => lnf.to_ty().to_string(),
                             LnfBase::Record(_) => String::from("record"),
                             LnfBase::Func(_, _) => String::from("function"),
+                            LnfBase::Tuple(_) => String::from("tuple"),
                         };
 
                         let rkind = match rb {
                             RnfBase::None => rnf.to_ty().to_string(),
                             RnfBase::Field(_, _) => String::from("record"),
                             RnfBase::Func(_, _) => String::from("function"),
+                            RnfBase::Tuple(_) => String::from("tuple"),
                         };
 
                         let diagnostic = Diagnostic::error("type::error")

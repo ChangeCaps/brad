@@ -78,7 +78,7 @@ M['one'] = function()
 return function(arg0)
   local var0 = arg0
   local _ = nil
-  local tmp0 = {head = var0, tail = M['list']()(make_none())}
+  local tmp0 = {[0] = var0, [1] = M['list']()(make_none())}
   setmetatable(tmp0, { __type_tags = {} })
   return M['list']()(tmp0)
 end
@@ -90,7 +90,7 @@ return function(arg1)
   local var0 = arg1
   local var1 = arg0
   local _ = nil
-  local tmp0 = {head = var1, tail = var0}
+  local tmp0 = {[0] = var1, [1] = var0}
   setmetatable(tmp0, { __type_tags = {} })
   return M['list']()(tmp0)
 end
@@ -108,11 +108,12 @@ return function(arg1)
   if has_type_tag(tmp0, 'none') then
   tmp1 = M['list']()(make_none())
   elseif has_type_tag(tmp0, 'list') then
-  local var2 = tmp0
-  local _ = nil
-  local tmp2 = {head = var1(var2.head), tail = M['map']()(var1)(var2.tail)}
-  setmetatable(tmp2, { __type_tags = {} })
-  tmp1 = M['list']()(tmp2)
+  local tmp2 = tmp0
+  local var2 = tmp2[0]
+  local var3 = tmp2[1]
+  local tmp3 = {[0] = var1(var2), [1] = M['map']()(var1)(var3)}
+  setmetatable(tmp3, { __type_tags = {} })
+  tmp1 = tmp3
   end
   return tmp1
 end

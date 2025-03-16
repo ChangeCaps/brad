@@ -68,13 +68,13 @@ impl<W: Write> Formatter<W> {
                     self.format_ty(ty)?;
                 };
 
-                match func_decl {
-                    Func {
-                        body: Some(body),
-                        is_extern: false,
-                        ..
-                    } => self.format_expr(body)?,
-                    _ => {}
+                if let Func {
+                    body: Some(body),
+                    is_extern: false,
+                    ..
+                } = func_decl
+                {
+                    self.format_expr(body)?
                 };
 
                 writeln!(self.writer)

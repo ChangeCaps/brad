@@ -3,8 +3,6 @@ use std::{
     iter,
 };
 
-use crate::diagnostic::Diagnostic;
-
 use super::{App, Field, Name, Solver, Ty, Var};
 
 #[derive(Clone, Debug, Default)]
@@ -45,6 +43,7 @@ pub enum Lnf {
 pub enum LnfBase {
     None,
     Record(BTreeMap<Field, Ty>),
+    Tuple(Vec<Ty>),
     Func(Ty, Ty),
 }
 
@@ -62,6 +61,7 @@ pub enum Rnf {
 pub enum RnfBase {
     None,
     Field(&'static str, Ty),
+    Tuple(Vec<Ty>),
     Func(Ty, Ty),
 }
 
@@ -200,6 +200,14 @@ impl Lnf {
         }
     }
 
+    pub fn tuple(tys: Vec<Ty>) -> Self {
+        Lnf::Base {
+            names: BTreeSet::new(),
+            apps: BTreeSet::new(),
+            base: LnfBase::Tuple(tys),
+        }
+    }
+
     pub fn app(app: App) -> Self {
         Lnf::Base {
             names: BTreeSet::new(),
@@ -229,6 +237,8 @@ impl Lnf {
                     }
 
                     LnfBase::Record(fields) => Ty::Record(fields.clone()),
+
+                    LnfBase::Tuple(tys) => Ty::Tuple(tys.clone()),
                 };
 
                 let apps = apps.iter().cloned().map(Ty::App);
@@ -277,6 +287,14 @@ impl Rnf {
         }
     }
 
+    pub fn tuple(tys: Vec<Ty>) -> Self {
+        Rnf::Base {
+            names: BTreeSet::new(),
+            apps: BTreeSet::new(),
+            base: RnfBase::Tuple(tys),
+        }
+    }
+
     pub fn app(app: App) -> Self {
         Rnf::Base {
             names: BTreeSet::new(),
@@ -297,8 +315,10 @@ impl Rnf {
                             Ty::Bot
                         }
                     }
+
                     RnfBase::Field(field, ty) => Ty::record([(*field, ty.clone())]),
                     RnfBase::Func(input, output) => Ty::func(input.clone(), output.clone()),
+                    RnfBase::Tuple(tys) => Ty::tuple(tys.clone()),
                 };
 
                 let apps = apps.iter().cloned().map(Ty::App);
@@ -393,6 +413,7 @@ impl Solver {
                 })
             }
 
+            Ty::Tuple(tys) => Dnf::lnf(Lnf::tuple(tys.clone())),
             Ty::App(app) => Dnf::lnf(Lnf::app(app.clone())),
         }
     }
@@ -462,6 +483,7 @@ impl Solver {
                 })
             }
 
+            Ty::Tuple(tys) => Cnf::rnf(Rnf::tuple(tys.clone())),
             Ty::App(app) => Cnf::rnf(Rnf::app(app.clone())),
         }
     }
@@ -535,6 +557,16 @@ impl Solver {
                         LnfBase::Record(f1)
                     }
 
+                    (LnfBase::Tuple(t1), LnfBase::Tuple(t2)) if t1.len() == t2.len() => {
+                        let tys = t1
+                            .into_iter()
+                            .zip(t2)
+                            .map(|(t1, t2)| Ty::inter(t1, t2).simplify())
+                            .collect();
+
+                        LnfBase::Tuple(tys)
+                    }
+
                     (_, _) => LnfBase::None,
                 };
 
@@ -581,6 +613,16 @@ impl Solver {
                         } else {
                             RnfBase::None
                         }
+                    }
+
+                    (RnfBase::Tuple(t1), RnfBase::Tuple(t2)) if t1.len() == t2.len() => {
+                        let tys = t1
+                            .into_iter()
+                            .zip(t2)
+                            .map(|(t1, t2)| Ty::union(t1, t2).simplify())
+                            .collect();
+
+                        RnfBase::Tuple(tys)
                     }
 
                     (_, _) => RnfBase::None,
