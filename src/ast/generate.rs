@@ -148,7 +148,7 @@ impl GeneratorCtx {
         match binding {
             ast::Binding::Wild { .. } => {}
             ast::Binding::Bind { name, .. } => {
-                let local_history = self.locals_history.entry(*name).or_insert_with(Vec::new);
+                let local_history = self.locals_history.entry(*name).or_default();
                 local_history.push((self.depth, ty.clone()));
                 self.locals.insert(*name, ty.clone());
             }
@@ -710,7 +710,7 @@ impl BodyGenerator {
         for _ in 0..MAX_MATCH_ARMS {
             // Should return a type that is a subtype of the context type.
             let (pattern, arm_expr) =
-                ctx.with_scope(|ctx| (self.pattern(ctx, &match_ty), self.expr(ctx, &ty)));
+                ctx.with_scope(|ctx| (self.pattern(ctx, &match_ty), self.expr(ctx, ty)));
 
             if arm_expr.is_none() {
                 continue;
@@ -725,7 +725,7 @@ impl BodyGenerator {
             arms.push(arm);
         }
 
-        if arms.len() > 0 {
+        if !arms.is_empty() {
             Some(ast::Expr::Match(ast::MatchExpr {
                 target: Box::new(target),
                 arms,

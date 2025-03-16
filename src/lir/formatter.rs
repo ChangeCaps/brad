@@ -142,14 +142,14 @@ where
                     if i + 1 == tids.len() {
                         self.format_tid(
                             program,
-                            Tid(id.clone()),
+                            Tid(*id),
                             &[indent_other, "╚═"].join(""),
                             &[indent_other, "  "].join(""),
                         )?;
                     } else {
                         self.format_tid(
                             program,
-                            Tid(id.clone()),
+                            Tid(*id),
                             &[indent_other, "╠═"].join(""),
                             &[indent_other, "║ "].join(""),
                         )?;
@@ -171,14 +171,14 @@ where
                     if i + 1 == items.len() {
                         self.format_tid(
                             program,
-                            Tid(id.clone()),
+                            Tid(*id),
                             &[indent_other, "╚═"].join(""),
                             &[indent_other, "  "].join(""),
                         )?;
                     } else {
                         self.format_tid(
                             program,
-                            Tid(id.clone()),
+                            Tid(*id),
                             &[indent_other, "╠═"].join(""),
                             &[indent_other, "║ "].join(""),
                         )?;
@@ -200,14 +200,14 @@ where
                     if i + 1 == tids.len() {
                         self.format_tid(
                             program,
-                            Tid(id.clone()),
+                            Tid(*id),
                             &[indent_other, "╚═"].join(""),
                             &[indent_other, "  "].join(""),
                         )?;
                     } else {
                         self.format_tid(
                             program,
-                            Tid(id.clone()),
+                            Tid(*id),
                             &[indent_other, "╠═"].join(""),
                             &[indent_other, "║ "].join(""),
                         )?;

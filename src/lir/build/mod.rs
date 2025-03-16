@@ -66,10 +66,7 @@ impl<'a> Builder<'a> {
     }
 
     fn build_body(&mut self, bid: sir::Bid) -> lir::Bid {
-        match self.body_map.get(&bid) {
-            Some(id) => return id.clone(),
-            None => {}
-        };
+        if let Some(id) = self.body_map.get(&bid) { return *id };
 
         let argc = self.sir.bodies[bid].arguments;
 
@@ -166,7 +163,7 @@ impl<'a> Builder<'a> {
     ) -> lir::Local {
         let dst = {
             let tid = match place.access.last() {
-                Some((_, tid)) => tid.clone(),
+                Some((_, tid)) => *tid,
                 None => self.lir.bodies[bid][place.local],
             };
             self.push_local(bid, tid)
@@ -221,7 +218,7 @@ impl<'a> Builder<'a> {
     ) -> lir::Stmt {
         let dst = {
             let tid = match place.access.last() {
-                Some((_, tid)) => tid.clone(),
+                Some((_, tid)) => *tid,
                 None => self.lir.bodies[bid][place.local],
             };
             self.push_local(bid, tid)
@@ -300,11 +297,11 @@ impl<'a> Builder<'a> {
         match operand {
             lir::Operand::Var(var) => var.clone(),
             lir::Operand::Const(tid, cst) => {
-                let local = self.push_local(bid, tid.clone());
+                let local = self.push_local(bid, *tid);
                 let var = lir::Var::from(local);
                 block.push(lir::Stmt::Eval {
                     dst: var.clone(),
-                    src: lir::Value::Use(lir::Operand::Const(tid.clone(), cst.clone())),
+                    src: lir::Value::Use(lir::Operand::Const(*tid, cst.clone())),
                 });
                 var
             }
@@ -320,12 +317,12 @@ impl<'a> Builder<'a> {
                 input: _,
                 output,
                 operand: _,
-            } => output.clone(),
+            } => *output,
             lir::Value::Coerce {
                 input: _,
                 output,
                 operand: _,
-            } => output.clone(),
+            } => *output,
             lir::Value::Call(var, _) => {
                 let pid = self.tid_from_var(bid, var);
                 if let lir::Ty::Func(_, ret) = self.lir.types[pid] {
@@ -340,17 +337,17 @@ impl<'a> Builder<'a> {
     fn tid_from_operand(&mut self, bid: lir::Bid, operand: &lir::Operand) -> lir::Tid {
         match operand {
             lir::Operand::Var(lir::Var { local, access }) => match access.last() {
-                Some((_, tid)) => tid.clone(),
-                None => self.lir.bodies[bid][local.clone()],
+                Some((_, tid)) => *tid,
+                None => self.lir.bodies[bid][*local],
             },
-            lir::Operand::Const(tid, _) => tid.clone(),
+            lir::Operand::Const(tid, _) => *tid,
         }
     }
 
     fn tid_from_var(&mut self, bid: lir::Bid, var: &lir::Var) -> lir::Tid {
         match var.access.last() {
-            Some((_, tid)) => tid.clone(),
-            None => self.lir.bodies[bid][var.local.clone()],
+            Some((_, tid)) => *tid,
+            None => self.lir.bodies[bid][var.local],
         }
     }
 
@@ -380,11 +377,11 @@ impl<'a> Builder<'a> {
             }
 
             sir::Operand::Const(ref cst, tid) => lir::Operand::Const(
-                self.map_tid(tid.clone()),
+                self.map_tid(*tid),
                 match cst {
                     sir::Const::None => lir::Const::Empty,
-                    sir::Const::Int(v) => lir::Const::Int(v.clone()),
-                    sir::Const::Float(v) => lir::Const::Float(v.clone()),
+                    sir::Const::Int(v) => lir::Const::Int(*v),
+                    sir::Const::Float(v) => lir::Const::Float(*v),
                     sir::Const::String(v) => lir::Const::String(v),
                 },
             ),
@@ -454,7 +451,7 @@ impl<'a> Builder<'a> {
                 variants,
                 operand,
             } => lir::Value::Promote {
-                input: self.map_tid(variant.clone()),
+                input: self.map_tid(*variant),
                 output: self.map_type(sir::Ty::Union(variants.clone())),
                 operand: self.decompose_operand(bid, sbid, block, operand),
             },
@@ -518,7 +515,7 @@ impl<'a> Builder<'a> {
                 generics: _,
                 captures,
             } => {
-                let lbid = self.build_body(body.clone());
+                let lbid = self.build_body(*body);
                 let func = self.lir.bodies[lbid].tid;
                 let closure = self.push_local(lbid, func);
                 block.push(lir::Stmt::Closure {
@@ -553,7 +550,7 @@ impl<'a> Builder<'a> {
                 let tid = self.map_tid(sid);
                 self.push_local(bid, tid)
             };
-            self.local_map.insert(place.local.clone(), base);
+            self.local_map.insert(place.local, base);
             base
         });
         for (proj, id) in &place.proj {
@@ -561,12 +558,12 @@ impl<'a> Builder<'a> {
                 sir::Proj::Field(name) => {
                     lplace
                         .access
-                        .push((lir::Access::Field(name), self.map_tid(id.clone())));
+                        .push((lir::Access::Field(name), self.map_tid(*id)));
                 }
                 sir::Proj::Tuple(index) => {
                     lplace.access.push((
-                        lir::Access::Tuple(index.clone() as u32),
-                        self.map_tid(id.clone()),
+                        lir::Access::Tuple(*index as u32),
+                        self.map_tid(*id),
                     ));
                 }
                 sir::Proj::Index(ref op) => {
@@ -608,7 +605,7 @@ impl<'a> Builder<'a> {
         let mut lblock = lir::Block::new();
 
         for stmt in &sblock.stmts {
-            self.build_stmt(bid, sbid, &mut lblock, &stmt);
+            self.build_stmt(bid, sbid, &mut lblock, stmt);
         }
 
         if let Some(ref term) = sblock.term {
@@ -666,19 +663,13 @@ impl<'a> Builder<'a> {
     }
 
     fn map_tid(&mut self, sid: sir::Tid) -> lir::Tid {
-        match self.type_map.get(&self.sir.types[sid]) {
-            Some(id) => return id.clone(),
-            None => {}
-        };
+        if let Some(id) = self.type_map.get(&self.sir.types[sid]) { return *id };
 
         self.map_type(self.sir.types[sid].clone())
     }
 
     fn map_type(&mut self, ty: sir::Ty) -> lir::Tid {
-        match self.type_map.get(&ty) {
-            Some(id) => return id.clone(),
-            None => {}
-        };
+        if let Some(id) = self.type_map.get(&ty) { return *id };
 
         let lt = match ty {
             sir::Ty::Int => lir::Ty::Int,
@@ -691,24 +682,18 @@ impl<'a> Builder<'a> {
             sir::Ty::Ref(tid) => lir::Ty::Ref(self.map_tid(tid)),
             sir::Ty::List(tid) => lir::Ty::List(self.map_tid(tid)),
             sir::Ty::Func(tid, tid1) => lir::Ty::Func(self.map_tid(tid), self.map_tid(tid1)),
-            sir::Ty::Tuple(ref tids) => lir::Ty::Tuple {
-                0: tids.iter().fold(Vec::new(), |mut vec, tid| {
-                    vec.push(self.map_tid(tid.clone()));
+            sir::Ty::Tuple(ref tids) => lir::Ty::Tuple(tids.iter().fold(Vec::new(), |mut vec, tid| {
+                    vec.push(self.map_tid(*tid));
                     vec
-                }),
-            },
-            sir::Ty::Record(ref items) => lir::Ty::Record {
-                0: items.iter().fold(Vec::new(), |mut vec, (name, tid)| {
-                    vec.push((name, self.map_tid(tid.clone())));
+                })),
+            sir::Ty::Record(ref items) => lir::Ty::Record(items.iter().fold(Vec::new(), |mut vec, (name, tid)| {
+                    vec.push((name, self.map_tid(*tid)));
                     vec
-                }),
-            },
-            sir::Ty::Union(ref btree_set) => lir::Ty::Union {
-                0: btree_set.iter().fold(Vec::new(), |mut vec, tid| {
-                    vec.push(self.map_tid(tid.clone()));
+                })),
+            sir::Ty::Union(ref btree_set) => lir::Ty::Union(btree_set.iter().fold(Vec::new(), |mut vec, tid| {
+                    vec.push(self.map_tid(*tid));
                     vec
-                }),
-            },
+                })),
         };
 
         let id = self.lir.types.get_id(lt);
