@@ -1,7 +1,0 @@
-'f -> 'opt -> 'out <: 'flatmap
-
-'opt <: Some & 'a | None
-
-'a -> 'b <: 'f
-
-Some & 'b | None <: 'out

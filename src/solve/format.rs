@@ -134,7 +134,7 @@ impl Solver {
             }
 
             Ty::Var(var) => {
-                let cons = self.variables.get(&var.index).unwrap();
+                let mut cons = self.variables.get(&var.index).unwrap().clone();
 
                 if seen.contains(var) {
                     return write!(w, "...");
@@ -142,6 +142,9 @@ impl Solver {
 
                 let mut seen = seen.clone();
                 seen.insert(*var);
+
+                cons.lbs.retain(|lb| lb != ty);
+                cons.ubs.retain(|ub| ub != ty);
 
                 if !cons.lbs.is_empty() {
                     let lb = cons.lbs.iter().cloned().fold(Ty::Bot, Ty::union);

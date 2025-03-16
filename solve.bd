@@ -11,7 +11,7 @@ fn prepend x xs {
 fn map f xs {
   match xs
   | none               => list none
-  | list as head, tail => f head, map f tail
+  | list as head, tail => list <| f head, map f tail
 }
 
 fn mul x y {
