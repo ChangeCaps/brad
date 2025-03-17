@@ -10,88 +10,7 @@ use crate::{
     solve::{Options, Solver, Ty},
 };
 
-const LUA_PRELUDE: &str = r#"
-local function dump(value)
-  if type(value) == 'table' then
-    local result = '{'
-    for k, v in pairs(value) do
-      result = result .. '[' .. dump(k) .. '] = ' .. dump(v) .. ', '
-    end
-    return result .. '}'
-  elseif type(value) == 'string' then
-    return '"' .. value .. '"'
-  else
-    return tostring(value)
-  end
-end
-
-local function deep_clone(value)
-  if type(value) == 'table' then
-    local result = {}
-    for k, v in pairs(value) do
-      result[deep_clone(k)] = deep_clone(v)
-    end
-    return result
-  else
-    return value
-  end
-end
-
-local function make_true()
-  local value = {}
-  setmetatable(value, { __type_tags = { ['true'] = true } })
-  return value
-end
-
-local function make_false()
-  local value = {}
-  setmetatable(value, { __type_tags = { ['false'] = true } })
-  return value
-end
-
-local function make_none()
-  local value = {}
-  setmetatable(value, { __type_tags = { ['none'] = true } })
-  return value
-end
-
-local function make_bool(value)
-  if value then
-    return make_true()
-  else
-    return make_false()
-  end
-end
-
-local function make_int(value)
-  local value = { value = value }
-  setmetatable(value, { __type_tags = { ['int'] = true } })
-  return value
-end
-
-local function make_float(value)
-  local value = { value = value }
-  setmetatable(value, { __type_tags = { ['float'] = true } })
-  return value
-end
-
-local function make_str(value)
-  local value = { value = value }
-  setmetatable(value, { __type_tags = { ['str'] = true } })
-  return value
-end
-
-local function add_type_tag(value, tag)
-  getmetatable(value).__type_tags[tag] = true
-  return value
-end
-
-local function has_type_tag(value, tag)
-  return type(value) == 'table' and getmetatable(value).__type_tags[tag] ~= nil
-end
-
-local M = {}
-"#;
+const LUA_PRELUDE: &str = include_str!("prelude.lua");
 
 pub struct Codegen {
     interner: Interner,
@@ -156,12 +75,15 @@ impl Codegen {
             }
         }
 
+        if let Err(err) = self.solver.finish() {
+            report.extend(err);
+        }
+
         if !report.is_empty() {
             return Err(report);
         }
 
-        self.code.push_str("print(dump(M.main()))");
-        self.solver.finish()?;
+        self.code.push_str("print(M.main())");
 
         Ok(self.code)
     }
@@ -523,7 +445,7 @@ impl ExprCodegen<'_> {
 
                 for (i, binding) in bindings.iter().enumerate() {
                     let ty = Ty::Var(self.solver.fresh_var());
-                    self.binding(&ty, binding, &format!("{temp}[{i}]"))?;
+                    self.binding(&ty, binding, &format!("{temp}[{i} + 1]"))?;
 
                     tys.push(ty.clone());
                 }
@@ -585,11 +507,9 @@ impl ExprCodegen<'_> {
             items.push(value);
         }
 
-        let temp = self.fresh_ident();
-        (self.stmts).push(format!("local {temp} = {{{}}}", items.join(", ")));
-        (self.stmts).push(format!("setmetatable({temp}, {{ __type_tags = {{}} }})"));
+        let value = format!("make_list({})", items.join(", "));
 
-        Ok((temp, Ty::list(ty)))
+        Ok((value, Ty::list(ty)))
     }
 
     fn record_expr(&mut self, ast: &ast::RecordExpr) -> Result<(String, Ty), Diagnostic> {
@@ -602,11 +522,9 @@ impl ExprCodegen<'_> {
             fields.push(format!("{} = {}", field.name, value));
         }
 
-        let temp = self.fresh_ident();
-        (self.stmts).push(format!("local {temp} = {{{}}}", fields.join(", ")));
-        (self.stmts).push(format!("setmetatable({temp}, {{ __type_tags = {{}} }})"));
+        let value = format!("make_record({{{}}})", fields.join(", "));
 
-        Ok((temp, Ty::Record(types)))
+        Ok((value, Ty::Record(types)))
     }
 
     fn tuple_expr(&mut self, ast: &ast::TupleExpr) -> Result<(String, Ty), Diagnostic> {
@@ -620,19 +538,9 @@ impl ExprCodegen<'_> {
             items.push(value);
         }
 
-        let items = items
-            .into_iter()
-            .enumerate()
-            .map(|(i, item)| format!("[{i}] = {item}"))
-            .collect::<Vec<_>>()
-            .join(", ");
+        let tuple = format!("make_tuple({})", items.join(", "));
 
-        let temp = self.fresh_ident();
-
-        (self.stmts).push(format!("local {temp} = {{{items}}}"));
-        (self.stmts).push(format!("setmetatable({temp}, {{ __type_tags = {{}} }})"));
-
-        Ok((temp, Ty::Tuple(types)))
+        Ok((tuple, Ty::Tuple(types)))
     }
 
     fn path_expr(&mut self, ast: &ast::Path) -> Result<(String, Ty), Diagnostic> {

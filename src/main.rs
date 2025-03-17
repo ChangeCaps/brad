@@ -117,6 +117,15 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
                     let lua = codegen.finish(ast)?;
 
                     std::fs::write("out.lua", lua).unwrap();
+
+                    println!();
+
+                    let output = std::process::Command::new("lua")
+                        .arg("out.lua")
+                        .output()
+                        .expect("failed to execute process");
+
+                    println!("{}", String::from_utf8_lossy(&output.stdout));
                 }
                 Cmd::Fmt {
                     command: FmtCmd::Ast(_),
