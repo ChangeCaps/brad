@@ -696,8 +696,40 @@ impl ExprCodegen<'_> {
         Ok((format!("{}.{}", target, ast.name), ty))
     }
 
-    fn unary_expr(&mut self, _ast: &ast::UnaryExpr) -> Result<(String, Ty), Diagnostic> {
-        todo!()
+    fn unary_expr(&mut self, ast: &ast::UnaryExpr) -> Result<(String, Ty), Diagnostic> {
+        let (value, value_ty) = self.expr(&ast.expr)?;
+
+        match ast.op {
+            ast::UnaryOp::Neg => {
+                self.solver.subty(&value_ty, &Ty::Tag("int"), ast.span);
+                let value = format!("make_int(-{}.value)", value);
+
+                Ok((value, Ty::Tag("int")))
+            }
+
+            ast::UnaryOp::Not => {
+                self.solver.subty(&value_ty, &Ty::Tag("true"), ast.span);
+                self.solver.subty(&value_ty, &Ty::Tag("false"), ast.span);
+
+                let value = format!("make_bool(not has_type_tag({}, 'true'))", value);
+
+                Ok((value, Ty::union(Ty::Tag("true"), Ty::Tag("false"))))
+            }
+
+            ast::UnaryOp::BitNot => {
+                self.solver.subty(&value_ty, &Ty::Tag("int"), ast.span);
+                let value = format!("make_int(~{}.value)", value);
+
+                Ok((value, Ty::Tag("int")))
+            }
+
+            ast::UnaryOp::Deref => {
+                let ty = Ty::Var(self.solver.fresh_var());
+                (self.solver).subty(&value_ty, &Ty::ref_(ty.clone()), ast.span);
+
+                Ok((value, ty))
+            }
+        }
     }
 
     fn binary_expr(&mut self, ast: &ast::BinaryExpr) -> Result<(String, Ty), Diagnostic> {

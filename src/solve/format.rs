@@ -114,8 +114,8 @@ impl Solver {
             }
 
             Ty::Ref(inner) => {
-                write!(w, "&")?;
-                self.format_ty_inner(w, inner, vars, seen, 0)?;
+                write!(w, "ref ")?;
+                self.format_ty_inner(w, inner, vars, seen, self.prec(ty))?;
             }
 
             Ty::App(app) => {
@@ -161,14 +161,14 @@ impl Solver {
                     let lb = cons.lbs.iter().cloned().fold(Ty::Bot, Ty::union);
                     let lb = self.simplify_dnf(self.dnf(&lb)).to_ty().simplify();
 
-                    return self.format_ty_inner(w, &lb, vars, &seen, self.prec(ty));
+                    return self.format_ty_inner(w, &lb, vars, &seen, prec);
                 }
 
                 if !cons.ubs.is_empty() {
                     let ub = cons.ubs.iter().cloned().fold(Ty::Top, Ty::inter);
                     let ub = self.simplify_cnf(self.cnf(&ub)).to_ty().simplify();
 
-                    return self.format_ty_inner(w, &ub, vars, &seen, self.prec(ty));
+                    return self.format_ty_inner(w, &ub, vars, &seen, prec);
                 }
 
                 if let Some(name) = vars.get(var) {
@@ -196,10 +196,10 @@ impl Solver {
             | Ty::Var(_) => 6,
 
             Ty::Neg(_) => 5,
-            Ty::Func(_, _) => 4,
+            Ty::Ref(_) => 4,
             Ty::Inter(_, _) => 3,
             Ty::Union(_, _) => 2,
-            Ty::Ref(_) => 1,
+            Ty::Func(_, _) => 1,
             Ty::Tuple(_) => 0,
         }
     }
