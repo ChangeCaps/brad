@@ -738,6 +738,17 @@ impl Solver {
                 self.is_subty_of(i2, i1) && self.is_subty_of(o1, o2)
             }
 
+            (Ty::Tuple(lhs), Ty::Tuple(rhs)) if lhs.len() == rhs.len() => lhs
+                .iter()
+                .zip(rhs)
+                .all(|(lhs, rhs)| self.is_subty_of(lhs, rhs)),
+
+            (Ty::List(lhs), Ty::List(rhs)) => self.is_subty_of(lhs, rhs),
+
+            (Ty::Ref(lhs), Ty::Ref(rhs)) => {
+                self.is_subty_of(lhs, rhs) && self.is_subty_of(rhs, lhs)
+            }
+
             (_, _) => false,
         }
     }
