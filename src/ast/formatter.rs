@@ -1,10 +1,11 @@
-use crate::ast::{Binding, Decl, Expr, Func, Generics, Module, Pattern, Ty};
+use crate::ast::{Binding, CallExpr, Decl, Expr, Func, Generics, Module, Pattern, TupleExpr, Ty};
 use std::{io, io::Write};
 
 const INDENT_SIZE: usize = 4;
 
 pub struct Formatter<W: Write> {
     indent: usize,
+    call_depth: usize,
     writer: W,
 }
 
@@ -12,7 +13,11 @@ type Result = io::Result<()>;
 
 impl<W: Write> Formatter<W> {
     pub fn new(writer: W) -> Self {
-        Formatter { indent: 0, writer }
+        Formatter {
+            indent: 0,
+            call_depth: 0,
+            writer,
+        }
     }
 
     fn indent(&mut self, f: impl FnOnce(&mut Self) -> Result) -> Result {
@@ -24,6 +29,13 @@ impl<W: Write> Formatter<W> {
 
     fn write_indent(&mut self) -> Result {
         write!(self.writer, "\n{}", " ".repeat(INDENT_SIZE * self.indent))
+    }
+
+    fn inside_call(&mut self, f: impl FnOnce(&mut Self) -> Result) -> Result {
+        self.call_depth += 1;
+        let result = f(self);
+        self.call_depth -= 1;
+        result
     }
 
     pub fn format_module(&mut self, module: &Module) -> Result {
@@ -132,15 +144,20 @@ impl<W: Write> Formatter<W> {
                 }
                 write!(self.writer, "}}")
             }
-            Expr::Tuple(tuple_expr) => {
-                write!(self.writer, "(")?;
-                for (i, expr) in tuple_expr.items.iter().enumerate() {
+            Expr::Tuple(TupleExpr { items, .. }) => {
+                if items.len() > 0 {
+                    write!(self.writer, "(")?;
+                }
+                for (i, expr) in items.iter().enumerate() {
                     if i > 0 {
                         write!(self.writer, ", ")?;
                     }
                     self.format_expr(expr)?;
                 }
-                write!(self.writer, ")")
+                if items.len() > 0 {
+                    write!(self.writer, ")")?;
+                }
+                Ok(())
             }
             Expr::Path(path) => write!(self.writer, "{}", path),
             Expr::Index(index_expr) => {
@@ -162,13 +179,22 @@ impl<W: Write> Formatter<W> {
                 write!(self.writer, " {} ", binary_expr.op)?;
                 self.format_expr(&binary_expr.rhs)
             }
-            Expr::Call(call_expr) => {
-                write!(self.writer, "(")?;
-                self.format_expr(&call_expr.target)?;
+            Expr::Call(CallExpr { target, input, .. }) => {
+                if self.call_depth > 0 {
+                    write!(self.writer, "(")?;
+                }
 
-                write!(self.writer, " (")?;
-                self.format_expr(&call_expr.input)?;
-                write!(self.writer, "))")
+                self.format_expr(target)?;
+
+                write!(self.writer, " ")?;
+
+                self.inside_call(|f| f.format_expr(input))?;
+
+                if self.call_depth > 0 {
+                    write!(self.writer, ")")?;
+                }
+
+                Ok(())
             }
             Expr::Assign(assign_expr) => {
                 self.format_expr(&assign_expr.target)?;
