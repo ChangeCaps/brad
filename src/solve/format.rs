@@ -102,7 +102,7 @@ impl Solver {
             }
 
             Ty::Func(input, output) => {
-                self.format_ty_inner(w, input, vars, seen, self.prec(ty))?;
+                self.format_ty_inner(w, input, vars, seen, self.prec(ty) + 1)?;
                 write!(w, " -> ")?;
                 self.format_ty_inner(w, output, vars, seen, self.prec(ty))?;
             }
