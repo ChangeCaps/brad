@@ -74,67 +74,71 @@ static AST_BOOL: LazyLock<ast::Ty, fn() -> ast::Ty> = LazyLock::new(|| ast::Ty::
     span,
 });
 
+/// Only allocate the collection once.
+/// (name, weight, generator)
 type ExprGeneratorCollection = Vec<(
     &'static str,
     usize,
-    Box<dyn Fn(&BodyGenerator, &mut GeneratorCtx, &ast::Ty) -> Option<ast::Expr>>,
+    Box<dyn Fn(&BodyGenerator, &mut GeneratorCtx, &ast::Ty) -> Option<ast::Expr> + Send + Sync>,
 )>;
 
-fn expr_multi_collection() -> ExprGeneratorCollection {
-    vec![
-        ("expr", 5, Box::new(|s, ctx, ty| s.expr(ctx, ty))),
-        (
-            "block",
-            1,
-            Box::new(|s, ctx, ty| ctx.with_complexity(5, |ctx| s.expr_block(ctx, ty))),
-        ),
-        (
-            "loop",
-            1,
-            Box::new(|s, ctx, ty| ctx.with_complexity(5, |ctx| s.expr_loop(ctx, ty))),
-        ),
-        (
-            "match",
-            2,
-            Box::new(|s, ctx, ty| ctx.with_complexity(5, |ctx| s.expr_match(ctx, ty))),
-        ),
-        (
-            "let",
-            3,
-            Box::new(|s, ctx, _| ctx.with_complexity(2, |ctx| s.expr_let(ctx))),
-        ),
-    ]
-}
+static EXPR_MULTI_COLLECTION: LazyLock<ExprGeneratorCollection, fn() -> ExprGeneratorCollection> =
+    LazyLock::new(|| {
+        vec![
+            ("expr", 5, Box::new(|s, ctx, ty| s.expr(ctx, ty))),
+            (
+                "block",
+                1,
+                Box::new(|s, ctx, ty| ctx.with_complexity(5, |ctx| s.expr_block(ctx, ty))),
+            ),
+            (
+                "loop",
+                1,
+                Box::new(|s, ctx, ty| ctx.with_complexity(5, |ctx| s.expr_loop(ctx, ty))),
+            ),
+            (
+                "match",
+                2,
+                Box::new(|s, ctx, ty| ctx.with_complexity(5, |ctx| s.expr_match(ctx, ty))),
+            ),
+            (
+                "let",
+                3,
+                Box::new(|s, ctx, _| ctx.with_complexity(2, |ctx| s.expr_let(ctx))),
+            ),
+        ]
+    });
 
-fn expr_single_collection() -> ExprGeneratorCollection {
-    vec![
-        (
-            "binary",
-            3,
-            Box::new(|s, ctx, ty| ctx.with_complexity(4, |ctx| s.expr_binary_op(ctx, ty, ty))),
-        ),
-        (
-            "unary",
-            1,
-            Box::new(|s, ctx, ty| ctx.with_complexity(10, |ctx| s.expr_unary_op(ctx, ty))),
-        ),
-        (
-            "value",
-            1,
-            Box::new(|s, ctx, ty| ctx.with_complexity(2, |ctx| Some(s.expr_value(ctx, ty)))),
-        ),
-        (
-            "call",
-            5,
-            Box::new(|s, ctx, ty| ctx.with_complexity(10, |ctx| s.expr_call_function(ctx, ty))),
-        ),
-        (
-            "break",
-            2,
-            Box::new(|s, ctx, ty| ctx.with_complexity(10, |ctx| s.expr_break(ctx, ty))),
-        ),
-    ]
-}
+static EXPR_SINGLE_COLLECTION: LazyLock<ExprGeneratorCollection, fn() -> ExprGeneratorCollection> =
+    LazyLock::new(|| {
+        vec![
+            (
+                "binary",
+                3,
+                Box::new(|s, ctx, ty| ctx.with_complexity(4, |ctx| s.expr_binary_op(ctx, ty, ty))),
+            ),
+            (
+                "unary",
+                1,
+                Box::new(|s, ctx, ty| ctx.with_complexity(10, |ctx| s.expr_unary_op(ctx, ty))),
+            ),
+            (
+                "value",
+                1,
+                Box::new(|s, ctx, ty| ctx.with_complexity(2, |ctx| Some(s.expr_value(ctx, ty)))),
+            ),
+            (
+                "call",
+                5,
+                Box::new(|s, ctx, ty| ctx.with_complexity(10, |ctx| s.expr_call_function(ctx, ty))),
+            ),
+            (
+                "break",
+                2,
+                Box::new(|s, ctx, ty| ctx.with_complexity(10, |ctx| s.expr_break(ctx, ty))),
+            ),
+        ]
+    });
 
 pub struct GeneratorOptions {
     pub functions: usize,
@@ -517,7 +521,7 @@ impl BodyGenerator {
             return None;
         }
 
-        let mut choices = expr_multi_collection();
+        let mut choices = EXPR_MULTI_COLLECTION.iter().clone().collect::<Vec<_>>();
 
         if !ctx.options.enable_loop {
             choices.retain(|(name, _, _)| *name != "loop");
@@ -561,7 +565,7 @@ impl BodyGenerator {
             return None;
         }
 
-        let mut choices = expr_single_collection();
+        let mut choices = EXPR_SINGLE_COLLECTION.iter().clone().collect::<Vec<_>>();
 
         if !ctx.options.enable_ref_ty {
             choices.retain(|(name, _, _)| *name != "ref");
@@ -746,7 +750,9 @@ impl BodyGenerator {
             ast::Ty::True(_) => ast::Expr::Literal(ast::Literal::True { span }),
             ast::Ty::False(_) => ast::Expr::Literal(ast::Literal::False { span }),
             ast::Ty::List { ty, .. } => {
-                let count = ctx.rng.random_range(ctx.options.min_exprs..=ctx.options.max_exprs);
+                let count = ctx
+                    .rng
+                    .random_range(ctx.options.min_exprs..=ctx.options.max_exprs);
                 let mut items = Vec::with_capacity(count);
                 for _ in 0..count {
                     items.push(self.expr_value(ctx, ty));
@@ -810,7 +816,9 @@ impl BodyGenerator {
 
     fn expr_block(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
         ctx.with_scope(move |ctx| {
-            let count = ctx.rng.random_range(ctx.options.min_exprs..=ctx.options.max_exprs);
+            let count = ctx
+                .rng
+                .random_range(ctx.options.min_exprs..=ctx.options.max_exprs);
             let mut exprs = Vec::with_capacity(count);
 
             // Generate count - 1 exprs
