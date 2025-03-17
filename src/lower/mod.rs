@@ -99,7 +99,7 @@ impl Lowerer {
             for decl in &ast.decls {
                 match decl {
                     ast::Decl::Func(decl) => {
-                        if self.program[m].items.contains_key(decl.name) {
+                        if self.program.modules.get_item(m, &decl.name).is_some() {
                             let diagnostic = Diagnostic::error("unresolved::func")
                                 .message(format!("function `{}` is already defined", decl.name))
                                 .label(decl.span, "previously defined here");
@@ -121,11 +121,11 @@ impl Lowerer {
 
                         let body_id = self.program.bodies.insert(body);
                         let item = hir::Item::Func(body_id);
-                        self.program[m].items.insert(decl.name, item);
+                        self.program.modules.insert_item(m, &decl.name, item);
                     }
 
                     ast::Decl::Type(decl) => {
-                        if self.program[m].items.contains_key(decl.name) {
+                        if self.program.modules.get_item(m, &decl.name).is_some() {
                             let diagnostic = Diagnostic::error("unresolved::type")
                                 .message(format!("type `{}` is already defined", decl.name))
                                 .label(decl.span, "previously defined here");
@@ -141,11 +141,11 @@ impl Lowerer {
 
                         let named_id = self.program.types.insert_named(named);
                         let item = hir::Item::Type(named_id);
-                        self.program[m].items.insert(decl.name, item);
+                        self.program.modules.insert_item(m, &decl.name, item);
                     }
 
                     ast::Decl::Alias(decl) => {
-                        if self.program[m].items.contains_key(decl.name) {
+                        if self.program.modules.get_item(m, &decl.name).is_some() {
                             let diagnostic = Diagnostic::error("unresolved::alias")
                                 .message(format!("alias `{}` is already defined", decl.name))
                                 .label(decl.span, "previously defined here");
@@ -160,7 +160,7 @@ impl Lowerer {
 
                         let alias_id = self.program.types.insert_alias(alias);
                         let item = hir::Item::Alias(alias_id);
-                        self.program[m].items.insert(decl.name, item);
+                        self.program.modules.insert_item(m, &decl.name, item);
                     }
 
                     ast::Decl::Import(import) => {
@@ -205,7 +205,7 @@ impl Lowerer {
                     continue;
                 };
 
-                let item = self.program[m].items.get(decl.name);
+                let item = self.program.modules.get_item(m, &decl.name);
                 let alias_id = match item {
                     Some(hir::Item::Alias(alias_id)) => *alias_id,
                     _ => panic!("expected alias body"),
@@ -246,7 +246,7 @@ impl Lowerer {
                     continue;
                 };
 
-                let item = self.program[m].items.get(decl.name);
+                let item = self.program.modules.get_item(m, &decl.name);
                 let named_id = match item {
                     Some(hir::Item::Type(named_id)) => *named_id,
                     _ => panic!("expected type body"),
@@ -296,7 +296,7 @@ impl Lowerer {
         m: hir::ModuleId,
         decl: &ast::Func,
     ) -> Result<(), Diagnostic> {
-        let item = program[m].items.get(decl.name);
+        let item = program.modules.get_item(m, &decl.name);
         let body_id = match item {
             Some(hir::Item::Func(body_id)) => *body_id,
             _ => panic!("expected function body"),
@@ -352,7 +352,7 @@ impl Lowerer {
                     continue;
                 };
 
-                let item = self.program[m].items.get(decl.name);
+                let item = self.program.modules.get_item(m, &decl.name);
                 let body_id = match item {
                     Some(hir::Item::Func(body_id)) => *body_id,
                     _ => panic!("expected function body"),

@@ -18,7 +18,11 @@ where
     }
 
     pub fn write_report(&mut self, report: &Report) -> io::Result<()> {
-        for diagnostic in &report.diagnostics {
+        for (i, diagnostic) in report.diagnostics.iter().enumerate() {
+            if i > 0 {
+                writeln!(&mut self.writer)?;
+            }
+
             self.write_diagnostic(diagnostic)?;
         }
 

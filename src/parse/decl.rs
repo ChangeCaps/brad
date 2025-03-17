@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use super::{binding, consume_newlines, generics, ident, ty, Delim, Token, Tokens};
 use crate::{
-    ast,
+    ast::{self, Name},
     attribute::{Attribute, Attributes},
     diagnostic::Diagnostic,
     parse::{block, path},
@@ -33,7 +33,7 @@ fn funcy(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic>
 
     input.expect(Token::Fn)?;
 
-    let (name, span) = ident(input)?;
+    let name = name(input)?;
 
     let generics = match input.is(Token::Lt) {
         true => Some(generics(input)?),
@@ -56,6 +56,8 @@ fn funcy(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic>
         true => Some(block(input)?),
         false => None,
     };
+
+    let span = name.span;
 
     Ok(ast::Decl::Func(ast::Func {
         attrs,
@@ -99,7 +101,7 @@ fn argument(input: &mut Tokens) -> Result<ast::Argument, Diagnostic> {
 fn r#type(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic> {
     input.expect(Token::Type)?;
 
-    let (name, span) = ident(input)?;
+    let name = name(input)?;
 
     let generics = if input.is(Token::Lt) {
         Some(generics(input)?)
@@ -113,6 +115,8 @@ fn r#type(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic
         None
     };
 
+    let span = name.span;
+
     Ok(ast::Decl::Type(ast::Type {
         attrs,
         name,
@@ -125,7 +129,7 @@ fn r#type(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic
 fn alias(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic> {
     input.expect(Token::Alias)?;
 
-    let (name, span) = ident(input)?;
+    let name = name(input)?;
 
     let generics = if input.is(Token::Lt) {
         Some(generics(input)?)
@@ -136,6 +140,8 @@ fn alias(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic>
     input.expect(Token::Eq)?;
 
     let ty = ty(input)?;
+
+    let span = name.span;
 
     Ok(ast::Decl::Alias(ast::Alias {
         attrs,
@@ -183,6 +189,20 @@ fn attribute(input: &mut Tokens) -> Result<Attribute, Diagnostic> {
         value,
         span: Some(span),
     })
+}
+
+fn name(input: &mut Tokens) -> Result<Name, Diagnostic> {
+    let (first, span) = ident(input)?;
+
+    let mut segments = vec![first];
+
+    while input.take(Token::ColonColon) {
+        let (segment, _) = ident(input)?;
+
+        segments.push(segment);
+    }
+
+    Ok(Name { segments, span })
 }
 
 fn string(input: &mut Tokens) -> Result<Cow<'static, str>, Diagnostic> {

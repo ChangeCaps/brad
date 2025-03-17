@@ -69,6 +69,45 @@ impl Modules {
     pub fn ids(&self) -> impl Iterator<Item = ModuleId> {
         (0..self.modules.len()).map(ModuleId)
     }
+
+    pub fn insert_item(&mut self, mut from: ModuleId, segments: &[&'static str], item: Item) {
+        let last = segments.len() - 1;
+
+        for segment in segments.iter().take(last) {
+            match self[from].modules.get(segment) {
+                Some(id) => from = *id,
+                None => {
+                    let id = self.insert(Module::new());
+                    self[from].modules.insert(segment, id);
+                    from = id;
+                }
+            }
+        }
+
+        self[from].items.insert(segments[last], item);
+    }
+
+    pub fn get_module(&self, from: ModuleId, segments: &[&'static str]) -> Option<ModuleId> {
+        let mut module = &self[from];
+
+        for segment in segments {
+            let id = module.modules.get(segment)?;
+            module = &self[*id];
+        }
+
+        Some(from)
+    }
+
+    pub fn get_item(&self, from: ModuleId, segments: &[&'static str]) -> Option<&Item> {
+        let mut module = &self[from];
+
+        for segment in segments.iter().take(segments.len() - 1) {
+            let id = module.modules.get(segment)?;
+            module = &self[*id];
+        }
+
+        module.items.get(segments.last()?)
+    }
 }
 
 impl Index<ModuleId> for Modules {

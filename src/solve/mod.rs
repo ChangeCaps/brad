@@ -10,12 +10,12 @@ pub use dnf::*;
 mod dnf;
 mod format;
 
-pub type Name = &'static str;
+pub type Tag = &'static str;
 pub type Field = &'static str;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct App {
-    pub name: Name,
+    pub name: Tag,
     pub args: Vec<Ty>,
 }
 
@@ -27,11 +27,11 @@ pub enum Ty {
     Neg(Box<Ty>),
 
     /* type constructors */
-    Name(Name),
     Record(BTreeMap<Field, Ty>),
     Tuple(Vec<Ty>),
     Func(Box<Ty>, Box<Ty>),
     App(App),
+    Tag(Tag),
     Top,
     Bot,
 
@@ -64,7 +64,7 @@ impl Ty {
         Ty::Record(fields.into())
     }
 
-    pub fn app(name: Name, args: Vec<Ty>) -> Self {
+    pub fn app(name: Tag, args: Vec<Ty>) -> Self {
         Ty::App(App { name, args })
     }
 
@@ -101,7 +101,7 @@ impl Ty {
                 })
             }
 
-            Ty::Top | Ty::Bot | Ty::Var(_) | Ty::Name(_) => self.clone(),
+            Ty::Top | Ty::Bot | Ty::Var(_) | Ty::Tag(_) => self.clone(),
         }
     }
 
@@ -165,7 +165,7 @@ impl Ty {
                 Ty::Top => Ty::Bot,
                 Ty::Bot => Ty::Top,
 
-                Ty::Name(_)
+                Ty::Tag(_)
                 | Ty::Record(_)
                 | Ty::Tuple(_)
                 | Ty::Func(_, _)
@@ -200,7 +200,7 @@ impl Ty {
                 args: app.args.into_iter().map(|ty| ty.simplify()).collect(),
             }),
 
-            Ty::Name(_) | Ty::Top | Ty::Bot | Ty::Var(_) => self,
+            Ty::Tag(_) | Ty::Top | Ty::Bot | Ty::Var(_) => self,
         }
     }
 }
@@ -217,7 +217,7 @@ impl fmt::Display for Ty {
             Ty::Bot => write!(f, "⊥"),
             Ty::Var(idx) => write!(f, "'{}", idx.index),
 
-            Ty::Name(name) => write!(f, "{}", name),
+            Ty::Tag(tag) => write!(f, "{}", tag),
 
             Ty::Record(fields) => {
                 let fields: Vec<_> = fields
@@ -260,7 +260,7 @@ impl Default for Options {
 pub struct Solver {
     options: Options,
     variables: HashMap<usize, Variable>,
-    applicables: HashMap<Name, (Ty, Vec<Ty>)>,
+    applicables: HashMap<Tag, (Ty, Vec<Ty>)>,
     cache: HashMap<(Ty, Ty), bool>,
     diagnostics: Vec<Diagnostic>,
 }
@@ -303,13 +303,13 @@ impl Solver {
     }
 
     /// Add a type body and arguments of an applicable type.
-    pub fn add_applicable(&mut self, name: Name, body: Ty, args: Vec<Ty>) {
-        self.applicables.insert(name, (body, args));
+    pub fn add_applicable(&mut self, tag: Tag, body: Ty, args: Vec<Ty>) {
+        self.applicables.insert(tag, (body, args));
     }
 
     /// Get the arguments of an applicable type.
-    pub fn applicable_args(&self, name: Name) -> Option<&Vec<Ty>> {
-        self.applicables.get(name).map(|(_, args)| args)
+    pub fn applicable_args(&self, tag: Tag) -> Option<&Vec<Ty>> {
+        self.applicables.get(tag).map(|(_, args)| args)
     }
 
     pub fn var(&mut self, var: Var) -> &mut Variable {
@@ -386,7 +386,7 @@ impl Solver {
                 })
             }
 
-            Ty::Top | Ty::Bot | Ty::Name(_) => ty.clone(),
+            Ty::Top | Ty::Bot | Ty::Tag(_) => ty.clone(),
         }
     }
 
@@ -465,8 +465,8 @@ impl Solver {
 
                 // lnf & vars <: rnf & nvars
 
-                if let Some(&name) = vars.iter().next() {
-                    vars.remove(&name);
+                if let Some(&var) = vars.iter().next() {
+                    vars.remove(&var);
 
                     let dis = Conjunct {
                         lnf,
@@ -477,20 +477,20 @@ impl Solver {
                     .neg()
                     .to_ty();
 
-                    let var = self.var(name);
-                    var.ubs.push(dis.clone());
+                    let bounds = self.var(var);
+                    bounds.ubs.push(dis.clone());
 
-                    let var = self.var(name).clone();
+                    let bounds = self.var(var).clone();
 
-                    for lb in var.lbs.clone() {
+                    for lb in bounds.lbs.clone() {
                         self.subty(&lb, &dis, span);
                     }
 
                     continue;
                 }
 
-                if let Some(&name) = nvars.iter().next() {
-                    nvars.remove(&name);
+                if let Some(&var) = nvars.iter().next() {
+                    nvars.remove(&var);
 
                     let dis = Conjunct {
                         lnf,
@@ -500,10 +500,10 @@ impl Solver {
                     }
                     .to_ty();
 
-                    let var = self.var(name);
-                    var.lbs.push(dis.clone());
+                    let bounds = self.var(var);
+                    bounds.lbs.push(dis.clone());
 
-                    let var = self.var(name).clone();
+                    let var = self.var(var).clone();
 
                     for ub in var.ubs.clone() {
                         self.subty(&dis, &ub, span);
@@ -517,7 +517,7 @@ impl Solver {
                 }
 
                 let Lnf::Base {
-                    names: ref ln,
+                    tags: ref lt,
                     apps: ref mut la,
                     base: ref lb,
                 } = lnf
@@ -526,7 +526,7 @@ impl Solver {
                 };
 
                 let Rnf::Base {
-                    names: ref rn,
+                    tags: ref rt,
                     apps: ref mut ra,
                     base: ref rb,
                 } = rnf
@@ -570,8 +570,8 @@ impl Solver {
                     continue;
                 }
 
-                for rn in rn {
-                    if ln.contains(rn) {
+                for rn in rt {
+                    if lt.contains(rn) {
                         continue 'out;
                     }
                 }

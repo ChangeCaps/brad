@@ -67,8 +67,8 @@ impl Solver {
                 self.format_ty_inner(w, inner, vars, seen, self.prec(ty))?;
             }
 
-            Ty::Name(name) => {
-                write!(w, "#{}", name)?;
+            Ty::Tag(tag) => {
+                write!(w, "#{}", tag)?;
             }
 
             Ty::Record(fields) => {
@@ -176,7 +176,7 @@ impl Solver {
 
     fn prec(&self, ty: &Ty) -> usize {
         match ty {
-            Ty::Name(_) | Ty::Record(_) | Ty::App(_) | Ty::Top | Ty::Bot | Ty::Var(_) => 5,
+            Ty::Tag(_) | Ty::Record(_) | Ty::App(_) | Ty::Top | Ty::Bot | Ty::Var(_) => 5,
             Ty::Neg(_) => 4,
             Ty::Func(_, _) => 3,
             Ty::Inter(_, _) => 2,

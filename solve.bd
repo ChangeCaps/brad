@@ -1,17 +1,17 @@
 type list<'a> = none | 'a * list<'a>
 
-fn one x {
+fn list::one x {
   list <| x, list none
 }
 
-fn prepend x xs {
+fn list::prepend x xs {
   list <| x, xs
 }
 
-fn map f xs {
+fn list::map f xs {
   match xs
   | none            => list none
-  | _ as head, tail => list <| f head, map f tail
+  | _ as head, tail => list <| f head, list::map f tail
 }
 
 fn mul x y {
@@ -19,8 +19,8 @@ fn mul x y {
 }
 
 fn main {
-  one 1
-  |> prepend 2
-  |> prepend 3
-  |> map (mul 2)
+  list::one 1
+  |> list::prepend 2
+  |> list::prepend 3
+  |> list::map (mul 2)
 }

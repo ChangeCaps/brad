@@ -3,7 +3,7 @@ use std::{
     iter,
 };
 
-use super::{App, Field, Name, Solver, Ty, Var};
+use super::{App, Field, Solver, Tag, Ty, Var};
 
 #[derive(Clone, Debug, Default)]
 pub struct Dnf(pub Vec<Conjunct>);
@@ -35,7 +35,7 @@ pub struct Disjunct {
 pub enum Lnf {
     Top,
     Base {
-        names: BTreeSet<Name>,
+        tags: BTreeSet<Tag>,
         apps: BTreeSet<App>,
         base: LnfBase,
     },
@@ -53,7 +53,7 @@ pub enum LnfBase {
 pub enum Rnf {
     Bot,
     Base {
-        names: BTreeSet<Name>,
+        tags: BTreeSet<Tag>,
         apps: BTreeSet<App>,
         base: RnfBase,
     },
@@ -136,7 +136,7 @@ impl Disjunct {
     pub fn field(field: Field, ty: Ty) -> Self {
         Disjunct {
             rnf: Rnf::Base {
-                names: BTreeSet::new(),
+                tags: BTreeSet::new(),
                 apps: BTreeSet::new(),
                 base: RnfBase::Field(field, ty),
             },
@@ -188,15 +188,15 @@ impl Conjunct {
 impl Lnf {
     pub fn bot() -> Self {
         Lnf::Base {
-            names: BTreeSet::new(),
+            tags: BTreeSet::new(),
             apps: BTreeSet::new(),
             base: LnfBase::None,
         }
     }
 
-    pub fn name(name: Name) -> Self {
+    pub fn tag(tag: Tag) -> Self {
         Lnf::Base {
-            names: BTreeSet::from([name]),
+            tags: BTreeSet::from([tag]),
             apps: BTreeSet::new(),
             base: LnfBase::None,
         }
@@ -204,7 +204,7 @@ impl Lnf {
 
     pub fn tuple(tys: Vec<Ty>) -> Self {
         Lnf::Base {
-            names: BTreeSet::new(),
+            tags: BTreeSet::new(),
             apps: BTreeSet::new(),
             base: LnfBase::Tuple(tys),
         }
@@ -212,7 +212,7 @@ impl Lnf {
 
     pub fn app(app: App) -> Self {
         Lnf::Base {
-            names: BTreeSet::new(),
+            tags: BTreeSet::new(),
             apps: BTreeSet::from([app]),
             base: LnfBase::None,
         }
@@ -221,10 +221,10 @@ impl Lnf {
     pub fn to_ty(&self) -> Ty {
         match self {
             Lnf::Top => Ty::Top,
-            Lnf::Base { names, apps, base } => {
+            Lnf::Base { tags, apps, base } => {
                 let base = match base {
                     LnfBase::None => {
-                        if names.is_empty() && apps.is_empty() {
+                        if tags.is_empty() && apps.is_empty() {
                             Ty::Bot
                         } else {
                             Ty::Top
@@ -245,10 +245,9 @@ impl Lnf {
 
                 let apps = apps.iter().cloned().map(Ty::App);
 
-                names
-                    .iter()
+                tags.iter()
                     .cloned()
-                    .map(Ty::Name)
+                    .map(Ty::Tag)
                     .chain(apps)
                     .fold(base, |l, r| Ty::inter(r, l))
                     .simplify()
@@ -264,10 +263,10 @@ impl Lnf {
         matches!(
             self,
             Lnf::Base {
-                names,
+                tags,
                 apps,
                 base: LnfBase::None
-            } if names.is_empty() && apps.is_empty()
+            } if tags.is_empty() && apps.is_empty()
         )
     }
 }
@@ -275,15 +274,15 @@ impl Lnf {
 impl Rnf {
     pub fn top() -> Self {
         Rnf::Base {
-            names: BTreeSet::new(),
+            tags: BTreeSet::new(),
             apps: BTreeSet::new(),
             base: RnfBase::None,
         }
     }
 
-    pub fn name(name: Name) -> Self {
+    pub fn tag(tag: Tag) -> Self {
         Rnf::Base {
-            names: BTreeSet::from([name]),
+            tags: BTreeSet::from([tag]),
             apps: BTreeSet::new(),
             base: RnfBase::None,
         }
@@ -291,7 +290,7 @@ impl Rnf {
 
     pub fn tuple(tys: Vec<Ty>) -> Self {
         Rnf::Base {
-            names: BTreeSet::new(),
+            tags: BTreeSet::new(),
             apps: BTreeSet::new(),
             base: RnfBase::Tuple(tys),
         }
@@ -299,7 +298,7 @@ impl Rnf {
 
     pub fn app(app: App) -> Self {
         Rnf::Base {
-            names: BTreeSet::new(),
+            tags: BTreeSet::new(),
             apps: BTreeSet::from([app]),
             base: RnfBase::None,
         }
@@ -308,10 +307,10 @@ impl Rnf {
     pub fn to_ty(&self) -> Ty {
         match self {
             Rnf::Bot => Ty::Bot,
-            Rnf::Base { names, apps, base } => {
+            Rnf::Base { tags, apps, base } => {
                 let base = match base {
                     RnfBase::None => {
-                        if names.is_empty() && apps.is_empty() {
+                        if tags.is_empty() && apps.is_empty() {
                             Ty::Top
                         } else {
                             Ty::Bot
@@ -325,10 +324,9 @@ impl Rnf {
 
                 let apps = apps.iter().cloned().map(Ty::App);
 
-                names
-                    .iter()
+                tags.iter()
                     .cloned()
-                    .map(Ty::Name)
+                    .map(Ty::Tag)
                     .chain(apps)
                     .fold(base, Ty::union)
                     .simplify()
@@ -337,7 +335,7 @@ impl Rnf {
     }
 
     pub fn is_top(&self) -> bool {
-        matches!(self, Rnf::Base { names, apps, base: RnfBase::None } if names.is_empty() && apps.is_empty())
+        matches!(self, Rnf::Base { tags, apps, base: RnfBase::None } if tags.is_empty() && apps.is_empty())
     }
 
     pub fn is_bot(&self) -> bool {
@@ -351,7 +349,7 @@ impl Solver {
             Ty::Top => Dnf::lnf(Lnf::Top),
             Ty::Bot => Dnf::lnf(Lnf::bot()),
 
-            Ty::Name(name) => Dnf::lnf(Lnf::name(name)),
+            Ty::Tag(tag) => Dnf::lnf(Lnf::tag(tag)),
 
             Ty::Neg(ty) => self.cnf(ty).neg(),
 
@@ -400,7 +398,7 @@ impl Solver {
                 }
 
                 Dnf::lnf(Lnf::Base {
-                    names: BTreeSet::new(),
+                    tags: BTreeSet::new(),
                     apps: BTreeSet::new(),
                     base: LnfBase::Record(dnfs),
                 })
@@ -411,7 +409,7 @@ impl Solver {
                 let output = output.as_ref().clone();
 
                 Dnf::lnf(Lnf::Base {
-                    names: BTreeSet::new(),
+                    tags: BTreeSet::new(),
                     apps: BTreeSet::new(),
                     base: LnfBase::Func(input, output),
                 })
@@ -427,7 +425,7 @@ impl Solver {
             Ty::Top => Cnf::rnf(Rnf::top()),
             Ty::Bot => Cnf::rnf(Rnf::Bot),
 
-            Ty::Name(name) => Cnf::rnf(Rnf::name(name)),
+            Ty::Tag(tag) => Cnf::rnf(Rnf::tag(tag)),
 
             Ty::Neg(ty) => self.dnf(ty).neg(),
 
@@ -483,7 +481,7 @@ impl Solver {
                 let output = output.as_ref().clone();
 
                 Cnf::rnf(Rnf::Base {
-                    names: BTreeSet::new(),
+                    tags: BTreeSet::new(),
                     apps: BTreeSet::new(),
                     base: RnfBase::Func(input, output),
                 })
@@ -523,17 +521,17 @@ impl Solver {
 
             (
                 Lnf::Base {
-                    names: n1,
+                    tags: n1,
                     apps: a1,
                     base: b1,
                 },
                 Lnf::Base {
-                    names: n2,
+                    tags: n2,
                     apps: a2,
                     base: b2,
                 },
             ) => {
-                let names = n1.union(&n2).cloned().collect();
+                let tags = n1.union(&n2).cloned().collect();
                 let apps = a1.union(&a2).cloned().collect();
 
                 let base = match (b1, b2) {
@@ -576,7 +574,7 @@ impl Solver {
                     (_, _) => LnfBase::None,
                 };
 
-                Lnf::Base { names, apps, base }
+                Lnf::Base { tags, apps, base }
             }
         }
     }
@@ -590,17 +588,17 @@ impl Solver {
 
             (
                 Rnf::Base {
-                    names: n1,
+                    tags: n1,
                     apps: a1,
                     base: b1,
                 },
                 Rnf::Base {
-                    names: n2,
+                    tags: n2,
                     apps: a2,
                     base: b2,
                 },
             ) => {
-                let names = n1.union(&n2).cloned().collect();
+                let tags = n1.union(&n2).cloned().collect();
                 let apps = a1.union(&a2).cloned().collect();
 
                 let base = match (b1, b2) {
@@ -634,7 +632,7 @@ impl Solver {
                     (_, _) => RnfBase::None,
                 };
 
-                Rnf::Base { names, apps, base }
+                Rnf::Base { tags, apps, base }
             }
         }
     }
@@ -655,7 +653,7 @@ impl Solver {
             (_, Ty::Top) => true,
             (Ty::Bot, _) => true,
 
-            (Ty::Name(lhs), Ty::Name(rhs)) => lhs == rhs,
+            (Ty::Tag(lhs), Ty::Tag(rhs)) => lhs == rhs,
 
             (lhs, Ty::Neg(rhs)) => !self.is_subty_of(lhs, rhs),
 

@@ -369,7 +369,10 @@ impl BodyGenerator {
         ast::Func {
             attrs: Default::default(),
             is_extern: false,
-            name: self.name,
+            name: ast::Name {
+                segments: vec![self.name],
+                span,
+            },
             generics: None,
             args: self.args.clone(),
             output: Some(self.output.clone()),
