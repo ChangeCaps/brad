@@ -5,6 +5,7 @@ use diagnostic::{Source, Sources};
 use parse::{Interner, Tokens};
 use std::path::{Path, PathBuf};
 
+use crate::ast::GeneratorOptions;
 use compiler::Compiler;
 
 mod ast;
@@ -53,7 +54,7 @@ pub enum Cmd {
     Lex(FileArgs),
     Ast(FileArgs),
     Lua(FileArgs),
-    RandomAst,
+    RandomAst(GeneratorOptions),
     Fmt {
         #[command(subcommand)]
         command: FmtCmd,
@@ -77,9 +78,9 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
     let args = Cli::parse();
 
     match &args.command {
-        Cmd::RandomAst => {
+        Cmd::RandomAst(options) => {
             let generator = ast::Generator::new();
-            let module = ast::Generator::generate(generator);
+            let module = ast::Generator::generate(generator, options.clone());
             let mut formatter = ast::Formatter::new(std::io::stdout());
             formatter.format_module(&module).unwrap();
             Ok(())

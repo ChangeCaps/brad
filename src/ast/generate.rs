@@ -1,6 +1,7 @@
 use crate::ast;
 use crate::diagnostic::{SourceId, Span};
 use crate::parse::{Interner, Token};
+use clap::Args;
 use rand::distr::weighted::WeightedIndex;
 use rand::distr::Distribution;
 use rand::prelude::IndexedRandom;
@@ -8,7 +9,6 @@ use rand::Rng;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::mem::discriminant;
-use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::LazyLock;
 
@@ -106,6 +106,11 @@ static EXPR_MULTI_COLLECTION: LazyLock<ExprGeneratorCollection, fn() -> ExprGene
                 3,
                 Box::new(|s, ctx, _| ctx.with_complexity(2, |ctx| s.expr_let(ctx))),
             ),
+            (
+                "break",
+                2,
+                Box::new(|s, ctx, ty| ctx.with_complexity(10, |ctx| s.expr_break(ctx, ty))),
+            ),
         ]
     });
 
@@ -132,32 +137,46 @@ static EXPR_SINGLE_COLLECTION: LazyLock<ExprGeneratorCollection, fn() -> ExprGen
                 5,
                 Box::new(|s, ctx, ty| ctx.with_complexity(10, |ctx| s.expr_call_function(ctx, ty))),
             ),
-            (
-                "break",
-                2,
-                Box::new(|s, ctx, ty| ctx.with_complexity(10, |ctx| s.expr_break(ctx, ty))),
-            ),
         ]
     });
 
+#[derive(Args, Debug, Clone)]
 pub struct GeneratorOptions {
+    #[clap(long, default_value = "100")]
     pub functions: usize,
+    #[clap(long, default_value = "false")]
     pub enable_match: bool,
+    #[clap(long, default_value = "false")]
     pub enable_loop: bool,
+    #[clap(long, default_value = "false")]
     pub enable_ref_ty: bool,
+    #[clap(long, default_value = "false")]
     pub enable_list_ty: bool,
+    #[clap(long, default_value = "false")]
     pub enable_unary: bool,
+    #[clap(long, default_value = "false")]
     pub enable_floats: bool,
+    #[clap(long, default_value = "3")]
     pub max_function_args: usize,
+    #[clap(long, default_value = "0")]
     pub min_exprs: usize,
+    #[clap(long, default_value = "50")]
     pub max_exprs: usize,
+    #[clap(long, default_value = "2")]
     pub max_match_arms: usize,
+    #[clap(long, default_value = "3")]
     pub max_union_tys: usize,
+    #[clap(long, default_value = "3")]
     pub max_record_fields: usize,
+    #[clap(long, default_value = "3")]
     pub max_tuple_tys: usize,
+    #[clap(long, default_value = "3")]
     pub max_custom_tys: usize,
+    #[clap(long, default_value = "1")]
     pub max_depth: usize,
+    #[clap(long, default_value = "30")]
     pub max_allowed_complexity: usize,
+    #[clap(long, default_value = "100")]
     pub max_bruteforce_attempts: usize,
 }
 
@@ -168,12 +187,12 @@ impl Default for GeneratorOptions {
             enable_match: true,
             enable_loop: true,
             enable_ref_ty: true,
-            enable_list_ty: true,
+            enable_list_ty: false,
             enable_unary: true,
             enable_floats: true,
             max_function_args: 3,
             min_exprs: 0,
-            max_exprs: 5,
+            max_exprs: 50,
             max_match_arms: 2,
             max_union_tys: 3,
             max_record_fields: 3,
@@ -197,7 +216,7 @@ pub struct GeneratorCtx {
 }
 
 impl GeneratorCtx {
-    pub fn new(rng: rand::rngs::ThreadRng) -> Self {
+    pub fn new(rng: rand::rngs::ThreadRng, options: GeneratorOptions) -> Self {
         Self {
             rng,
             depth: 0,
@@ -205,7 +224,7 @@ impl GeneratorCtx {
             in_loop: false,
             locals_history: BTreeMap::new(),
             locals: BTreeMap::new(),
-            options: GeneratorOptions::default(),
+            options,
         }
     }
 
@@ -259,7 +278,7 @@ impl GeneratorCtx {
         let len = self.rng.random_range(1..=10);
         let mut name = String::with_capacity(len);
 
-        loop {
+        for _ in 0..self.options.max_bruteforce_attempts {
             name.clear();
 
             for _ in 0..len {
@@ -267,7 +286,7 @@ impl GeneratorCtx {
             }
 
             // Is a keyword no bueno.
-            if let Some(_) = Token::from_keyword(name.as_str()) {
+            if Token::from_keyword(name.as_str()).is_some() {
                 continue;
             }
 
@@ -276,16 +295,16 @@ impl GeneratorCtx {
                 continue;
             }
 
-            break;
+            return name;
         }
 
-        name
+        unreachable!()
     }
 }
 
 impl Default for GeneratorCtx {
     fn default() -> Self {
-        Self::new(rand::rng())
+        Self::new(rand::rng(), GeneratorOptions::default())
     }
 }
 
@@ -310,8 +329,8 @@ impl Generator {
         }))
     }
 
-    pub fn generate(self_rc: Rc<RefCell<Self>>) -> ast::Module {
-        let ctx = &mut GeneratorCtx::default();
+    pub fn generate(self_rc: Rc<RefCell<Self>>, options: GeneratorOptions) -> ast::Module {
+        let ctx = &mut GeneratorCtx::new(rand::rng(), options.clone());
 
         self_rc.borrow_mut().populate_types(ctx);
         Self::populate_bodies(self_rc.clone(), ctx);
@@ -322,7 +341,7 @@ impl Generator {
         ast::Module {
             decls: bodies
                 .iter()
-                .map(|(_, b)| ast::Decl::Func(b.borrow().generate()))
+                .map(|(_, b)| ast::Decl::Func(b.borrow().generate(options.clone())))
                 .collect::<Vec<_>>(),
         }
     }
@@ -395,6 +414,10 @@ impl Generator {
             } else {
                 ("main".to_string(), vec![])
             };
+
+            if self_rc.borrow().bodies.iter().any(|(n, _)| *n == name) {
+                continue;
+            }
 
             let ret_ty = self_rc.borrow().ty(ctx);
 
@@ -493,8 +516,8 @@ impl BodyGenerator {
         }
     }
 
-    fn generate(&self) -> ast::Func {
-        let mut ctx = GeneratorCtx::default();
+    fn generate(&self, options: GeneratorOptions) -> ast::Func {
+        let mut ctx = GeneratorCtx::new(rand::rng(), options);
 
         self.args
             .iter()
@@ -521,10 +544,14 @@ impl BodyGenerator {
             return None;
         }
 
-        let mut choices = EXPR_MULTI_COLLECTION.iter().clone().collect::<Vec<_>>();
+        let mut choices = EXPR_MULTI_COLLECTION.iter().collect::<Vec<_>>();
 
         if !ctx.options.enable_loop {
             choices.retain(|(name, _, _)| *name != "loop");
+        }
+
+        if !ctx.in_loop {
+            choices.retain(|(name, _, _)| *name != "break");
         }
 
         if !ctx.options.enable_match {
@@ -540,23 +567,19 @@ impl BodyGenerator {
             choices.retain(|(name, _, _)| *name != "let" && *name != "loop");
         }
 
-        let mut weights = choices.iter().map(|(_, w, _)| *w).collect::<Vec<_>>();
-
-        let mut e = None;
-
-        while e.is_none() && !choices.is_empty() {
-            let index = WeightedIndex::new(weights.clone())
+        while !choices.is_empty() {
+            let index = WeightedIndex::new(choices.iter().map(|(_, w, _)| *w))
                 .unwrap()
                 .sample(&mut ctx.rng);
-            let choice = choices[index].2.deref();
 
-            e = choice(self, ctx, ty);
+            if let Some(expr) = choices[index].2(self, ctx, ty) {
+                return Some(expr);
+            }
 
             let _ = choices.remove(index);
-            let _ = weights.remove(index);
         }
 
-        e
+        None
     }
 
     // Simple, non-block expression.
@@ -565,7 +588,7 @@ impl BodyGenerator {
             return None;
         }
 
-        let mut choices = EXPR_SINGLE_COLLECTION.iter().clone().collect::<Vec<_>>();
+        let mut choices = EXPR_SINGLE_COLLECTION.iter().collect::<Vec<_>>();
 
         if !ctx.options.enable_ref_ty {
             choices.retain(|(name, _, _)| *name != "ref");
@@ -575,23 +598,19 @@ impl BodyGenerator {
             choices.retain(|(name, _, _)| *name != "unary");
         }
 
-        let mut weights = choices.iter().map(|(_, w, _)| *w).collect::<Vec<_>>();
-
-        let mut e = None;
-
-        while e.is_none() && !choices.is_empty() {
-            let index = WeightedIndex::new(weights.clone())
+        while !choices.is_empty() {
+            let index = WeightedIndex::new(choices.iter().map(|(_, w, _)| *w))
                 .unwrap()
                 .sample(&mut ctx.rng);
-            let choice = choices[index].2.deref();
 
-            e = choice(self, ctx, ty);
+            if let Some(expr) = choices[index].2(self, ctx, ty) {
+                return Some(expr);
+            }
 
             let _ = choices.remove(index);
-            let _ = weights.remove(index);
         }
 
-        e
+        None
     }
 
     fn expr_call_function(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
@@ -648,11 +667,11 @@ impl BodyGenerator {
                     ast::BinaryOp::Mul,
                     ast::BinaryOp::Div,
                     ast::BinaryOp::Mod,
-                    //   ast::BinaryOp::BitAnd,
-                    //   ast::BinaryOp::BitOr,
-                    //   ast::BinaryOp::BitXor,
-                    //   ast::BinaryOp::Shl,
-                    //   ast::BinaryOp::Shr,
+                    ast::BinaryOp::BitAnd,
+                    ast::BinaryOp::BitOr,
+                    ast::BinaryOp::BitXor,
+                    ast::BinaryOp::Shl,
+                    ast::BinaryOp::Shr,
                 ]
             }
             (ast::Ty::Float(_), ast::Ty::Float(_)) => {
@@ -760,7 +779,7 @@ impl BodyGenerator {
                 ast::Expr::List(ast::ListExpr { items, span })
             }
             ast::Ty::Tuple { tys, .. } => {
-                let mut items = vec![];
+                let mut items = Vec::with_capacity(tys.len());
                 for ty in tys {
                     items.push(self.expr_value(ctx, ty));
                 }
@@ -768,7 +787,7 @@ impl BodyGenerator {
             }
 
             ast::Ty::Record { fields, .. } => {
-                let mut field_inits = vec![];
+                let mut field_inits = Vec::with_capacity(fields.len());
                 for field in fields {
                     field_inits.push(ast::FieldInit {
                         name: field.name,
@@ -819,7 +838,7 @@ impl BodyGenerator {
             let count = ctx
                 .rng
                 .random_range(ctx.options.min_exprs..=ctx.options.max_exprs);
-            let mut exprs = Vec::with_capacity(count);
+            let mut exprs = Vec::with_capacity(count + 1);
 
             // Generate count - 1 exprs
             for _ in 0..count {
@@ -864,7 +883,7 @@ impl BodyGenerator {
     fn expr_match(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
         let match_ty = self.generator.borrow().ty(ctx);
         let target = self.expr(ctx, &match_ty)?;
-        let mut arms = Vec::new();
+        let mut arms = Vec::with_capacity(ctx.options.max_match_arms);
 
         for _ in 0..ctx.options.max_match_arms {
             // Should return a type that is a subtype of the context type.
