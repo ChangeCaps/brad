@@ -107,6 +107,17 @@ impl Solver {
                 self.format_ty_inner(w, output, vars, seen, self.prec(ty))?;
             }
 
+            Ty::List(inner) => {
+                write!(w, "[")?;
+                self.format_ty_inner(w, inner, vars, seen, 0)?;
+                write!(w, "]")?;
+            }
+
+            Ty::Ref(inner) => {
+                write!(w, "&")?;
+                self.format_ty_inner(w, inner, vars, seen, 0)?;
+            }
+
             Ty::App(app) => {
                 write!(w, "{}", app.name)?;
 
@@ -176,11 +187,19 @@ impl Solver {
 
     fn prec(&self, ty: &Ty) -> usize {
         match ty {
-            Ty::Tag(_) | Ty::Record(_) | Ty::App(_) | Ty::Top | Ty::Bot | Ty::Var(_) => 5,
-            Ty::Neg(_) => 4,
-            Ty::Func(_, _) => 3,
-            Ty::Inter(_, _) => 2,
-            Ty::Union(_, _) => 1,
+            Ty::Tag(_)
+            | Ty::Record(_)
+            | Ty::List(_)
+            | Ty::App(_)
+            | Ty::Top
+            | Ty::Bot
+            | Ty::Var(_) => 6,
+
+            Ty::Neg(_) => 5,
+            Ty::Func(_, _) => 4,
+            Ty::Inter(_, _) => 3,
+            Ty::Union(_, _) => 2,
+            Ty::Ref(_) => 1,
             Ty::Tuple(_) => 0,
         }
     }

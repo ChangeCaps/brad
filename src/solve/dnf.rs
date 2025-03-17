@@ -47,6 +47,8 @@ pub enum LnfBase {
     Record(BTreeMap<Field, Ty>),
     Tuple(Vec<Ty>),
     Func(Ty, Ty),
+    List(Ty),
+    Ref(Ty),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -65,6 +67,8 @@ pub enum RnfBase {
     Field(&'static str, Ty),
     Tuple(Vec<Ty>),
     Func(Ty, Ty),
+    List(Ty),
+    Ref(Ty),
 }
 
 impl Dnf {
@@ -210,6 +214,30 @@ impl Lnf {
         }
     }
 
+    pub fn func(input: Ty, output: Ty) -> Self {
+        Lnf::Base {
+            tags: BTreeSet::new(),
+            apps: BTreeSet::new(),
+            base: LnfBase::Func(input, output),
+        }
+    }
+
+    pub fn list(ty: Ty) -> Self {
+        Lnf::Base {
+            tags: BTreeSet::new(),
+            apps: BTreeSet::new(),
+            base: LnfBase::List(ty),
+        }
+    }
+
+    pub fn ref_(ty: Ty) -> Self {
+        Lnf::Base {
+            tags: BTreeSet::new(),
+            apps: BTreeSet::new(),
+            base: LnfBase::Ref(ty),
+        }
+    }
+
     pub fn app(app: App) -> Self {
         Lnf::Base {
             tags: BTreeSet::new(),
@@ -237,6 +265,9 @@ impl Lnf {
 
                         Ty::func(input, output)
                     }
+
+                    LnfBase::List(ty) => Ty::list(ty.clone()),
+                    LnfBase::Ref(ty) => Ty::ref_(ty.clone()),
 
                     LnfBase::Record(fields) => Ty::Record(fields.clone()),
 
@@ -296,6 +327,30 @@ impl Rnf {
         }
     }
 
+    pub fn func(input: Ty, output: Ty) -> Self {
+        Rnf::Base {
+            tags: BTreeSet::new(),
+            apps: BTreeSet::new(),
+            base: RnfBase::Func(input, output),
+        }
+    }
+
+    pub fn list(ty: Ty) -> Self {
+        Rnf::Base {
+            tags: BTreeSet::new(),
+            apps: BTreeSet::new(),
+            base: RnfBase::List(ty),
+        }
+    }
+
+    pub fn ref_(ty: Ty) -> Self {
+        Rnf::Base {
+            tags: BTreeSet::new(),
+            apps: BTreeSet::new(),
+            base: RnfBase::Ref(ty),
+        }
+    }
+
     pub fn app(app: App) -> Self {
         Rnf::Base {
             tags: BTreeSet::new(),
@@ -318,6 +373,8 @@ impl Rnf {
                     }
 
                     RnfBase::Field(field, ty) => Ty::record([(*field, ty.clone())]),
+                    RnfBase::List(ty) => Ty::list(ty.clone()),
+                    RnfBase::Ref(ty) => Ty::ref_(ty.clone()),
                     RnfBase::Func(input, output) => Ty::func(input.clone(), output.clone()),
                     RnfBase::Tuple(tys) => Ty::tuple(tys.clone()),
                 };
@@ -408,12 +465,11 @@ impl Solver {
                 let input = input.as_ref().clone();
                 let output = output.as_ref().clone();
 
-                Dnf::lnf(Lnf::Base {
-                    tags: BTreeSet::new(),
-                    apps: BTreeSet::new(),
-                    base: LnfBase::Func(input, output),
-                })
+                Dnf::lnf(Lnf::func(input, output))
             }
+
+            Ty::List(ty) => Dnf::lnf(Lnf::list(ty.as_ref().clone())),
+            Ty::Ref(ty) => Dnf::lnf(Lnf::ref_(ty.as_ref().clone())),
 
             Ty::Tuple(tys) => Dnf::lnf(Lnf::tuple(tys.clone())),
             Ty::App(app) => Dnf::lnf(Lnf::app(app.clone())),
@@ -480,12 +536,11 @@ impl Solver {
                 let input = input.as_ref().clone();
                 let output = output.as_ref().clone();
 
-                Cnf::rnf(Rnf::Base {
-                    tags: BTreeSet::new(),
-                    apps: BTreeSet::new(),
-                    base: RnfBase::Func(input, output),
-                })
+                Cnf::rnf(Rnf::func(input, output))
             }
+
+            Ty::List(ty) => Cnf::rnf(Rnf::list(ty.as_ref().clone())),
+            Ty::Ref(ty) => Cnf::rnf(Rnf::ref_(ty.as_ref().clone())),
 
             Ty::Tuple(tys) => Cnf::rnf(Rnf::tuple(tys.clone())),
             Ty::App(app) => Cnf::rnf(Rnf::app(app.clone())),

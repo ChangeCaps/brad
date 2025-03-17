@@ -327,7 +327,7 @@ fn unary(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
 
         Ok(ast::Expr::Ref(ast::RefExpr {
             span: expr.span(),
-            expr: Box::new(expr),
+            target: Box::new(expr),
         }))
     } else if let Some(op) = unary_op(input) {
         let expr = unary(input, can_call)?;

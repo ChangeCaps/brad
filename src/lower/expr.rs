@@ -669,7 +669,7 @@ impl<'a> BodyLowerer<'a> {
         ast: ast::RefExpr,
         _ty: Option<hir::Ty>,
     ) -> Result<hir::Expr, Diagnostic> {
-        let expr = self.lower_expr(*ast.expr, None)?;
+        let expr = self.lower_expr(*ast.target, None)?;
 
         let ty = hir::Ty::Ref(Box::new(expr.ty.clone()));
         let kind = hir::ExprKind::Ref(Box::new(expr));

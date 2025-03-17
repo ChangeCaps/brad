@@ -30,6 +30,8 @@ pub enum Ty {
     Record(BTreeMap<Field, Ty>),
     Tuple(Vec<Ty>),
     Func(Box<Ty>, Box<Ty>),
+    List(Box<Ty>),
+    Ref(Box<Ty>),
     App(App),
     Tag(Tag),
     Top,
@@ -56,6 +58,14 @@ impl Ty {
         Ty::Func(Box::new(input), Box::new(output))
     }
 
+    pub fn list(ty: Ty) -> Self {
+        Ty::List(Box::new(ty))
+    }
+
+    pub fn ref_(ty: Ty) -> Self {
+        Ty::Ref(Box::new(ty))
+    }
+
     pub fn tuple(tys: impl Into<Vec<Ty>>) -> Self {
         Ty::Tuple(tys.into())
     }
@@ -79,6 +89,9 @@ impl Ty {
             Ty::Neg(ty) => Ty::neg(ty.subst(map)),
 
             Ty::Func(input, output) => Ty::func(input.subst(map), output.subst(map)),
+
+            Ty::List(ty) => Ty::List(Box::new(ty.subst(map))),
+            Ty::Ref(ty) => Ty::Ref(Box::new(ty.subst(map))),
 
             Ty::Record(fields) => {
                 let fields = fields.iter().map(|(f, ty)| (*f, ty.subst(map))).collect();
@@ -169,6 +182,8 @@ impl Ty {
                 | Ty::Record(_)
                 | Ty::Tuple(_)
                 | Ty::Func(_, _)
+                | Ty::List(_)
+                | Ty::Ref(_)
                 | Ty::App(_)
                 | Ty::Var(_) => Self::Neg(ty),
             },
@@ -195,6 +210,9 @@ impl Ty {
                 Ty::func(input, ouput)
             }
 
+            Ty::List(ty) => Ty::list(ty.simplify()),
+            Ty::Ref(ty) => Ty::Ref(Box::new(ty.simplify())),
+
             Ty::App(app) => Ty::App(App {
                 name: app.name,
                 args: app.args.into_iter().map(|ty| ty.simplify()).collect(),
@@ -212,6 +230,8 @@ impl fmt::Display for Ty {
             Ty::Inter(lhs, rhs) => write!(f, "({} & {})", lhs, rhs),
             Ty::Neg(ty) => write!(f, "~{}", ty),
             Ty::Func(lhs, rhs) => write!(f, "({} -> {})", lhs, rhs),
+            Ty::List(ty) => write!(f, "[{}]", ty),
+            Ty::Ref(ty) => write!(f, "ref {}", ty),
 
             Ty::Top => write!(f, "⊤"),
             Ty::Bot => write!(f, "⊥"),
@@ -377,6 +397,9 @@ impl Solver {
                 Ty::func(input, output)
             }
 
+            Ty::List(ty) => Ty::list(self.inst(map, ty)),
+            Ty::Ref(ty) => Ty::Ref(Box::new(self.inst(map, ty))),
+
             Ty::App(app) => {
                 let args = app.args.iter().map(|ty| self.inst(map, ty)).collect();
 
@@ -512,8 +535,30 @@ impl Solver {
                     continue;
                 }
 
-                if rnf.is_top() || lnf.is_bot() {
+                if lnf.is_bot() || rnf.is_top() {
                     continue;
+                }
+
+                if lnf.is_top() || rnf.is_bot() {
+                    let diagnostic = Diagnostic::error("type::error")
+                        .message(format!(
+                            "type constraint `{} <: {}` is unsatisfiable",
+                            self.format_ty(&lnf.to_ty()),
+                            self.format_ty(&rnf.to_ty()),
+                        ))
+                        .note(format!(
+                            "required for `{} <: {}` to hold",
+                            self.format_ty(&l.to_ty()),
+                            self.format_ty(&r.to_ty()),
+                        ))
+                        .note(format!(
+                            "required for `{} <: {}` to hold",
+                            self.format_ty(&lhs.to_ty()),
+                            self.format_ty(&rhs.to_ty()),
+                        ))
+                        .label(span, "originated here");
+
+                    return Err(diagnostic);
                 }
 
                 let Lnf::Base {
@@ -522,7 +567,7 @@ impl Solver {
                     base: ref lb,
                 } = lnf
                 else {
-                    unreachable!();
+                    unreachable!("expected base, found {:?}", lnf);
                 };
 
                 let Rnf::Base {
@@ -531,7 +576,7 @@ impl Solver {
                     base: ref rb,
                 } = rnf
                 else {
-                    unreachable!();
+                    unreachable!("expected base, found {:?}", rnf);
                 };
 
                 if let Some(app) = la.first().cloned() {
@@ -642,12 +687,24 @@ impl Solver {
                         return Err(diagnostic);
                     }
 
+                    (LnfBase::List(lt), RnfBase::List(rt)) => {
+                        self.subty(lt, rt, span);
+                        continue;
+                    }
+
+                    (LnfBase::Ref(lt), RnfBase::Ref(rt)) => {
+                        self.subty(lt, rt, span);
+                        continue;
+                    }
+
                     (lb, rb) => {
                         let lkind = match lb {
                             LnfBase::None => lnf.to_ty().to_string(),
                             LnfBase::Record(_) => String::from("record"),
-                            LnfBase::Func(_, _) => String::from("function"),
                             LnfBase::Tuple(_) => String::from("tuple"),
+                            LnfBase::Func(_, _) => String::from("function"),
+                            LnfBase::List(_) => String::from("list"),
+                            LnfBase::Ref(_) => String::from("reference"),
                         };
 
                         let rkind = match rb {
@@ -655,10 +712,12 @@ impl Solver {
                             RnfBase::Field(_, _) => String::from("record"),
                             RnfBase::Func(_, _) => String::from("function"),
                             RnfBase::Tuple(_) => String::from("tuple"),
+                            RnfBase::List(_) => String::from("list"),
+                            RnfBase::Ref(_) => String::from("reference"),
                         };
 
                         let diagnostic = Diagnostic::error("type::error")
-                            .message(format!("a `{}` cannot be a subtype of `{}`", lkind, rkind))
+                            .message(format!("`{}` does not subtype `{}`", lkind, rkind))
                             .note(format!(
                                 "required for `{} <: {}` to hold",
                                 self.format_ty(&lnf.to_ty()),

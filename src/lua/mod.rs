@@ -25,6 +25,18 @@ local function dump(value)
   end
 end
 
+local function deep_clone(value)
+  if type(value) == 'table' then
+    local result = {}
+    for k, v in pairs(value) do
+      result[deep_clone(k)] = deep_clone(v)
+    end
+    return result
+  else
+    return value
+  end
+end
+
 local function make_true()
   local value = {}
   setmetatable(value, { __type_tags = { ['true'] = true } })
@@ -239,6 +251,7 @@ end\n\n",
             generics: vec![],
             stmts: vec![],
             scope: vec![],
+            loop_var: None,
             next_ident: 0,
         };
 
@@ -367,15 +380,15 @@ end\n\n",
                 }
             }
 
-            ast::Ty::Ref { ty, .. } => Ty::union(Ty::Tag("ref"), self.lower_ty(ctx, ty)?),
-
             ast::Ty::Func { input, output, .. } => {
                 let input = self.lower_ty(ctx, input)?;
                 let output = self.lower_ty(ctx, output)?;
-                Ty::Func(Box::new(input), Box::new(output))
+                Ty::func(input, output)
             }
 
-            ast::Ty::List { .. } => todo!(),
+            ast::Ty::List { ty, .. } => Ty::list(self.lower_ty(ctx, ty)?),
+
+            ast::Ty::Ref { ty, .. } => Ty::ref_(self.lower_ty(ctx, ty)?),
 
             ast::Ty::Tuple { tys, .. } => {
                 let tys = tys
@@ -445,8 +458,9 @@ impl GenericContext for &Vec<(&'static str, Ty)> {
 struct ExprCodegen<'a> {
     codegen: &'a mut Codegen,
     generics: Vec<(&'static str, Ty)>,
-    scope: Vec<(&'static str, Ty)>,
+    scope: Vec<(&'static str, bool, Ty)>,
     stmts: Vec<String>,
+    loop_var: Option<(String, Ty)>,
     next_ident: usize,
 }
 
@@ -475,14 +489,14 @@ impl ExprCodegen<'_> {
         self.codegen.lower_ty(&mut &self.generics, ty)
     }
 
-    fn push_scope(&mut self, name: &'static str, ty: Ty) -> String {
+    fn push_scope(&mut self, name: &'static str, mutable: bool, ty: Ty) -> String {
         let var = format!("var{}", self.scope.len());
-        self.scope.push((name, ty));
+        self.scope.push((name, mutable, ty));
         var
     }
 
     fn find_scope(&mut self, name: &str) -> Option<usize> {
-        for (i, (n, _)) in self.scope.iter().enumerate().rev() {
+        for (i, (n, _, _)) in self.scope.iter().enumerate().rev() {
             if *n == name {
                 return Some(i);
             }
@@ -494,8 +508,8 @@ impl ExprCodegen<'_> {
     fn binding(&mut self, ty: &Ty, ast: &ast::Binding, expr: &str) -> Result<(), Diagnostic> {
         match ast {
             ast::Binding::Wild { .. } => Ok(()),
-            ast::Binding::Bind { name, .. } => {
-                let var = self.push_scope(name, ty.clone());
+            ast::Binding::Bind { name, mutable, .. } => {
+                let var = self.push_scope(name, *mutable, ty.clone());
 
                 self.stmts.push(format!("local {} = {}", var, expr));
 
@@ -524,20 +538,20 @@ impl ExprCodegen<'_> {
     fn expr(&mut self, ast: &ast::Expr) -> Result<(String, Ty), Diagnostic> {
         match ast {
             ast::Expr::Literal(ast) => self.literal_expr(ast),
-            ast::Expr::List(_list_expr) => todo!(),
+            ast::Expr::List(ast) => self.list_expr(ast),
             ast::Expr::Record(ast) => self.record_expr(ast),
             ast::Expr::Tuple(ast) => self.tuple_expr(ast),
             ast::Expr::Path(ast) => self.path_expr(ast),
-            ast::Expr::Index(_index_expr) => todo!(),
+            ast::Expr::Index(ast) => self.index_expr(ast),
             ast::Expr::Field(ast) => self.field_expr(ast),
-            ast::Expr::Unary(_unary_expr) => todo!(),
+            ast::Expr::Unary(ast) => self.unary_expr(ast),
             ast::Expr::Binary(ast) => self.binary_expr(ast),
             ast::Expr::Call(ast) => self.call_expr(ast),
             ast::Expr::Assign(ast) => self.assign_expr(ast),
-            ast::Expr::Ref(_ref_expr) => todo!(),
+            ast::Expr::Ref(ast) => self.ref_expr(ast),
             ast::Expr::Match(ast) => self.match_expr(ast),
-            ast::Expr::Loop(_loop_expr) => todo!(),
-            ast::Expr::Break(_break_expr) => todo!(),
+            ast::Expr::Loop(ast) => self.loop_expr(ast),
+            ast::Expr::Break(ast) => self.break_expr(ast),
             ast::Expr::Let(ast) => self.let_expr(ast),
             ast::Expr::Block(ast) => self.block_expr(ast),
         }
@@ -559,6 +573,23 @@ impl ExprCodegen<'_> {
             ast::Literal::False { .. } => (String::from("make_false()"), Ty::Tag("false")),
             ast::Literal::None { .. } => (String::from("make_none()"), Ty::Tag("none")),
         })
+    }
+
+    fn list_expr(&mut self, ast: &ast::ListExpr) -> Result<(String, Ty), Diagnostic> {
+        let ty = Ty::Var(self.solver.fresh_var());
+        let mut items = Vec::new();
+
+        for item in &ast.items {
+            let (value, item_ty) = self.expr(item)?;
+            self.solver.subty(&item_ty, &ty, item.span());
+            items.push(value);
+        }
+
+        let temp = self.fresh_ident();
+        (self.stmts).push(format!("local {temp} = {{{}}}", items.join(", ")));
+        (self.stmts).push(format!("setmetatable({temp}, {{ __type_tags = {{}} }})"));
+
+        Ok((temp, Ty::list(ty)))
     }
 
     fn record_expr(&mut self, ast: &ast::RecordExpr) -> Result<(String, Ty), Diagnostic> {
@@ -609,7 +640,7 @@ impl ExprCodegen<'_> {
             let name = ast.segments[0].name;
 
             if let Some(idx) = self.find_scope(name) {
-                let (_, ty) = self.scope[idx].clone();
+                let (_, _, ty) = self.scope[idx].clone();
 
                 return Ok((format!("var{}", idx), ty));
             }
@@ -638,6 +669,21 @@ impl ExprCodegen<'_> {
         Err(diagnostic)
     }
 
+    fn index_expr(&mut self, ast: &ast::IndexExpr) -> Result<(String, Ty), Diagnostic> {
+        let (target, target_ty) = self.expr(&ast.target)?;
+        let (index, index_ty) = self.expr(&ast.index)?;
+
+        let ty = Ty::Var(self.solver.fresh_var());
+        let list_ty = Ty::list(ty.clone());
+
+        self.solver.subty(&target_ty, &list_ty, ast.span);
+        self.solver.subty(&index_ty, &Ty::Tag("int"), ast.span);
+
+        let value = format!("{target}[{index}.value + 1]");
+
+        Ok((value, ty))
+    }
+
     fn field_expr(&mut self, ast: &ast::FieldExpr) -> Result<(String, Ty), Diagnostic> {
         let (target, target_ty) = self.expr(&ast.target)?;
 
@@ -650,6 +696,10 @@ impl ExprCodegen<'_> {
         Ok((format!("{}.{}", target, ast.name), ty))
     }
 
+    fn unary_expr(&mut self, _ast: &ast::UnaryExpr) -> Result<(String, Ty), Diagnostic> {
+        todo!()
+    }
+
     fn binary_expr(&mut self, ast: &ast::BinaryExpr) -> Result<(String, Ty), Diagnostic> {
         let (lhs, lhs_ty) = self.expr(&ast.lhs)?;
         let (rhs, rhs_ty) = self.expr(&ast.rhs)?;
@@ -659,7 +709,12 @@ impl ExprCodegen<'_> {
             | ast::BinaryOp::Sub
             | ast::BinaryOp::Mul
             | ast::BinaryOp::Div
-            | ast::BinaryOp::Mod => {
+            | ast::BinaryOp::Mod
+            | ast::BinaryOp::BitAnd
+            | ast::BinaryOp::BitOr
+            | ast::BinaryOp::BitXor
+            | ast::BinaryOp::Shl
+            | ast::BinaryOp::Shr => {
                 self.solver.subty(&lhs_ty, &Ty::Tag("int"), ast.span);
                 self.solver.subty(&rhs_ty, &Ty::Tag("int"), ast.span);
 
@@ -669,6 +724,11 @@ impl ExprCodegen<'_> {
                     ast::BinaryOp::Mul => "*",
                     ast::BinaryOp::Div => "/",
                     ast::BinaryOp::Mod => "%",
+                    ast::BinaryOp::BitAnd => "&",
+                    ast::BinaryOp::BitOr => "|",
+                    ast::BinaryOp::BitXor => "~",
+                    ast::BinaryOp::Shl => "<<",
+                    ast::BinaryOp::Shr => ">>",
                     _ => unreachable!(),
                 };
 
@@ -676,12 +736,6 @@ impl ExprCodegen<'_> {
 
                 Ok((value, Ty::Tag("int")))
             }
-
-            ast::BinaryOp::BitAnd => todo!(),
-            ast::BinaryOp::BitOr => todo!(),
-            ast::BinaryOp::BitXor => todo!(),
-            ast::BinaryOp::Shl => todo!(),
-            ast::BinaryOp::Shr => todo!(),
 
             ast::BinaryOp::Eq | ast::BinaryOp::Ne => {
                 self.solver.subty(&lhs_ty, &rhs_ty, ast.span);
@@ -760,6 +814,10 @@ impl ExprCodegen<'_> {
         self.stmts.push(format!("{} = {}", target, value));
 
         Ok((String::from("nil"), Ty::Tag("none")))
+    }
+
+    fn ref_expr(&mut self, _ast: &ast::RefExpr) -> Result<(String, Ty), Diagnostic> {
+        todo!()
     }
 
     fn match_expr(&mut self, ast: &ast::MatchExpr) -> Result<(String, Ty), Diagnostic> {
@@ -855,6 +913,46 @@ impl ExprCodegen<'_> {
         self.solver.subty(&target_ty, &input, ast.span);
 
         Ok((res, output))
+    }
+
+    fn loop_expr(&mut self, ast: &ast::LoopExpr) -> Result<(String, Ty), Diagnostic> {
+        let ty = Ty::Var(self.solver.fresh_var());
+
+        let res = self.fresh_ident();
+
+        self.stmts.push(format!("local {res}"));
+        self.stmts.push(String::from("while true do"));
+
+        let old_ty = self.loop_var.replace((res.clone(), ty.clone()));
+
+        let (_, _) = self.expr(&ast.body)?;
+
+        self.loop_var = old_ty;
+
+        self.stmts.push(String::from("end"));
+
+        Ok((res, ty))
+    }
+
+    fn break_expr(&mut self, ast: &ast::BreakExpr) -> Result<(String, Ty), Diagnostic> {
+        let Some((res, ty)) = self.loop_var.clone() else {
+            let diagnostic = Diagnostic::error("invalid::break")
+                .message("break outside of loop")
+                .span(ast.span);
+
+            return Err(diagnostic);
+        };
+
+        if let Some(value) = ast.value.clone() {
+            let (value, value_ty) = self.expr(&value)?;
+            self.solver.subty(&value_ty, &ty, ast.span);
+
+            self.stmts.push(format!("{} = {}", res, value));
+        }
+
+        self.stmts.push("break".to_string());
+
+        Ok((String::from("nil"), Ty::Tag("none")))
     }
 
     fn let_expr(&mut self, ast: &ast::LetExpr) -> Result<(String, Ty), Diagnostic> {

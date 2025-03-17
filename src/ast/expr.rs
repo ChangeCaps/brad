@@ -244,7 +244,7 @@ pub struct AssignExpr {
 
 #[derive(Clone, Debug)]
 pub struct RefExpr {
-    pub expr: Box<Expr>,
+    pub target: Box<Expr>,
     pub span: Span,
 }
 

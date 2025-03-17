@@ -177,7 +177,7 @@ impl<W: Write> Formatter<W> {
             }
             Expr::Ref(ref_expr) => {
                 write!(self.writer, "ref ")?;
-                self.format_expr(&ref_expr.expr)
+                self.format_expr(&ref_expr.target)
             }
             Expr::Match(match_expr) => {
                 write!(self.writer, "match ")?;
