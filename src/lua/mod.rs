@@ -901,7 +901,6 @@ impl ExprCodegen<'_> {
         if let Some(ref expected) = ast.ty {
             let expected = self.lower_ty(expected)?;
             self.solver.subty(&ty, &expected, ast.span);
-            self.solver.subty(&expected, &ty, ast.span);
         }
 
         self.binding(&ty, &ast.binding, &expr)?;

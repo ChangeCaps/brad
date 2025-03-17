@@ -157,14 +157,7 @@ impl Solver {
                 cons.lbs.retain(|lb| lb != ty);
                 cons.ubs.retain(|ub| ub != ty);
 
-                if !cons.lbs.is_empty() {
-                    let lb = cons.lbs.iter().cloned().fold(Ty::Bot, Ty::union);
-                    let lb = self.simplify_dnf(self.dnf(&lb)).to_ty().simplify();
-
-                    return self.format_ty_inner(w, &lb, vars, &seen, prec);
-                }
-
-                if !cons.ubs.is_empty() {
+                if !cons.ubs.is_empty() && cons.lbs.is_empty() {
                     let ub = cons.ubs.iter().cloned().fold(Ty::Top, Ty::inter);
                     let ub = self.simplify_cnf(self.cnf(&ub)).to_ty().simplify();
 

@@ -15,6 +15,7 @@ local function make_true()
   setmetatable(value, {
     __type_tags = { ['true'] = true },
     __tostring = function() return 'true' end,
+    __eq = function(a, b) return true end,
   })
 
   return value
@@ -25,6 +26,7 @@ local function make_false()
   setmetatable(value, {
     __type_tags = { ['false'] = true },
     __tostring = function() return 'false' end,
+    __eq = function(a, b) return true end,
   })
 
   return value
@@ -35,6 +37,7 @@ local function make_none()
   setmetatable(value, {
     __type_tags = { ['none'] = true },
     __tostring = function() return 'none' end,
+    __eq = function(a, b) return true end,
   })
 
   return value
@@ -53,6 +56,7 @@ local function make_int(value)
   setmetatable(value, {
     __type_tags = { ['int'] = true },
     __tostring = function() return tostring(value.value) end,
+    __eq = function(a, b) return a.value == b.value end,
   })
 
   return value
@@ -63,6 +67,7 @@ local function make_float(value)
   setmetatable(value, {
     __type_tags = { ['float'] = true },
     __tostring = function() return tostring(value.value) end,
+    __eq = function(a, b) return a.value == b.value end,
   })
 
   return value
@@ -73,6 +78,7 @@ local function make_str(value)
   setmetatable(value, {
     __type_tags = { ['str'] = true },
     __tostring = function() return value.value end,
+    __eq = function(a, b) return a.value == b.value end,
   })
 
   return value

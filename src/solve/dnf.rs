@@ -707,10 +707,20 @@ impl Solver {
         match (lhs, rhs) {
             (_, Ty::Top) => true,
             (Ty::Bot, _) => true,
+            (Ty::Top, _) => false,
+            (_, Ty::Bot) => false,
 
             (Ty::Tag(lhs), Ty::Tag(rhs)) => lhs == rhs,
 
-            (lhs, Ty::Neg(rhs)) => !self.is_subty_of(lhs, rhs),
+            (lhs, Ty::Neg(rhs)) => {
+                let inter = Ty::inter(lhs.clone(), rhs.as_ref().clone());
+                self.is_subty_of(&inter, &Ty::Bot)
+            }
+
+            (Ty::Neg(lhs), rhs) => {
+                let union = Ty::union(lhs.as_ref().clone(), rhs.clone());
+                self.is_subty_of(&Ty::Top, &union)
+            }
 
             (Ty::Union(t1, t2), rhs) => self.is_subty_of(t1, rhs) && self.is_subty_of(t2, rhs),
             (Ty::Inter(t1, t2), rhs) => self.is_subty_of(t1, rhs) || self.is_subty_of(t2, rhs),
@@ -749,7 +759,63 @@ impl Solver {
                 self.is_subty_of(lhs, rhs) && self.is_subty_of(rhs, lhs)
             }
 
-            (_, _) => false,
+            (Ty::App(lhs), Ty::App(rhs)) => {
+                if lhs.name != rhs.name {
+                    return false;
+                }
+
+                if lhs.args.len() == rhs.args.len() {
+                    return false;
+                }
+
+                for (lhs, rhs) in lhs.args.iter().zip(&rhs.args) {
+                    if !self.is_subty_of(lhs, rhs) {
+                        return false;
+                    }
+                }
+
+                true
+            }
+
+            (Ty::App(app), rhs) => {
+                let lhs = self.expand(app);
+                self.is_subty_of(&lhs, rhs)
+            }
+
+            (lhs, Ty::App(app)) => {
+                let rhs = self.expand(app);
+                self.is_subty_of(lhs, &rhs)
+            }
+
+            (Ty::Var(lhs), rhs) => {
+                let bounds = self.variables.get(&lhs.index).unwrap();
+
+                for bound in bounds.ubs.iter() {
+                    if !self.is_subty_of(bound, rhs) {
+                        return false;
+                    }
+                }
+
+                true
+            }
+
+            (lhs, Ty::Var(rhs)) => {
+                let bounds = self.variables.get(&rhs.index).unwrap();
+
+                for bound in bounds.lbs.iter() {
+                    if !self.is_subty_of(lhs, bound) {
+                        return false;
+                    }
+                }
+
+                true
+            }
+
+            (Ty::Func(..), _) | (_, Ty::Func(..)) => false,
+            (Ty::Tuple(..), _) | (_, Ty::Tuple(..)) => false,
+            (Ty::List(..), _) | (_, Ty::List(..)) => false,
+            (Ty::Ref(..), _) | (_, Ty::Ref(..)) => false,
+            (Ty::Record(..), _) | (_, Ty::Record(..)) => false,
         }
     }
 

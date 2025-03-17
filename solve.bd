@@ -1,11 +1,17 @@
 type list<'a> = none | 'a * list<'a>
+type map<'a, 'b> = list<'a * 'b>
+type some<'a> = 'a
 
-fn list::one x {
-  list <| x, list none
+fn list::empty {
+  list none
 }
 
 fn list::prepend x xs {
   list <| x, xs
+}
+
+fn list::one x {
+  list::prepend x list::empty
 }
 
 fn list::map f xs {
@@ -14,13 +20,32 @@ fn list::map f xs {
   | _ as x, xs => list <| f x, list::map f xs
 }
 
+fn map::empty {
+  list none
+}
+
+fn map::with k v m {
+  map (list::prepend <| k, v <| m)
+}
+
+fn map::get k m {
+  match m
+  | none             => none
+  | _ as (k', v), m => {
+    match k == k'
+    | true  => some v
+    | false => map::get k (map m)
+  }
+}
+
 fn mul x y {
   x * y
 }
 
 fn main {
-  list::one 1
-  |> list::prepend 2
-  |> list::prepend 3
-  |> list::map (mul 2)
+  map::empty
+  |> map::with "a" 1
+  |> map::with "b" 2
+  |> map::with "c" 3
+  |> map::get "b"
 }

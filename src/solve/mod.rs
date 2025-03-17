@@ -433,17 +433,15 @@ impl Solver {
         self.cache.insert(key.clone(), true);
     }
 
-    fn expand(&self, app: &App) -> Result<Ty, Diagnostic> {
+    fn expand(&self, app: &App) -> Ty {
         let (body, args) = self.applicables.get(&app.name).unwrap();
 
         if args.len() != app.args.len() {
-            let diagnostic = Diagnostic::error("type::error").message(format!(
+            panic!(
                 "expected {} arguments, found {}",
                 args.len(),
                 app.args.len()
-            ));
-
-            return Err(diagnostic);
+            );
         }
 
         let mut map = HashMap::new();
@@ -452,7 +450,7 @@ impl Solver {
             map.insert(arg.clone(), ty.clone());
         }
 
-        Ok(body.subst(&map))
+        body.subst(&map)
     }
 
     fn constrain(&mut self, lhs: &Ty, rhs: &Ty, span: Span) -> Result<(), Diagnostic> {
@@ -503,7 +501,7 @@ impl Solver {
                     let bounds = self.var(var);
                     bounds.ubs.push(dis.clone());
 
-                    let bounds = self.var(var).clone();
+                    let bounds = self.var(var);
 
                     for lb in bounds.lbs.clone() {
                         self.subty(&lb, &dis, span);
@@ -526,7 +524,7 @@ impl Solver {
                     let bounds = self.var(var);
                     bounds.lbs.push(dis.clone());
 
-                    let var = self.var(var).clone();
+                    let var = self.var(var);
 
                     for ub in var.ubs.clone() {
                         self.subty(&dis, &ub, span);
@@ -590,7 +588,7 @@ impl Solver {
                     }
 
                     let rhs = Ty::union(Ty::neg(lnf.to_ty()), rnf.to_ty());
-                    let lhs = self.expand(&app)?;
+                    let lhs = self.expand(&app);
 
                     self.subty(&lhs, &rhs, span);
 
@@ -608,7 +606,7 @@ impl Solver {
                     }
 
                     let lhs = Ty::inter(lnf.to_ty(), Ty::neg(rnf.to_ty()));
-                    let rhs = self.expand(&app)?;
+                    let rhs = self.expand(&app);
 
                     self.subty(&lhs, &rhs, span);
 
