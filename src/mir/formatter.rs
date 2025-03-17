@@ -1,11 +1,10 @@
 use crate::attribute::Attribute;
 use crate::mir;
 use crate::mir::Const;
-use std::io::Write;
 
 const INDENT_SIZE: usize = 4;
 
-pub struct Formatter<'a, W: Write> {
+pub struct Formatter<'a, W: std::io::Write> {
     indent: usize,
     writer: W,
     program: &'a mir::Program,
@@ -46,7 +45,7 @@ impl LocalKind {
     }
 }
 
-impl<'a, W: Write> Formatter<'a, W> {
+impl<'a, W: std::io::Write> Formatter<'a, W> {
     pub fn new(writer: W, program: &'a mir::Program) -> Self {
         Self {
             indent: 0,
@@ -73,13 +72,31 @@ impl<'a, W: Write> Formatter<'a, W> {
         )
     }
 
+    fn write_to_string(
+        &self,
+        f: impl FnOnce(&mut Formatter<'a, std::io::Cursor<Vec<u8>>>) -> Result,
+    ) -> std::io::Result<String> {
+        let cursor = std::io::Cursor::new(Vec::new());
+
+        let mut formatter = Formatter {
+            indent: self.indent,
+            writer: cursor,
+            program: self.program,
+        };
+
+        f(&mut formatter)?;
+        let vec = formatter.writer.into_inner();
+        let string = String::from_utf8(vec).unwrap();
+        Ok(string)
+    }
+
     pub fn format_program(&mut self) -> Result {
         for (_, named) in self.program.types.iter() {
             write!(
                 self.writer,
                 "type {} = {}",
                 named.name,
-                self.program.types.format(&named.ty)
+                self.format_ty(&named.ty)
             )?;
 
             self.write_indents(2)?;
@@ -105,11 +122,7 @@ impl<'a, W: Write> Formatter<'a, W> {
 
             write!(self.writer, "fn {}", name)?;
 
-            write!(
-                self.writer,
-                " -> {}",
-                self.program.types.format(&body.output)
-            )?;
+            write!(self.writer, " -> {}", self.format_ty(&body.output))?;
 
             self.indent(|f| {
                 for i in 0..body.locals.len() {
@@ -121,7 +134,7 @@ impl<'a, W: Write> Formatter<'a, W> {
                         f.writer,
                         "{}: {}",
                         local_kind.format_relative(),
-                        f.program.types.format(local_ty)
+                        f.format_ty(local_ty)
                     )?;
                 }
 
@@ -205,7 +218,7 @@ impl<'a, W: Write> Formatter<'a, W> {
                 self.indent(|f| {
                     for case in cases {
                         f.write_indent()?;
-                        write!(f.writer, "| {} ", f.program.types.format(&case.ty))?;
+                        write!(f.writer, "| {} ", f.format_ty(&case.ty))?;
                         let local_kind = f.local_kind(body, case.local);
                         write!(f.writer, "as {}", local_kind.format_relative())?;
                         write!(f.writer, " => ")?;
@@ -239,28 +252,27 @@ impl<'a, W: Write> Formatter<'a, W> {
         let local = place.local;
         let local_kind = self.local_kind(body, local);
 
-        write!(self.writer, "{}", local_kind.format_relative())?;
+        let mut fmt = local_kind.format_relative();
 
         for (proj, _) in &place.proj {
             match proj {
                 mir::Proj::Field(name) => {
-                    write!(self.writer, ".{}", name)?;
+                    fmt.push_str(format!(".{}", name).as_str());
                 }
                 mir::Proj::Tuple(index) => {
-                    write!(self.writer, ".{}", index)?;
+                    fmt.push_str(format!(".{}", index).as_str());
                 }
                 mir::Proj::Index(operand) => {
-                    write!(self.writer, "[")?;
-                    self.format_operand(body, operand)?;
-                    write!(self.writer, "]")?;
+                    let operand_fmt = self.write_to_string(|f| f.format_operand(body, operand))?;
+                    fmt.push_str(format!("[{}]", operand_fmt).as_str());
                 }
                 mir::Proj::Deref => {
-                    todo!()
+                    fmt = format!("*{}", fmt);
                 }
             };
         }
 
-        Ok(())
+        write!(self.writer, "{}", fmt)
     }
 
     fn format_operand(&mut self, body: &mir::Body, operand: &mir::Operand) -> Result {
@@ -331,9 +343,47 @@ impl<'a, W: Write> Formatter<'a, W> {
                 write!(self.writer, ")")
             }
 
-            mir::Value::Promote { .. } => todo!(),
+            mir::Value::Promote {
+                variant,
+                variants,
+                operand,
+            } => {
+                write!(self.writer, "promote({} in ", self.format_ty(variant))?;
+                write!(self.writer, "{{")?;
+                for (i, variant) in variants.iter().enumerate() {
+                    if i > 0 {
+                        write!(self.writer, ", ")?;
+                    }
+                    write!(self.writer, "{}", self.format_ty(variant))?;
+                }
+                write!(self.writer, "}}) ")?;
+                self.format_operand(body, operand)
+            }
 
-            mir::Value::Coerce { .. } => todo!(),
+            mir::Value::Coerce {
+                inputs,
+                variants,
+                operand,
+            } => {
+                write!(self.writer, "coerce(")?;
+                write!(self.writer, "{{")?;
+                for (i, variant) in inputs.iter().enumerate() {
+                    if i > 0 {
+                        write!(self.writer, ", ")?;
+                    }
+                    write!(self.writer, "{}", self.format_ty(variant))?;
+                }
+                write!(self.writer, "}} in ")?;
+                write!(self.writer, "{{")?;
+                for (i, variant) in variants.iter().enumerate() {
+                    if i > 0 {
+                        write!(self.writer, ", ")?;
+                    }
+                    write!(self.writer, "{}", self.format_ty(variant))?;
+                }
+                write!(self.writer, "}}) ")?;
+                self.format_operand(body, operand)
+            }
 
             mir::Value::Call(place, operand) => {
                 self.format_place(body, place)?;
@@ -363,7 +413,7 @@ impl<'a, W: Write> Formatter<'a, W> {
                     if i > 0 {
                         write!(self.writer, ", ")?;
                     }
-                    write!(self.writer, "{}", self.program.types.format(ty))?;
+                    write!(self.writer, "{}", self.format_ty(ty))?;
                 }
                 write!(self.writer, ") ")?;
                 write!(self.writer, "captures(")?;
@@ -376,5 +426,9 @@ impl<'a, W: Write> Formatter<'a, W> {
                 write!(self.writer, ")")
             }
         }
+    }
+
+    fn format_ty(&self, ty: &mir::Ty) -> String {
+        self.program.types.format(ty)
     }
 }

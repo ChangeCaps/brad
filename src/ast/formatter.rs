@@ -115,7 +115,7 @@ impl<W: Write> Formatter<W> {
                 write!(self.writer, "[")?;
                 for (i, expr) in list_expr.items.iter().enumerate() {
                     if i > 0 {
-                        write!(self.writer, ", ")?;
+                        write!(self.writer, "; ")?;
                     }
                     self.format_expr(expr)?;
                 }
@@ -279,22 +279,38 @@ impl<W: Write> Formatter<W> {
                 write!(self.writer, "]")
             }
             Ty::Tuple { tys, .. } => {
+                if tys.len() > 1 {
+                    write!(self.writer, "(")?;
+                }
+
                 for (i, ty) in tys.iter().enumerate() {
                     if i > 0 {
                         write!(self.writer, " * ")?;
                     }
                     self.format_ty(ty)?;
                 }
+                if tys.len() > 1 {
+                    write!(self.writer, ")")?;
+                }
 
                 Ok(())
             }
             Ty::Union { tys, .. } => {
+                if tys.len() > 1 {
+                    write!(self.writer, "(")?;
+                }
+
                 for (i, ty) in tys.iter().enumerate() {
                     if i > 0 {
                         write!(self.writer, " | ")?;
                     }
                     self.format_ty(ty)?;
                 }
+
+                if tys.len() > 1 {
+                    write!(self.writer, ")")?;
+                }
+
                 Ok(())
             }
             Ty::Record { fields, .. } => {
@@ -332,7 +348,7 @@ impl<W: Write> Formatter<W> {
                 self.format_ty(ty)?;
 
                 if let Some(binding) = binding {
-                    write!(self.writer, " ")?;
+                    write!(self.writer, " as ")?;
                     self.format_binding(binding)?;
                 }
 

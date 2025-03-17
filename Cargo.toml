@@ -4,13 +4,22 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["llvm19"]
-llvm19 = ["llvm-sys-191"]
-#llvm20 = ["llvm-sys-201"]
+default = ["llvm-sys-191"]
 
 [dependencies]
 colored = "3.0"
 clap = { version = "4.5.31", features = ["derive"] }
-llvm-sys-191 = { package = "llvm-sys", version = "191.0.0", optional = true }
-#llvm-sys-201 = { package = "llvm-sys", version = "201.0.0", optional = true }
 rand = "0.9.0"
+
+[dependencies.llvm-sys-191]
+package = "llvm-sys"
+version = "191.0.0"
+optional = true
+
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+debug = false
+panic = "abort"
