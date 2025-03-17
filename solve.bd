@@ -14,23 +14,23 @@ fn list::one x {
   list::prepend x list::empty
 }
 
-fn list::map f xs {
+fn list::map f xs -> list {
   match xs
   | none       => list none
   | _ as x, xs => list <| f x, list::map f xs
 }
 
 fn map::empty {
-  list none
+  map list::empty
 }
 
 fn map::with k v m {
   map (list::prepend <| k, v <| m)
 }
 
-fn map::get k m {
+fn map::get (k: 'k) (m: map<'k, 'v>) {
   match m
-  | none             => none
+  | none            => none
   | _ as (k', v), m => {
     match k == k'
     | true  => some v
@@ -43,9 +43,15 @@ fn mul x y {
 }
 
 fn main {
-  map::empty
-  |> map::with "a" 1
-  |> map::with "b" 2
-  |> map::with "c" 3
-  |> map::get "b"
+  //list::empty
+  //|> list::prepend 1
+  //|> list::prepend 2
+  //|> list::prepend 3
+  //|> list::map (mul 2)
+
+  //let b = map::empty
+  //|> map::with "a" 1
+  //|> map::with "b" 2
+  //|> map::with "c" 3
+  //|> map::get "b" 
 }

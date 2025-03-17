@@ -1,227 +1,14 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt,
-};
+use std::{collections::HashMap, fmt};
 
 use crate::diagnostic::{Diagnostic, Report, Span};
 
 pub use dnf::*;
+pub use ty::*;
 
 mod dnf;
 mod format;
-
-pub type Tag = &'static str;
-pub type Field = &'static str;
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct App {
-    pub name: Tag,
-    pub args: Vec<Ty>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Ty {
-    /* algebraic data types */
-    Union(Box<Ty>, Box<Ty>),
-    Inter(Box<Ty>, Box<Ty>),
-    Neg(Box<Ty>),
-
-    /* type constructors */
-    Record(BTreeMap<Field, Ty>),
-    Tuple(Vec<Ty>),
-    Func(Box<Ty>, Box<Ty>),
-    List(Box<Ty>),
-    Ref(Box<Ty>),
-    App(App),
-    Tag(Tag),
-    Top,
-    Bot,
-
-    /* type variables */
-    Var(Var),
-}
-
-impl Ty {
-    pub fn union(lhs: Ty, rhs: Ty) -> Self {
-        Ty::Union(Box::new(lhs), Box::new(rhs))
-    }
-
-    pub fn inter(lhs: Ty, rhs: Ty) -> Self {
-        Ty::Inter(Box::new(lhs), Box::new(rhs))
-    }
-
-    pub fn neg(ty: Ty) -> Self {
-        Ty::Neg(Box::new(ty))
-    }
-
-    pub fn func(input: Ty, output: Ty) -> Self {
-        Ty::Func(Box::new(input), Box::new(output))
-    }
-
-    pub fn list(ty: Ty) -> Self {
-        Ty::List(Box::new(ty))
-    }
-
-    pub fn ref_(ty: Ty) -> Self {
-        Ty::Ref(Box::new(ty))
-    }
-
-    pub fn tuple(tys: impl Into<Vec<Ty>>) -> Self {
-        Ty::Tuple(tys.into())
-    }
-
-    pub fn record(fields: impl Into<BTreeMap<Field, Ty>>) -> Self {
-        Ty::Record(fields.into())
-    }
-
-    pub fn app(name: Tag, args: Vec<Ty>) -> Self {
-        Ty::App(App { name, args })
-    }
-
-    fn subst(&self, map: &HashMap<Ty, Ty>) -> Self {
-        if let Some(ty) = map.get(self) {
-            return ty.clone();
-        }
-
-        match self {
-            Ty::Union(t1, t2) => Ty::union(t1.subst(map), t2.subst(map)),
-            Ty::Inter(t1, t2) => Ty::inter(t1.subst(map), t2.subst(map)),
-            Ty::Neg(ty) => Ty::neg(ty.subst(map)),
-
-            Ty::Func(input, output) => Ty::func(input.subst(map), output.subst(map)),
-
-            Ty::List(ty) => Ty::List(Box::new(ty.subst(map))),
-            Ty::Ref(ty) => Ty::Ref(Box::new(ty.subst(map))),
-
-            Ty::Record(fields) => {
-                let fields = fields.iter().map(|(f, ty)| (*f, ty.subst(map))).collect();
-
-                Ty::Record(fields)
-            }
-
-            Ty::Tuple(tys) => {
-                let tys = tys.iter().map(|ty| ty.subst(map)).collect();
-
-                Ty::Tuple(tys)
-            }
-
-            Ty::App(app) => {
-                let args = app.args.iter().map(|ty| ty.subst(map)).collect();
-
-                Ty::App(App {
-                    name: app.name,
-                    args,
-                })
-            }
-
-            Ty::Top | Ty::Bot | Ty::Var(_) | Ty::Tag(_) => self.clone(),
-        }
-    }
-
-    fn simplify(self) -> Self {
-        match self {
-            Ty::Union(t1, t2) => {
-                let t1 = t1.simplify();
-                let t2 = t2.simplify();
-
-                if t1 == t2 {
-                    return t1;
-                }
-
-                match (t1, t2) {
-                    (Ty::Top, _) | (_, Ty::Top) => Ty::Top,
-                    (Ty::Bot, ty) | (ty, Ty::Bot) => ty,
-
-                    (t1, t2) => Ty::union(t1, t2),
-                }
-            }
-
-            Ty::Inter(t1, t2) => {
-                let t1 = t1.simplify();
-                let t2 = t2.simplify();
-
-                if t1 == t2 {
-                    return t1;
-                }
-
-                match (t1, t2) {
-                    (Ty::Top, ty) | (ty, Ty::Top) => ty,
-                    (Ty::Bot, _) | (_, Ty::Bot) => Ty::Bot,
-
-                    (Ty::Union(t1, t2), ty) | (ty, Ty::Union(t1, t2)) => {
-                        let t1 = Ty::inter(*t1, ty.clone());
-                        let t2 = Ty::inter(*t2, ty);
-
-                        Ty::union(t1, t2).simplify()
-                    }
-
-                    (t1, t2) => Ty::inter(t1, t2),
-                }
-            }
-
-            Ty::Neg(ty) => match *ty {
-                Ty::Union(t1, t2) => {
-                    let t1 = Ty::Neg(t1);
-                    let t2 = Ty::Neg(t2);
-
-                    Ty::inter(t1, t2).simplify()
-                }
-
-                Ty::Inter(t1, t2) => {
-                    let t1 = Ty::Neg(t1);
-                    let t2 = Ty::Neg(t2);
-
-                    Ty::union(t1, t2).simplify()
-                }
-
-                Ty::Neg(ty) => *ty,
-                Ty::Top => Ty::Bot,
-                Ty::Bot => Ty::Top,
-
-                Ty::Tag(_)
-                | Ty::Record(_)
-                | Ty::Tuple(_)
-                | Ty::Func(_, _)
-                | Ty::List(_)
-                | Ty::Ref(_)
-                | Ty::App(_)
-                | Ty::Var(_) => Self::Neg(ty),
-            },
-
-            Ty::Record(fields) => {
-                let fields = fields
-                    .into_iter()
-                    .map(|(f, ty)| (f, ty.simplify()))
-                    .collect();
-
-                Ty::Record(fields)
-            }
-
-            Ty::Tuple(tys) => {
-                let tys = tys.into_iter().map(|ty| ty.simplify()).collect();
-
-                Ty::Tuple(tys)
-            }
-
-            Ty::Func(input, ouput) => {
-                let input = input.simplify();
-                let ouput = ouput.simplify();
-
-                Ty::func(input, ouput)
-            }
-
-            Ty::List(ty) => Ty::list(ty.simplify()),
-            Ty::Ref(ty) => Ty::Ref(Box::new(ty.simplify())),
-
-            Ty::App(app) => Ty::App(App {
-                name: app.name,
-                args: app.args.into_iter().map(|ty| ty.simplify()).collect(),
-            }),
-
-            Ty::Tag(_) | Ty::Top | Ty::Bot | Ty::Var(_) => self,
-        }
-    }
-}
+mod simplify;
+mod ty;
 
 impl fmt::Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -279,7 +66,7 @@ impl Default for Options {
 #[derive(Debug)]
 pub struct Solver {
     options: Options,
-    variables: HashMap<usize, Variable>,
+    bounds: HashMap<Var, Bounds>,
     applicables: HashMap<Tag, (Ty, Vec<Ty>)>,
     cache: HashMap<(Ty, Ty), bool>,
     diagnostics: Vec<Diagnostic>,
@@ -292,8 +79,11 @@ pub struct Var {
 
 /// Constraints for a type variable.
 #[derive(Clone, Debug)]
-pub struct Variable {
+pub struct Bounds {
+    /// Lower bounds.
     pub lbs: Vec<Ty>,
+
+    /// Upper bounds.
     pub ubs: Vec<Ty>,
 }
 
@@ -301,7 +91,7 @@ impl Solver {
     pub fn new(options: Options) -> Self {
         Self {
             options,
-            variables: HashMap::new(),
+            bounds: HashMap::new(),
             applicables: HashMap::new(),
             cache: HashMap::new(),
             diagnostics: Vec::new(),
@@ -309,17 +99,18 @@ impl Solver {
     }
 
     pub fn fresh_var(&mut self) -> Var {
-        let index = self.variables.len();
+        let index = self.bounds.len();
+        let var = Var { index };
 
-        self.variables.insert(
-            index,
-            Variable {
+        self.bounds.insert(
+            var,
+            Bounds {
                 lbs: Vec::new(),
                 ubs: Vec::new(),
             },
         );
 
-        Var { index }
+        var
     }
 
     /// Add a type body and arguments of an applicable type.
@@ -332,8 +123,8 @@ impl Solver {
         self.applicables.get(tag).map(|(_, args)| args)
     }
 
-    pub fn var(&mut self, var: Var) -> &mut Variable {
-        self.variables.get_mut(&var.index).unwrap()
+    pub fn bounds(&mut self, var: Var) -> &mut Bounds {
+        self.bounds.get_mut(&var).unwrap()
     }
 
     pub fn finish(self) -> Result<(), Report> {
@@ -349,73 +140,35 @@ impl Solver {
     }
 
     fn inst(&mut self, map: &mut HashMap<Var, Var>, ty: &Ty) -> Ty {
-        match ty {
-            Ty::Var(var) => {
-                if let Some(&var) = map.get(var) {
+        ty.clone().map(|ty| {
+            if let Ty::Var(var) = ty {
+                if let Some(&var) = map.get(&var) {
                     return Ty::Var(var);
                 }
 
                 let new_var = self.fresh_var();
-                map.insert(*var, new_var);
+                map.insert(var, new_var);
 
-                let var = self.var(*var).clone();
+                let var = self.bounds(var).clone();
 
                 let lbs = var.lbs.iter().map(|ty| self.inst(map, ty)).collect();
                 let ubs = var.ubs.iter().map(|ty| self.inst(map, ty)).collect();
 
-                let var = self.var(new_var);
+                let var = self.bounds(new_var);
 
                 var.lbs = lbs;
                 var.ubs = ubs;
 
                 Ty::Var(new_var)
+            } else {
+                ty
             }
-
-            Ty::Union(t1, t2) => Ty::union(self.inst(map, t1), self.inst(map, t2)),
-            Ty::Inter(t1, t2) => Ty::inter(self.inst(map, t1), self.inst(map, t2)),
-            Ty::Neg(ty) => Ty::neg(self.inst(map, ty)),
-
-            Ty::Record(fields) => {
-                let fields = fields
-                    .iter()
-                    .map(|(f, ty)| (*f, self.inst(map, ty)))
-                    .collect();
-
-                Ty::Record(fields)
-            }
-
-            Ty::Tuple(tys) => {
-                let tys = tys.iter().map(|ty| self.inst(map, ty)).collect();
-
-                Ty::Tuple(tys)
-            }
-
-            Ty::Func(input, output) => {
-                let input = self.inst(map, input);
-                let output = self.inst(map, output);
-
-                Ty::func(input, output)
-            }
-
-            Ty::List(ty) => Ty::list(self.inst(map, ty)),
-            Ty::Ref(ty) => Ty::Ref(Box::new(self.inst(map, ty))),
-
-            Ty::App(app) => {
-                let args = app.args.iter().map(|ty| self.inst(map, ty)).collect();
-
-                Ty::App(App {
-                    name: app.name,
-                    args,
-                })
-            }
-
-            Ty::Top | Ty::Bot | Ty::Tag(_) => ty.clone(),
-        }
+        })
     }
 
     pub fn subty(&mut self, lhs: &Ty, rhs: &Ty, span: Span) {
-        let lhs = lhs.clone().simplify();
-        let rhs = rhs.clone().simplify();
+        let lhs = lhs.clone();
+        let rhs = rhs.clone();
 
         let key = (lhs.clone(), rhs.clone());
 
@@ -498,10 +251,10 @@ impl Solver {
                     .neg()
                     .to_ty();
 
-                    let bounds = self.var(var);
+                    let bounds = self.bounds(var);
                     bounds.ubs.push(dis.clone());
 
-                    let bounds = self.var(var);
+                    let bounds = self.bounds(var);
 
                     for lb in bounds.lbs.clone() {
                         self.subty(&lb, &dis, span);
@@ -521,10 +274,10 @@ impl Solver {
                     }
                     .to_ty();
 
-                    let bounds = self.var(var);
+                    let bounds = self.bounds(var);
                     bounds.lbs.push(dis.clone());
 
-                    let var = self.var(var);
+                    let var = self.bounds(var);
 
                     for ub in var.ubs.clone() {
                         self.subty(&dis, &ub, span);

@@ -100,7 +100,7 @@ impl Dnf {
         let mut conjs = self.0.iter().map(Conjunct::to_ty);
 
         match conjs.next() {
-            Some(conj) => conjs.fold(conj, Ty::union).simplify(),
+            Some(conj) => conjs.fold(conj, Ty::union),
             None => Ty::Bot,
         }
     }
@@ -132,7 +132,7 @@ impl Cnf {
     }
 
     pub fn to_ty(&self) -> Ty {
-        Ty::neg(self.clone().neg().to_ty()).simplify()
+        Ty::neg(self.clone().neg().to_ty())
     }
 }
 
@@ -162,7 +162,7 @@ impl Disjunct {
     }
 
     pub fn to_ty(&self) -> Ty {
-        Ty::neg(self.clone().neg().to_ty()).simplify()
+        Ty::neg(self.clone().neg().to_ty())
     }
 }
 
@@ -185,7 +185,6 @@ impl Conjunct {
         vars.chain(nvars)
             .chain(rnf)
             .fold(self.lnf.to_ty(), Ty::inter)
-            .simplify()
     }
 }
 
@@ -281,7 +280,6 @@ impl Lnf {
                     .map(Ty::Tag)
                     .chain(apps)
                     .fold(base, |l, r| Ty::inter(r, l))
-                    .simplify()
             }
         }
     }
@@ -386,7 +384,6 @@ impl Rnf {
                     .map(Ty::Tag)
                     .chain(apps)
                     .fold(base, Ty::union)
-                    .simplify()
             }
         }
     }
@@ -427,7 +424,7 @@ impl Solver {
                     conjuncts.push(c2);
                 }
 
-                self.simplify_dnf(Dnf(conjuncts))
+                self.simplify_dnf_strict(Dnf(conjuncts))
             }
 
             // (a | b | ..) & (c | d | ..) & .. => (a & c & ..) | (a & d & ..) | ..
@@ -444,14 +441,15 @@ impl Solver {
                     }
                 }
 
-                self.simplify_dnf(Dnf(conjuncts))
+                self.simplify_dnf_strict(Dnf(conjuncts))
             }
 
             Ty::Record(fields) => {
                 let mut dnfs = BTreeMap::new();
 
                 for (field, ty) in fields {
-                    dnfs.insert(*field, ty.clone());
+                    let ty = ty.clone();
+                    dnfs.insert(*field, ty);
                 }
 
                 Dnf::lnf(Lnf::Base {
@@ -502,7 +500,7 @@ impl Solver {
                     disjuncts.push(c2);
                 }
 
-                self.simplify_cnf(Cnf(disjuncts))
+                self.simplify_cnf_strict(Cnf(disjuncts))
             }
 
             // (a | b | ..) & (c | d | ..) & .. => (a & c & ..) | (a & d & ..) | ..
@@ -519,14 +517,15 @@ impl Solver {
                     }
                 }
 
-                self.simplify_cnf(Cnf(disjuncts))
+                self.simplify_cnf_strict(Cnf(disjuncts))
             }
 
             Ty::Record(fields) => {
                 let mut disjuncts = Vec::new();
 
                 for (field, ty) in fields {
-                    disjuncts.push(Disjunct::field(field, ty.clone()));
+                    let ty = ty.clone();
+                    disjuncts.push(Disjunct::field(field, ty));
                 }
 
                 Cnf(disjuncts)
@@ -593,8 +592,8 @@ impl Solver {
                     (LnfBase::None, base) | (base, LnfBase::None) => base,
 
                     (LnfBase::Func(i1, o1), LnfBase::Func(i2, o2)) => {
-                        let input = Ty::inter(i1.clone(), i2.clone()).simplify();
-                        let output = Ty::union(o1.clone(), o2.clone()).simplify();
+                        let input = Ty::inter(i1.clone(), i2.clone());
+                        let output = Ty::union(o1.clone(), o2.clone());
 
                         LnfBase::Func(input, output)
                     }
@@ -608,7 +607,7 @@ impl Solver {
 
                                 Entry::Occupied(mut entry) => {
                                     let t1 = entry.get_mut();
-                                    *t1 = Ty::inter(t1.clone(), t2.clone()).simplify();
+                                    *t1 = Ty::inter(t1.clone(), t2.clone());
                                 }
                             }
                         }
@@ -620,7 +619,7 @@ impl Solver {
                         let tys = t1
                             .into_iter()
                             .zip(t2)
-                            .map(|(t1, t2)| Ty::inter(t1, t2).simplify())
+                            .map(|(t1, t2)| Ty::inter(t1, t2))
                             .collect();
 
                         LnfBase::Tuple(tys)
@@ -660,15 +659,15 @@ impl Solver {
                     (RnfBase::None, base) | (base, RnfBase::None) => base,
 
                     (RnfBase::Func(i1, o1), RnfBase::Func(i2, o2)) => {
-                        let input = Ty::union(i1.clone(), i2.clone()).simplify();
-                        let output = Ty::inter(o1.clone(), o2.clone()).simplify();
+                        let input = Ty::union(i1.clone(), i2.clone());
+                        let output = Ty::inter(o1.clone(), o2.clone());
 
                         RnfBase::Func(input, output)
                     }
 
                     (RnfBase::Field(n1, t1), RnfBase::Field(n2, t2)) => {
                         if n1 == n2 {
-                            RnfBase::Field(n1, Ty::union(t1.clone(), t2.clone()).simplify())
+                            RnfBase::Field(n1, Ty::union(t1.clone(), t2.clone()))
                         } else {
                             RnfBase::None
                         }
@@ -678,7 +677,7 @@ impl Solver {
                         let tys = t1
                             .into_iter()
                             .zip(t2)
-                            .map(|(t1, t2)| Ty::union(t1, t2).simplify())
+                            .map(|(t1, t2)| Ty::union(t1, t2))
                             .collect();
 
                         RnfBase::Tuple(tys)
@@ -690,182 +689,5 @@ impl Solver {
                 Rnf::Base { tags, apps, base }
             }
         }
-    }
-
-    /// Check if 'lhs' is a subtype of 'rhs', that is `lhs <: rhs`.
-    pub(super) fn is_subty_of(&self, lhs: &Ty, rhs: &Ty) -> bool {
-        if lhs == rhs {
-            return true;
-        }
-
-        let key = (lhs.clone(), rhs.clone());
-
-        if *self.cache.get(&key).unwrap_or(&false) {
-            return true;
-        }
-
-        match (lhs, rhs) {
-            (_, Ty::Top) => true,
-            (Ty::Bot, _) => true,
-            (Ty::Top, _) => false,
-            (_, Ty::Bot) => false,
-
-            (Ty::Tag(lhs), Ty::Tag(rhs)) => lhs == rhs,
-
-            (lhs, Ty::Neg(rhs)) => {
-                let inter = Ty::inter(lhs.clone(), rhs.as_ref().clone());
-                self.is_subty_of(&inter, &Ty::Bot)
-            }
-
-            (Ty::Neg(lhs), rhs) => {
-                let union = Ty::union(lhs.as_ref().clone(), rhs.clone());
-                self.is_subty_of(&Ty::Top, &union)
-            }
-
-            (Ty::Union(t1, t2), rhs) => self.is_subty_of(t1, rhs) && self.is_subty_of(t2, rhs),
-            (Ty::Inter(t1, t2), rhs) => self.is_subty_of(t1, rhs) || self.is_subty_of(t2, rhs),
-
-            (lhs, Ty::Union(t1, t2)) => self.is_subty_of(lhs, t1) || self.is_subty_of(lhs, t2),
-            (lhs, Ty::Inter(t1, t2)) => self.is_subty_of(lhs, t1) && self.is_subty_of(lhs, t2),
-
-            (Ty::Record(lhs), Ty::Record(rhs)) => {
-                for (field, rhs) in rhs {
-                    match lhs.get(field) {
-                        Some(lhs) => {
-                            if !self.is_subty_of(lhs, rhs) {
-                                return false;
-                            }
-                        }
-
-                        None => return false,
-                    }
-                }
-
-                true
-            }
-
-            (Ty::Func(i1, o1), Ty::Func(i2, o2)) => {
-                self.is_subty_of(i2, i1) && self.is_subty_of(o1, o2)
-            }
-
-            (Ty::Tuple(lhs), Ty::Tuple(rhs)) if lhs.len() == rhs.len() => lhs
-                .iter()
-                .zip(rhs)
-                .all(|(lhs, rhs)| self.is_subty_of(lhs, rhs)),
-
-            (Ty::List(lhs), Ty::List(rhs)) => self.is_subty_of(lhs, rhs),
-
-            (Ty::Ref(lhs), Ty::Ref(rhs)) => {
-                self.is_subty_of(lhs, rhs) && self.is_subty_of(rhs, lhs)
-            }
-
-            (Ty::App(lhs), Ty::App(rhs)) => {
-                if lhs.name != rhs.name {
-                    return false;
-                }
-
-                if lhs.args.len() == rhs.args.len() {
-                    return false;
-                }
-
-                for (lhs, rhs) in lhs.args.iter().zip(&rhs.args) {
-                    if !self.is_subty_of(lhs, rhs) {
-                        return false;
-                    }
-                }
-
-                true
-            }
-
-            (Ty::App(app), rhs) => {
-                let lhs = self.expand(app);
-                self.is_subty_of(&lhs, rhs)
-            }
-
-            (lhs, Ty::App(app)) => {
-                let rhs = self.expand(app);
-                self.is_subty_of(lhs, &rhs)
-            }
-
-            (Ty::Var(lhs), rhs) => {
-                let bounds = self.variables.get(&lhs.index).unwrap();
-
-                for bound in bounds.ubs.iter() {
-                    if !self.is_subty_of(bound, rhs) {
-                        return false;
-                    }
-                }
-
-                true
-            }
-
-            (lhs, Ty::Var(rhs)) => {
-                let bounds = self.variables.get(&rhs.index).unwrap();
-
-                for bound in bounds.lbs.iter() {
-                    if !self.is_subty_of(lhs, bound) {
-                        return false;
-                    }
-                }
-
-                true
-            }
-
-            (Ty::Func(..), _) | (_, Ty::Func(..)) => false,
-            (Ty::Tuple(..), _) | (_, Ty::Tuple(..)) => false,
-            (Ty::List(..), _) | (_, Ty::List(..)) => false,
-            (Ty::Ref(..), _) | (_, Ty::Ref(..)) => false,
-            (Ty::Record(..), _) | (_, Ty::Record(..)) => false,
-        }
-    }
-
-    pub(super) fn simplify_dnf(&self, Dnf(conjuncts): Dnf) -> Dnf {
-        if !self.options.simplify_normal_forms {
-            return Dnf(conjuncts);
-        }
-
-        let mut new_conjuncts: Vec<Conjunct> = Vec::new();
-
-        'outer: for conj in conjuncts {
-            for new_conj in new_conjuncts.iter_mut() {
-                if self.is_subty_of(&conj.to_ty(), &new_conj.to_ty()) {
-                    continue 'outer;
-                }
-
-                if self.is_subty_of(&new_conj.to_ty(), &conj.to_ty()) {
-                    *new_conj = conj;
-                    continue 'outer;
-                }
-            }
-
-            new_conjuncts.push(conj);
-        }
-
-        Dnf(new_conjuncts)
-    }
-
-    pub(super) fn simplify_cnf(&self, Cnf(disjuncts): Cnf) -> Cnf {
-        if !self.options.simplify_normal_forms {
-            return Cnf(disjuncts);
-        }
-
-        let mut new_disjuncts: Vec<Disjunct> = Vec::new();
-
-        'outer: for disj in disjuncts {
-            for new_disj in new_disjuncts.iter_mut() {
-                if self.is_subty_of(&new_disj.to_ty(), &disj.to_ty()) {
-                    continue 'outer;
-                }
-
-                if self.is_subty_of(&disj.to_ty(), &new_disj.to_ty()) {
-                    *new_disj = disj;
-                    continue 'outer;
-                }
-            }
-
-            new_disjuncts.push(disj);
-        }
-
-        Cnf(new_disjuncts)
     }
 }
