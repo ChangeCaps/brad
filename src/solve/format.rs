@@ -66,9 +66,6 @@ impl Solver {
             let lb = self.simplify(&lb);
             let ub = self.simplify(&ub);
 
-            let lb = self.remove_duplicates(lb);
-            let ub = self.remove_duplicates(ub);
-
             let show_lb = lb != Ty::Bot && !self.is_equal(&lb, &Ty::Var(var));
             let show_ub = ub != Ty::Top && !self.is_equal(&ub, &Ty::Var(var));
 

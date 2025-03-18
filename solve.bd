@@ -28,7 +28,7 @@ fn map::with k v m {
   map (list::prepend <| k, v <| m)
 }
 
-fn map::get (k: 'k) (m: map<'k, 'v>) {
+fn map::get k m {
   match m
   | none            => none
   | _ as (k', v), m => {
@@ -43,15 +43,15 @@ fn mul x y {
 }
 
 fn main {
-  //list::empty
-  //|> list::prepend 1
-  //|> list::prepend 2
-  //|> list::prepend 3
-  //|> list::map (mul 2)
+  list::empty
+  |> list::prepend 1
+  |> list::prepend 2
+  |> list::prepend 3
+  |> list::map (mul 2)
 
-  //let b = map::empty
-  //|> map::with "a" 1
-  //|> map::with "b" 2
-  //|> map::with "c" 3
-  //|> map::get "b" 
+  let b = map::empty
+  |> map::with "a" 1
+  |> map::with "b" 2
+  |> map::with "c" 3
+  |> map::get "b" 
 }

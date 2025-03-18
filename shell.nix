@@ -8,6 +8,8 @@ pkgs.mkShell {
     pkgs.lld
     pkgs.clang-tools
     pkgs.clang
+    pkgs.valgrind
+    pkgs.libsForQt5.kcachegrind
 
     pkgs.lua
   ];

@@ -243,7 +243,6 @@ end\n\n",
         self.code.push_str(&func);
 
         // register the function as complete
-        println!("{}: {}", ast.name, self.solver.format_ty(&func_ty));
         self.funcs.insert(name, (func_ty, true));
 
         Ok(())
@@ -753,7 +752,7 @@ impl ExprCodegen<'_> {
         self.solver.subty(&value_ty, &target_ty, ast.span);
         self.stmts.push(format!("{} = {}", target, value));
 
-        Ok((String::from("nil"), Ty::Tag("none")))
+        Ok((String::from("make_none()"), Ty::Tag("none")))
     }
 
     fn ref_expr(&mut self, _ast: &ast::RefExpr) -> Result<(String, Ty), Diagnostic> {
@@ -905,13 +904,13 @@ impl ExprCodegen<'_> {
 
         self.binding(&ty, &ast.binding, &expr)?;
 
-        Ok((String::from("nil"), Ty::Tag("none")))
+        Ok((String::from("make_none()"), Ty::Tag("none")))
     }
 
     fn block_expr(&mut self, ast: &ast::BlockExpr) -> Result<(String, Ty), Diagnostic> {
         let scope = self.scope.len();
 
-        let mut code = String::from("nil");
+        let mut code = String::from("make_none()");
         let mut ty = Ty::Tag("none");
 
         for expr in &ast.exprs {
