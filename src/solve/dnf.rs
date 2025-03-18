@@ -424,7 +424,7 @@ impl Solver {
                     conjuncts.push(c2);
                 }
 
-                self.simplify_dnf_strict(Dnf(conjuncts))
+                Dnf(conjuncts)
             }
 
             // (a | b | ..) & (c | d | ..) & .. => (a & c & ..) | (a & d & ..) | ..
@@ -441,7 +441,7 @@ impl Solver {
                     }
                 }
 
-                self.simplify_dnf_strict(Dnf(conjuncts))
+                Dnf(conjuncts)
             }
 
             Ty::Record(fields) => {

@@ -167,9 +167,6 @@ impl Solver {
     }
 
     pub fn subty(&mut self, lhs: &Ty, rhs: &Ty, span: Span) {
-        let lhs = lhs.clone();
-        let rhs = rhs.clone();
-
         let key = (lhs.clone(), rhs.clone());
 
         if self.cache.contains_key(&key) {
@@ -178,7 +175,7 @@ impl Solver {
 
         self.cache.insert(key.clone(), false);
 
-        if let Err(err) = self.constrain(&lhs, &rhs, span) {
+        if let Err(err) = self.constrain(lhs, rhs, span) {
             self.diagnostics.push(err);
             self.cache.remove(&key);
         }
