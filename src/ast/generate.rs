@@ -13,11 +13,6 @@ use std::sync::LazyLock;
 #[allow(non_upper_case_globals)]
 const span: Span = Span::new(SourceId(0), 0, 0);
 
-static AST_BOOL: LazyLock<ast::Ty, fn() -> ast::Ty> = LazyLock::new(|| ast::Ty::Union {
-    tys: vec![ast::Ty::True(span), ast::Ty::False(span)],
-    span,
-});
-
 /// Only allocate the collection once.
 /// (name, weight, generator)
 type ExprGeneratorCollection = Vec<(
@@ -338,11 +333,14 @@ impl Generator {
         let len = self.rng.random_range(1..=10);
         let mut name = String::with_capacity(len);
 
-        for _ in 0..self.opts.max_bruteforce_attempts {
-            name.clear();
+        let charset_first = b"abcdefghijklmnopqrstuvwxyz";
+        let charset_full = b"abcdefghijklmnopqrstuvwxyz1234567890_--''";
 
-            for _ in 0..len {
-                name.push(self.rng.random_range(b'a'..=b'z') as char);
+        for _ in 0..self.opts.max_bruteforce_attempts {
+            name.push(*charset_first.choose(&mut self.rng).unwrap() as char);
+
+            for _ in 0..len - 1 {
+                name.push(*charset_full.choose(&mut self.rng).unwrap() as char);
             }
 
             // Is a keyword no bueno.
@@ -796,6 +794,14 @@ impl Generator {
                 body: arm_expr.unwrap(),
                 span,
             };
+
+            // Exact same type is already covered.
+            if arms.iter().any(|arm: &ast::MatchArm| {
+                let ast::Pattern::Ty { ty, .. } = &arm.pattern;
+                ty == &match_ty || self.tys.is_subtype_of(&match_ty, ty)
+            }) {
+                continue;
+            }
 
             arms.push(arm);
         }
