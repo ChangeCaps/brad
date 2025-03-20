@@ -403,7 +403,7 @@ impl Solver {
             Ty::Top => Dnf::lnf(Lnf::Top),
             Ty::Bot => Dnf::lnf(Lnf::bot()),
 
-            Ty::Tag(tag) => Dnf::lnf(Lnf::tag(tag)),
+            Ty::Tag(tag) => Dnf::lnf(Lnf::tag(*tag)),
 
             Ty::Neg(ty) => self.cnf(ty).neg(),
 
@@ -479,7 +479,7 @@ impl Solver {
             Ty::Top => Cnf::rnf(Rnf::top()),
             Ty::Bot => Cnf::rnf(Rnf::Bot),
 
-            Ty::Tag(tag) => Cnf::rnf(Rnf::tag(tag)),
+            Ty::Tag(tag) => Cnf::rnf(Rnf::tag(*tag)),
 
             Ty::Neg(ty) => self.dnf(ty).neg(),
 

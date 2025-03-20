@@ -30,7 +30,7 @@ pub fn generics(input: &mut Tokens) -> Result<ast::Generics, Diagnostic> {
     let end = input.expect(Token::Gt)?;
 
     Ok(ast::Generics {
-        generics,
+        params: generics,
         span: start.join(end),
     })
 }

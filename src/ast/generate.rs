@@ -714,7 +714,7 @@ impl BodyGenerator {
         if let Some(expr) = self.expr(ctx, ty) {
             Some(ast::Expr::Unary(ast::UnaryExpr {
                 op: *choices.choose(&mut ctx.rng).unwrap(),
-                expr: Box::new(expr),
+                target: Box::new(expr),
                 span,
             }))
         } else {
@@ -896,7 +896,7 @@ impl BodyGenerator {
 
             let arm = ast::MatchArm {
                 pattern,
-                expr: arm_expr.unwrap(),
+                body: arm_expr.unwrap(),
                 span,
             };
 

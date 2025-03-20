@@ -11,7 +11,7 @@ pub struct Generic {
 
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Generics {
-    pub generics: Vec<Generic>,
+    pub params: Vec<Generic>,
     pub span: Span,
 }
 

@@ -134,7 +134,7 @@ pub struct FieldExpr {
 #[derive(Clone, Debug)]
 pub struct UnaryExpr {
     pub op: UnaryOp,
-    pub expr: Box<Expr>,
+    pub target: Box<Expr>,
     pub span: Span,
 }
 
@@ -258,7 +258,7 @@ pub struct MatchExpr {
 #[derive(Clone, Debug)]
 pub struct MatchArm {
     pub pattern: Pattern,
-    pub expr: Expr,
+    pub body: Expr,
     pub span: Span,
 }
 

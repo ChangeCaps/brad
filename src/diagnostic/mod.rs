@@ -65,6 +65,16 @@ impl IntoIterator for Report {
     }
 }
 
+pub trait Reporter {
+    fn emit(&mut self, diagnostic: Diagnostic);
+}
+
+impl Reporter for Report {
+    fn emit(&mut self, diagnostic: Diagnostic) {
+        self.push(diagnostic);
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Severity {
     Error,

@@ -2,12 +2,30 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::Var;
 
-pub type Tag = &'static str;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Tag {
+    pub name: &'static str,
+    pub data: u64,
+}
+
+impl Tag {
+    pub const NONE: Self = Self::new("none", u64::MAX);
+    pub const TRUE: Self = Self::new("true", u64::MAX);
+    pub const FALSE: Self = Self::new("false", u64::MAX);
+    pub const INT: Self = Self::new("int", u64::MAX);
+    pub const FLOAT: Self = Self::new("float", u64::MAX);
+    pub const STR: Self = Self::new("str", u64::MAX);
+
+    pub const fn new(name: &'static str, data: u64) -> Self {
+        Tag { name, data }
+    }
+}
+
 pub type Field = &'static str;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct App {
-    pub name: Tag,
+    pub tag: Tag,
     pub args: Vec<Ty>,
 }
 
@@ -34,6 +52,13 @@ pub enum Ty {
 }
 
 impl Ty {
+    pub const NONE: Self = Ty::Tag(Tag::NONE);
+    pub const TRUE: Self = Ty::Tag(Tag::TRUE);
+    pub const FALSE: Self = Ty::Tag(Tag::FALSE);
+    pub const INT: Self = Ty::Tag(Tag::INT);
+    pub const FLOAT: Self = Ty::Tag(Tag::FLOAT);
+    pub const STR: Self = Ty::Tag(Tag::STR);
+
     pub fn union(lhs: Ty, rhs: Ty) -> Self {
         Ty::Union(Box::new(lhs), Box::new(rhs))
     }
@@ -66,8 +91,12 @@ impl Ty {
         Ty::Record(fields.into())
     }
 
-    pub fn app(name: Tag, args: Vec<Ty>) -> Self {
-        Ty::App(App { name, args })
+    pub fn app(tag: Tag, args: Vec<Ty>) -> Self {
+        Ty::App(App { tag, args })
+    }
+
+    pub fn tag(name: &'static str, data: u64) -> Self {
+        Ty::Tag(Tag::new(name, data))
     }
 
     pub fn subst(&self, map: &HashMap<Ty, Ty>) -> Self {
@@ -145,7 +174,7 @@ impl Ty {
             Ty::Ref(ty) => Ty::ref_(ty.map_impl(f)),
 
             Ty::App(app) => Ty::app(
-                app.name,
+                app.tag,
                 app.args.into_iter().map(|ty| ty.map_impl(f)).collect(),
             ),
 

@@ -1,6 +1,6 @@
 use crate::{
     ast,
-    diagnostic::{Diagnostic, Source, SourceId, Sources},
+    diagnostic::{Diagnostic, Report, Source, SourceId, Sources},
     hir,
     interpret::Interpreter,
     lower::Lowerer,
@@ -107,21 +107,25 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    pub fn lower(&mut self) -> Result<hir::Program, Diagnostic> {
-        let mut lowerer = Lowerer::new();
+    pub fn lower(&mut self) -> Result<hir::Program, Report> {
+        let mut report = Report::new();
+
+        let mut lowerer = crate::lower2::Lowerer::new(&mut report);
 
         for file in &mut self.files {
             lowerer.add_module(&file.path, file.ast.take().unwrap());
         }
 
-        lowerer.finish()
+        lowerer.finish().map_err(|_| report)?;
+
+        todo!()
     }
 
     pub fn mir(&self, hir: hir::Program) -> Result<mir::Program, Diagnostic> {
         mir::build(&hir)
     }
 
-    pub fn interpret(&mut self, entrypoint: &str) -> Result<(), Diagnostic> {
+    pub fn interpret(&mut self, entrypoint: &str) -> Result<(), Report> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;
@@ -133,7 +137,7 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    pub fn compile(&mut self, entrypoint: &str) -> Result<String, Diagnostic> {
+    pub fn compile(&mut self, entrypoint: &str) -> Result<String, Report> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;

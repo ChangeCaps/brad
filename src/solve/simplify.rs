@@ -122,10 +122,7 @@ impl Solver {
             Ty::App(app) => {
                 let args = app.args.iter().map(|arg| self.simplify(arg)).collect();
 
-                Ty::App(App {
-                    name: app.name,
-                    args,
-                })
+                Ty::App(App { tag: app.tag, args })
             }
 
             Ty::Tag(_) | Ty::Top | Ty::Bot | Ty::Var(_) => ty.clone(),
@@ -208,7 +205,7 @@ impl Solver {
             (Ty::Ref(lhs), Ty::Ref(rhs)) => self.is_subty(lhs, rhs) && self.is_subty(rhs, lhs),
 
             (Ty::App(lhs), Ty::App(rhs)) => {
-                if lhs.name != rhs.name {
+                if lhs.tag != rhs.tag {
                     return false;
                 }
 

@@ -105,7 +105,7 @@ fn match_arm(input: &mut Tokens) -> Result<ast::MatchArm, Diagnostic> {
 
     Ok(ast::MatchArm {
         pattern,
-        expr,
+        body: expr,
         span,
     })
 }
@@ -335,7 +335,7 @@ fn unary(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
 
         Ok(ast::Expr::Unary(ast::UnaryExpr {
             op,
-            expr: Box::new(expr),
+            target: Box::new(expr),
             span,
         }))
     } else {

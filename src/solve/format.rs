@@ -181,10 +181,7 @@ impl Solver {
                     .map(|arg| self.inline_vars(seen, arg, pol))
                     .collect();
 
-                Ty::App(App {
-                    name: app.name,
-                    args,
-                })
+                Ty::App(App { tag: app.tag, args })
             }
 
             Ty::Var(var) => {
@@ -260,7 +257,7 @@ impl Solver {
             }
 
             Ty::Tag(tag) => {
-                write!(w, "#{}", tag)?;
+                write!(w, "#{}", tag.name)?;
             }
 
             Ty::Record(fields) => {
@@ -311,7 +308,7 @@ impl Solver {
             }
 
             Ty::App(app) => {
-                write!(w, "{}", app.name)?;
+                write!(w, "{}", app.tag.name)?;
 
                 if !app.args.is_empty() {
                     write!(w, "<")?;

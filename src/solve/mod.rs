@@ -24,7 +24,7 @@ impl fmt::Display for Ty {
             Ty::Bot => write!(f, "⊥"),
             Ty::Var(idx) => write!(f, "'{}", idx.index),
 
-            Ty::Tag(tag) => write!(f, "{}", tag),
+            Ty::Tag(tag) => write!(f, "{}", tag.name),
 
             Ty::Record(fields) => {
                 let fields: Vec<_> = fields
@@ -44,7 +44,7 @@ impl fmt::Display for Ty {
             Ty::App(app) => {
                 let args: Vec<_> = app.args.iter().map(|ty| ty.to_string()).collect();
 
-                write!(f, "{}<{}>", app.name, args.join(", "))
+                write!(f, "{}<{}>", app.tag.name, args.join(", "))
             }
         }
     }
@@ -70,6 +70,12 @@ pub struct Solver {
     applicables: HashMap<Tag, (Ty, Vec<Ty>)>,
     cache: HashMap<(Ty, Ty), bool>,
     diagnostics: Vec<Diagnostic>,
+}
+
+impl Default for Solver {
+    fn default() -> Self {
+        Self::new(Default::default())
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -120,7 +126,7 @@ impl Solver {
 
     /// Get the arguments of an applicable type.
     pub fn applicable_args(&self, tag: Tag) -> Option<&Vec<Ty>> {
-        self.applicables.get(tag).map(|(_, args)| args)
+        self.applicables.get(&tag).map(|(_, args)| args)
     }
 
     pub fn bounds(&mut self, var: Var) -> &mut Bounds {
@@ -184,7 +190,7 @@ impl Solver {
     }
 
     fn expand(&self, app: &App) -> Ty {
-        let (body, args) = self.applicables.get(&app.name).unwrap();
+        let (body, args) = self.applicables.get(&app.tag).unwrap();
 
         if args.len() != app.args.len() {
             panic!(

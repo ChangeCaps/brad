@@ -172,7 +172,7 @@ impl<W: Write> Formatter<W> {
             }
             Expr::Unary(unary_expr) => {
                 write!(self.writer, "{}", unary_expr.op)?;
-                self.format_expr(&unary_expr.expr)
+                self.format_expr(&unary_expr.target)
             }
             Expr::Binary(binary_expr) => {
                 self.format_expr(&binary_expr.lhs)?;
@@ -213,7 +213,7 @@ impl<W: Write> Formatter<W> {
                     write!(self.writer, "| ")?;
                     self.format_pattern(&arm.pattern)?;
                     write!(self.writer, " => ")?;
-                    self.format_expr(&arm.expr)?;
+                    self.format_expr(&arm.body)?;
                 }
                 Ok(())
             }
@@ -356,7 +356,7 @@ impl<W: Write> Formatter<W> {
     fn format_generics(&mut self, generics: &Generics) -> Result {
         write!(self.writer, "<")?;
 
-        for (i, generic) in generics.generics.iter().enumerate() {
+        for (i, generic) in generics.params.iter().enumerate() {
             if i > 0 {
                 write!(self.writer, ", ")?;
             }

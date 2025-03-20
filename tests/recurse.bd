@@ -1,0 +1,20 @@
+fn main {
+  foo
+}
+
+fn foo {
+  bar
+}
+
+fn bar {
+  foo
+  baz
+}
+
+fn baz {
+  qux
+}
+
+fn qux {
+  baz
+}

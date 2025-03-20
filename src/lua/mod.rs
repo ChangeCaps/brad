@@ -7,7 +7,7 @@ use crate::{
     ast,
     diagnostic::{Diagnostic, Report},
     parse::Interner,
-    solve::{Options, Solver, Ty},
+    solve::{Options, Solver, Tag, Ty},
 };
 
 const LUA_PRELUDE: &str = include_str!("prelude.lua");
@@ -90,12 +90,12 @@ impl Codegen {
 
     fn codegen_ty(&mut self, ast: &ast::Type) -> Result<(), Diagnostic> {
         let name = self.interner.intern(&ast.name.to_string());
-        let tag = Ty::Tag(name);
+        let tag = Ty::tag(name, 0);
 
         let mut ctx = Vec::new();
 
         if let Some(generics) = &ast.generics {
-            for generic in &generics.generics {
+            for generic in &generics.params {
                 let ty = Ty::Var(self.solver.fresh_var());
                 ctx.push((generic.name, ty.clone()));
             }
@@ -141,7 +141,7 @@ end\n\n",
         };
 
         let args = ctx.iter().map(|(_, ty)| ty.clone()).collect();
-        self.solver.add_applicable(name, ty, args);
+        self.solver.add_applicable(Tag::new(name, 0), ty, args);
 
         Ok(())
     }
@@ -150,7 +150,7 @@ end\n\n",
         let mut ctx = Vec::new();
 
         if let Some(generics) = &ast.generics {
-            for generic in &generics.generics {
+            for generic in &generics.params {
                 let ty = Ty::Var(self.solver.fresh_var());
                 ctx.push((generic.name, ty.clone()));
             }
@@ -160,7 +160,7 @@ end\n\n",
 
         let args = ctx.iter().map(|(_, ty)| ty.clone()).collect();
         let name = self.interner.intern(&ast.name.to_string());
-        self.solver.add_applicable(name, ty.clone(), args);
+        (self.solver).add_applicable(Tag::new(name, 0), ty.clone(), args);
 
         Ok(())
     }
@@ -179,7 +179,7 @@ end\n\n",
 
         // resolve explicit generics
         if let Some(generics) = &ast.generics {
-            for generic in &generics.generics {
+            for generic in &generics.params {
                 let ty = Ty::Var(codegen.solver.fresh_var());
                 codegen.generics.push((generic.name, ty.clone()));
             }
@@ -251,12 +251,12 @@ end\n\n",
     fn lower_ty(&mut self, ctx: &mut dyn GenericContext, ty: &ast::Ty) -> Result<Ty, Diagnostic> {
         Ok(match ty {
             ast::Ty::Wild(_) => Ty::Var(self.solver.fresh_var()),
-            ast::Ty::Int(_) => Ty::Tag("int"),
-            ast::Ty::Float(_) => Ty::Tag("float"),
-            ast::Ty::Str(_) => Ty::Tag("str"),
-            ast::Ty::True(_) => Ty::Tag("true"),
-            ast::Ty::False(_) => Ty::Tag("false"),
-            ast::Ty::None(_) => Ty::Tag("none"),
+            ast::Ty::Int(_) => Ty::INT,
+            ast::Ty::Float(_) => Ty::FLOAT,
+            ast::Ty::Str(_) => Ty::STR,
+            ast::Ty::True(_) => Ty::TRUE,
+            ast::Ty::False(_) => Ty::FALSE,
+            ast::Ty::None(_) => Ty::NONE,
             ast::Ty::Never(_) => Ty::Bot,
             ast::Ty::Generic(generic) => ctx.generic(&mut self.solver, generic.name)?,
             ast::Ty::Path(path) => {
@@ -277,6 +277,8 @@ end\n\n",
                     return Err(diagnostic);
                 }
 
+                let tag = Tag::new(name, 0);
+
                 match path.spec {
                     Some(ref spec) => {
                         let mut tys = Vec::new();
@@ -286,17 +288,17 @@ end\n\n",
                             tys.push(ty);
                         }
 
-                        Ty::app(name, tys)
+                        Ty::app(tag, tys)
                     }
 
                     None => {
-                        let args = self.solver.applicable_args(name).unwrap();
+                        let args = self.solver.applicable_args(tag).unwrap();
 
                         let args = (0..args.len())
                             .map(|_| Ty::Var(self.solver.fresh_var()))
                             .collect();
 
-                        Ty::app(name, args)
+                        Ty::app(tag, args)
                     }
                 }
             }
@@ -480,19 +482,15 @@ impl ExprCodegen<'_> {
 
     fn literal_expr(&mut self, ast: &ast::Literal) -> Result<(String, Ty), Diagnostic> {
         Ok(match ast {
-            ast::Literal::Int { value, .. } => (format!("make_int({})", value), Ty::Tag("int")),
+            ast::Literal::Int { value, .. } => (format!("make_int({})", value), Ty::INT),
 
-            ast::Literal::Float { value, .. } => {
-                (format!("make_float({})", value), Ty::Tag("float"))
-            }
+            ast::Literal::Float { value, .. } => (format!("make_float({})", value), Ty::FLOAT),
 
-            ast::Literal::String { value, .. } => {
-                (format!("make_str('{}')", value), Ty::Tag("str"))
-            }
+            ast::Literal::String { value, .. } => (format!("make_str('{}')", value), Ty::STR),
 
-            ast::Literal::True { .. } => (String::from("make_true()"), Ty::Tag("true")),
-            ast::Literal::False { .. } => (String::from("make_false()"), Ty::Tag("false")),
-            ast::Literal::None { .. } => (String::from("make_none()"), Ty::Tag("none")),
+            ast::Literal::True { .. } => (String::from("make_true()"), Ty::TRUE),
+            ast::Literal::False { .. } => (String::from("make_false()"), Ty::FALSE),
+            ast::Literal::None { .. } => (String::from("make_none()"), Ty::NONE),
         })
     }
 
@@ -584,7 +582,7 @@ impl ExprCodegen<'_> {
         let list_ty = Ty::list(ty.clone());
 
         self.solver.subty(&target_ty, &list_ty, ast.span);
-        self.solver.subty(&index_ty, &Ty::Tag("int"), ast.span);
+        self.solver.subty(&index_ty, &Ty::INT, ast.span);
 
         let value = format!("{target}[{index}.value + 1]");
 
@@ -604,30 +602,30 @@ impl ExprCodegen<'_> {
     }
 
     fn unary_expr(&mut self, ast: &ast::UnaryExpr) -> Result<(String, Ty), Diagnostic> {
-        let (value, value_ty) = self.expr(&ast.expr)?;
+        let (value, value_ty) = self.expr(&ast.target)?;
 
         match ast.op {
             ast::UnaryOp::Neg => {
-                self.solver.subty(&value_ty, &Ty::Tag("int"), ast.span);
+                self.solver.subty(&value_ty, &Ty::INT, ast.span);
                 let value = format!("make_int(-{}.value)", value);
 
-                Ok((value, Ty::Tag("int")))
+                Ok((value, Ty::INT))
             }
 
             ast::UnaryOp::Not => {
-                self.solver.subty(&value_ty, &Ty::Tag("true"), ast.span);
-                self.solver.subty(&value_ty, &Ty::Tag("false"), ast.span);
+                self.solver.subty(&value_ty, &Ty::TRUE, ast.span);
+                self.solver.subty(&value_ty, &Ty::FALSE, ast.span);
 
                 let value = format!("make_bool(not has_type_tag({}, 'true'))", value);
 
-                Ok((value, Ty::union(Ty::Tag("true"), Ty::Tag("false"))))
+                Ok((value, Ty::union(Ty::TRUE, Ty::FALSE)))
             }
 
             ast::UnaryOp::BitNot => {
-                self.solver.subty(&value_ty, &Ty::Tag("int"), ast.span);
+                self.solver.subty(&value_ty, &Ty::INT, ast.span);
                 let value = format!("make_int(~{}.value)", value);
 
-                Ok((value, Ty::Tag("int")))
+                Ok((value, Ty::INT))
             }
 
             ast::UnaryOp::Deref => {
@@ -654,8 +652,8 @@ impl ExprCodegen<'_> {
             | ast::BinaryOp::BitXor
             | ast::BinaryOp::Shl
             | ast::BinaryOp::Shr => {
-                self.solver.subty(&lhs_ty, &Ty::Tag("int"), ast.span);
-                self.solver.subty(&rhs_ty, &Ty::Tag("int"), ast.span);
+                self.solver.subty(&lhs_ty, &Ty::INT, ast.span);
+                self.solver.subty(&rhs_ty, &Ty::INT, ast.span);
 
                 let op = match ast.op {
                     ast::BinaryOp::Add => "+",
@@ -673,7 +671,7 @@ impl ExprCodegen<'_> {
 
                 let value = format!("make_int({lhs}.value {op} {rhs}.value)");
 
-                Ok((value, Ty::Tag("int")))
+                Ok((value, Ty::INT))
             }
 
             ast::BinaryOp::Eq | ast::BinaryOp::Ne => {
@@ -686,14 +684,14 @@ impl ExprCodegen<'_> {
                     _ => unreachable!(),
                 };
 
-                let ty = Ty::union(Ty::Tag("true"), Ty::Tag("false"));
+                let ty = Ty::union(Ty::TRUE, Ty::FALSE);
                 let value = format!("make_bool({lhs} {op} {rhs})");
 
                 Ok((value, ty))
             }
 
             ast::BinaryOp::And | ast::BinaryOp::Or => {
-                let ty = Ty::union(Ty::Tag("true"), Ty::Tag("false"));
+                let ty = Ty::union(Ty::TRUE, Ty::FALSE);
 
                 self.solver.subty(&lhs_ty, &ty, ast.span);
                 self.solver.subty(&rhs_ty, &ty, ast.span);
@@ -713,8 +711,8 @@ impl ExprCodegen<'_> {
             }
 
             ast::BinaryOp::Lt | ast::BinaryOp::Le | ast::BinaryOp::Gt | ast::BinaryOp::Ge => {
-                self.solver.subty(&lhs_ty, &Ty::Tag("int"), ast.span);
-                self.solver.subty(&rhs_ty, &Ty::Tag("int"), ast.span);
+                self.solver.subty(&lhs_ty, &Ty::INT, ast.span);
+                self.solver.subty(&rhs_ty, &Ty::INT, ast.span);
 
                 let op = match ast.op {
                     ast::BinaryOp::Lt => "<",
@@ -724,7 +722,7 @@ impl ExprCodegen<'_> {
                     _ => unreachable!(),
                 };
 
-                let ty = Ty::union(Ty::Tag("true"), Ty::Tag("false"));
+                let ty = Ty::union(Ty::TRUE, Ty::FALSE);
                 let value = format!("make_bool({lhs}.value {op} {rhs}.value)");
 
                 Ok((value, ty))
@@ -752,7 +750,7 @@ impl ExprCodegen<'_> {
         self.solver.subty(&value_ty, &target_ty, ast.span);
         self.stmts.push(format!("{} = {}", target, value));
 
-        Ok((String::from("make_none()"), Ty::Tag("none")))
+        Ok((String::from("make_none()"), Ty::NONE))
     }
 
     fn ref_expr(&mut self, _ast: &ast::RefExpr) -> Result<(String, Ty), Diagnostic> {
@@ -810,7 +808,7 @@ impl ExprCodegen<'_> {
                         self.binding(&ty, binding, &trg)?;
                     }
 
-                    let (value, value_ty) = self.expr(&arm.expr)?;
+                    let (value, value_ty) = self.expr(&arm.body)?;
                     output = Ty::union(output, value_ty);
 
                     self.stmts.push(format!("{res} = {}", value));
@@ -841,7 +839,7 @@ impl ExprCodegen<'_> {
                 self.binding(&ty, binding, &trg)?;
             }
 
-            let (value, value_ty) = self.expr(&arm.expr)?;
+            let (value, value_ty) = self.expr(&arm.body)?;
             output = Ty::union(output, value_ty);
 
             self.stmts.push(format!("{res} = {value}"));
@@ -891,7 +889,7 @@ impl ExprCodegen<'_> {
 
         self.stmts.push("break".to_string());
 
-        Ok((String::from("nil"), Ty::Tag("none")))
+        Ok((String::from("nil"), Ty::NONE))
     }
 
     fn let_expr(&mut self, ast: &ast::LetExpr) -> Result<(String, Ty), Diagnostic> {
@@ -904,14 +902,14 @@ impl ExprCodegen<'_> {
 
         self.binding(&ty, &ast.binding, &expr)?;
 
-        Ok((String::from("make_none()"), Ty::Tag("none")))
+        Ok((String::from("make_none()"), Ty::NONE))
     }
 
     fn block_expr(&mut self, ast: &ast::BlockExpr) -> Result<(String, Ty), Diagnostic> {
         let scope = self.scope.len();
 
         let mut code = String::from("make_none()");
-        let mut ty = Ty::Tag("none");
+        let mut ty = Ty::NONE;
 
         for expr in &ast.exprs {
             self.stmts.push(format!("local _ = {}", code));

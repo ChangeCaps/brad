@@ -13,10 +13,12 @@ mod attribute;
 mod compiler;
 mod diagnostic;
 mod hir;
+mod hir2;
 mod interpret;
 mod lir;
 mod llvm_codegen;
 mod lower;
+mod lower2;
 mod lua;
 mod mir;
 mod parse;
@@ -112,8 +114,17 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
                     println!("{:#?}", ast);
                 }
                 Cmd::Lua(_) => {
+                    let mut report = diagnostic::Report::new();
+
                     let ast = parse::module(&mut tokens)?;
 
+                    let mut lowerer = lower2::Lowerer::new(&mut report);
+                    lowerer.add_module(&[], ast);
+                    let hir = lowerer.finish().map_err(|_| report)?;
+
+                    println!("{:#?}", hir);
+
+                    /*
                     let codegen = lua::Codegen::new();
                     let lua = codegen.finish(ast)?;
 
@@ -127,6 +138,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
                         .expect("failed to execute process");
 
                     println!("{}", String::from_utf8_lossy(&output.stdout));
+                    */
                 }
                 Cmd::Fmt {
                     command: FmtCmd::Ast(_),

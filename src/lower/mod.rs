@@ -218,7 +218,7 @@ impl Lowerer {
                     // to the context and lower the type without allowing new
                     // generics to be defined.
 
-                    for param in params.generics.iter() {
+                    for param in params.params.iter() {
                         let _ = (&mut generics).resolve_generic(param);
                     }
 
@@ -260,7 +260,7 @@ impl Lowerer {
 
                 // same story as with aliases
                 let ty = if let Some(ref params) = decl.generics {
-                    for param in params.generics.iter() {
+                    for param in params.params.iter() {
                         let _ = (&mut generics).resolve_generic(param);
                     }
 
@@ -304,7 +304,7 @@ impl Lowerer {
 
         let mut generics = hir::Generics::new();
         let generic_ctx: &mut dyn GenericContext = if let Some(ref params) = decl.generics {
-            for param in params.generics.iter() {
+            for param in params.params.iter() {
                 let _ = (&mut generics).resolve_generic(param);
             }
 

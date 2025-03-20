@@ -512,7 +512,7 @@ impl<'a> BodyLowerer<'a> {
         ast: ast::UnaryExpr,
         _ty: Option<hir::Ty>,
     ) -> Result<hir::Expr, Diagnostic> {
-        let expr = self.lower_expr(*ast.expr, None)?;
+        let expr = self.lower_expr(*ast.target, None)?;
 
         let op = match ast.op {
             ast::UnaryOp::Neg => hir::UnaryOp::Neg,
@@ -702,7 +702,7 @@ impl<'a> BodyLowerer<'a> {
                 }
             };
 
-            let expr = self.lower_expr(arm.expr, None)?;
+            let expr = self.lower_expr(arm.body, None)?;
 
             if !tys.contains(&expr.ty) {
                 tys.insert(expr.ty.clone());

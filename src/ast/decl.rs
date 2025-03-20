@@ -29,7 +29,7 @@ impl Func {
         self.generics
             .as_ref()
             .into_iter()
-            .flat_map(|g| g.generics.iter())
+            .flat_map(|g| g.params.iter())
     }
 }
 
@@ -54,7 +54,7 @@ impl Type {
         self.generics
             .as_ref()
             .into_iter()
-            .flat_map(|g| g.generics.iter())
+            .flat_map(|g| g.params.iter())
     }
 }
 
@@ -72,7 +72,7 @@ impl Alias {
         self.generics
             .as_ref()
             .into_iter()
-            .flat_map(|g| g.generics.iter())
+            .flat_map(|g| g.params.iter())
     }
 }
 
