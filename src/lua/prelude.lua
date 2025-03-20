@@ -10,49 +10,26 @@ local function deep_clone(value)
   end
 end
 
-local function make_true()
+local function make_tag(name)
   local value = {}
   setmetatable(value, {
-    __type_tags = { ['true'] = true },
-    __tostring = function() return 'true' end,
-    __eq = function(a, b) return true end,
+    __type_tags = { [name] = true },
+    __tostring = function() return name end,
+    __eq = function(_, _) return true end,
   })
-
-  return value
-end
-
-local function make_false()
-  local value = {}
-  setmetatable(value, {
-    __type_tags = { ['false'] = true },
-    __tostring = function() return 'false' end,
-    __eq = function(a, b) return true end,
-  })
-
-  return value
-end
-
-local function make_none()
-  local value = {}
-  setmetatable(value, {
-    __type_tags = { ['none'] = true },
-    __tostring = function() return 'none' end,
-    __eq = function(a, b) return true end,
-  })
-
   return value
 end
 
 local function make_bool(value)
   if value then
-    return make_true()
+    return make_tag('true')
   else
-    return make_false()
+    return make_tag('false')
   end
 end
 
 local function make_int(value)
-  local value = { value = value }
+  value = { value = value }
   setmetatable(value, {
     __type_tags = { ['int'] = true },
     __tostring = function() return tostring(value.value) end,
@@ -63,7 +40,7 @@ local function make_int(value)
 end
 
 local function make_float(value)
-  local value = { value = value }
+  value = { value = value }
   setmetatable(value, {
     __type_tags = { ['float'] = true },
     __tostring = function() return tostring(value.value) end,
@@ -74,10 +51,10 @@ local function make_float(value)
 end
 
 local function make_str(value)
-  local value = { value = value }
+  value = { value = value }
   setmetatable(value, {
     __type_tags = { ['str'] = true },
-    __tostring = function() return value.value end,
+    __tostring = function() return '"' .. value.value .. '"' end,
     __eq = function(a, b) return a.value == b.value end,
   })
 
@@ -154,12 +131,12 @@ local function make_list(...)
   return value
 end
 
-local function add_type_tag(value, tag)
+local function add_tag(tag, value)
   getmetatable(value).__type_tags[tag] = true
   return value
 end
 
-local function has_type_tag(value, tag)
+local function has_tag(tag, value)
   return type(value) == 'table' and getmetatable(value).__type_tags[tag] ~= nil
 end
 

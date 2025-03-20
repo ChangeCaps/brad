@@ -11,7 +11,7 @@ pub struct Local {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct LocalId(usize);
+pub struct LocalId(pub usize);
 
 #[derive(Clone, Debug, Default)]
 pub struct Locals {
@@ -21,6 +21,14 @@ pub struct Locals {
 impl Locals {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn len(&self) -> usize {
+        self.locals.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.locals.is_empty()
     }
 
     pub fn insert(&mut self, local: Local) -> LocalId {

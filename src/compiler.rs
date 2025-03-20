@@ -3,10 +3,14 @@ use crate::{
     diagnostic::{Diagnostic, Report, Reporter, Source, SourceId, Sources},
     hir, hir2,
     interpret::Interpreter,
-    lower, lower2, mir,
+    lower, lower2, lua, mir,
     parse::{self, Interner, Tokens},
 };
-use std::{fs, io, path::Path};
+use std::{
+    fs,
+    io::{self, Write},
+    path::Path,
+};
 
 pub struct Compiler<'a> {
     interner: Interner,
@@ -168,10 +172,14 @@ impl<'a> Compiler<'a> {
         lowerer.finish()
     }
 
-    pub fn lua(&mut self, reporter: &mut dyn Reporter) -> Result<String, ()> {
-        let _hir = self.lower2(reporter)?;
-
-        todo!()
+    pub fn lua(
+        &mut self,
+        reporter: &mut dyn Reporter,
+        writer: &mut impl Write,
+    ) -> Result<String, ()> {
+        let hir = self.lower2(reporter)?;
+        lua::codegen(writer, &hir).unwrap();
+        Ok(String::new())
     }
 
     pub fn mir(&self, hir: hir::Program) -> Result<mir::Program, Diagnostic> {

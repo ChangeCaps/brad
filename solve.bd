@@ -49,9 +49,8 @@ fn main {
   |> list::prepend 3
   |> list::map (mul 2)
 
-  let b = map::empty
-  |> map::with "a" 1
-  |> map::with "b" 2
-  |> map::with "c" 3
-  |> map::get "b" 
+  map::empty
+  |> map::with "foo" 1
+  |> map::with "bar" 2
+  |> map::with "baz" 3
 }

@@ -138,9 +138,9 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
             compiler.tokenize2(&mut rep).map_err(|_| rep.clone())?;
             compiler.parse2(&mut rep).map_err(|_| rep.clone())?;
 
-            let lua = compiler.lua(&mut rep).map_err(|_| rep)?;
+            let mut file = std::fs::File::create("out.lua").unwrap();
 
-            std::fs::write("out.lua", lua).unwrap();
+            compiler.lua(&mut rep, &mut file).unwrap();
 
             let output = std::process::Command::new("lua")
                 .arg("out.lua")
