@@ -1,9 +1,9 @@
 use crate::{
     ast,
-    diagnostic::{Diagnostic, Report, Source, SourceId, Sources},
-    hir,
+    diagnostic::{Diagnostic, Report, Reporter, Source, SourceId, Sources},
+    hir, hir2,
     interpret::Interpreter,
-    mir,
+    lower, lower2, mir,
     parse::{self, Interner, Tokens},
 };
 use std::{fs, io, path::Path};
@@ -96,6 +96,27 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
+    pub fn tokenize2(&mut self, reporter: &mut dyn Reporter) -> Result<(), ()> {
+        let mut is_error = false;
+
+        for file in &mut self.files {
+            let source = &self.sources[file.source];
+
+            match Tokens::tokenize(&mut self.interner, file.source, &source.content) {
+                Ok(tokens) => file.tokens = Some(tokens),
+                Err(diagnostic) => {
+                    reporter.emit(diagnostic);
+                    is_error = true;
+                }
+            }
+        }
+
+        match is_error {
+            true => Err(()),
+            false => Ok(()),
+        }
+    }
+
     pub fn parse(&mut self) -> Result<(), Diagnostic> {
         for file in &mut self.files {
             let tokens = &mut file.tokens.take().unwrap();
@@ -106,16 +127,49 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    pub fn lower(&mut self) -> Result<hir::Program, Report> {
-        let mut report = Report::new();
+    pub fn parse2(&mut self, reporter: &mut dyn Reporter) -> Result<(), ()> {
+        let mut is_error = false;
 
-        let mut lowerer = crate::lower2::Lowerer::new(&mut report);
+        for file in &mut self.files {
+            let tokens = &mut file.tokens.take().unwrap();
+
+            match parse::module(tokens) {
+                Ok(ast) => file.ast = Some(ast),
+                Err(diagnostic) => {
+                    reporter.emit(diagnostic);
+                    is_error = true;
+                }
+            }
+        }
+
+        match is_error {
+            true => Err(()),
+            false => Ok(()),
+        }
+    }
+
+    pub fn lower(&mut self) -> Result<hir::Program, Report> {
+        let mut lowerer = lower::Lowerer::new();
 
         for file in &mut self.files {
             lowerer.add_module(&file.path, file.ast.take().unwrap());
         }
 
-        lowerer.finish().map_err(|_| report)?;
+        lowerer.finish().map_err(Into::into)
+    }
+
+    pub fn lower2(&mut self, reporter: &mut dyn Reporter) -> Result<hir2::Program, ()> {
+        let mut lowerer = lower2::Lowerer::new(reporter, &mut self.interner);
+
+        for file in &mut self.files {
+            lowerer.add_module(&file.path, file.ast.take().unwrap());
+        }
+
+        lowerer.finish()
+    }
+
+    pub fn lua(&mut self, reporter: &mut dyn Reporter) -> Result<String, ()> {
+        let _hir = self.lower2(reporter)?;
 
         todo!()
     }

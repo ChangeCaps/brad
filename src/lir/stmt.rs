@@ -32,10 +32,11 @@ pub enum Stmt {
     /// return val is in local
     Break,
 
+    /*
     /// deep copy src into dst
     /// src = dst.clone()
-    // Copy { dst: Var, src: Var },
-
+    Copy { dst: Var, src: Var },
+    */
     /// dst[index].access = val
     WriteIndex {
         dst: Var,
@@ -106,11 +107,7 @@ impl From<(Local, Access, Tid)> for Var {
     fn from((local, access, tid): (Local, Access, Tid)) -> Self {
         Self {
             local,
-            access: {
-                let mut v = Vec::new();
-                v.push((access, tid));
-                v
-            },
+            access: vec![(access, tid)],
         }
     }
 }

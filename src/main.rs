@@ -55,7 +55,7 @@ pub struct ModuleArgs {
 pub enum Cmd {
     Lex(FileArgs),
     Ast(FileArgs),
-    Lua(FileArgs),
+    Lua(ModuleArgs),
     RandomAst(GeneratorOptions),
     Fmt {
         #[command(subcommand)]
@@ -90,7 +90,6 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
 
         Cmd::Lex(f)
         | Cmd::Ast(f)
-        | Cmd::Lua(f)
         | Cmd::Fmt {
             command: FmtCmd::Ast(f),
         } => {
@@ -113,33 +112,6 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
                     let ast = parse::module(&mut tokens)?;
                     println!("{:#?}", ast);
                 }
-                Cmd::Lua(_) => {
-                    let mut report = diagnostic::Report::new();
-
-                    let ast = parse::module(&mut tokens)?;
-
-                    /*
-                    let mut lowerer = lower2::Lowerer::new(&mut report);
-                    lowerer.add_module(&[], ast);
-                    let hir = lowerer.finish().map_err(|_| report)?;
-
-                    println!("{:#?}", hir);
-                    */
-
-                    let codegen = lua::Codegen::new();
-                    let lua = codegen.finish(ast)?;
-
-                    std::fs::write("out.lua", lua).unwrap();
-
-                    println!();
-
-                    let output = std::process::Command::new("lua")
-                        .arg("out.lua")
-                        .output()
-                        .expect("failed to execute process");
-
-                    println!("{}", String::from_utf8_lossy(&output.stdout));
-                }
                 Cmd::Fmt {
                     command: FmtCmd::Ast(_),
                 } => {
@@ -149,6 +121,33 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
                 }
                 _ => unreachable!(),
             };
+
+            Ok(())
+        }
+
+        Cmd::Lua(f) => {
+            let mut rep = diagnostic::Report::new();
+
+            let mut compiler = Compiler::new(sources);
+
+            for package in f.packages.iter() {
+                let name = Path::new(package).file_stem().unwrap().to_str().unwrap();
+                compiler.add_package(name, package).unwrap();
+            }
+
+            compiler.tokenize2(&mut rep).map_err(|_| rep.clone())?;
+            compiler.parse2(&mut rep).map_err(|_| rep.clone())?;
+
+            let lua = compiler.lua(&mut rep).map_err(|_| rep)?;
+
+            std::fs::write("out.lua", lua).unwrap();
+
+            let output = std::process::Command::new("lua")
+                .arg("out.lua")
+                .output()
+                .expect("failed to execute process");
+
+            print!("{}", String::from_utf8_lossy(&output.stdout));
 
             Ok(())
         }

@@ -119,7 +119,8 @@ impl Lowerer<'_> {
                         ref generics,
                         ..
                     }) => {
-                        let tag = self.make_tag(name.segments.last().unwrap());
+                        let tag_name = self.interner.intern(&name.to_string());
+                        let tag = self.make_tag(tag_name);
 
                         // compute the number of generics
                         let generics = generics.as_ref().map_or(0, |g| g.params.len());

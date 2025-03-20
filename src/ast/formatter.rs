@@ -145,7 +145,7 @@ impl<W: Write> Formatter<W> {
                 write!(self.writer, "}}")
             }
             Expr::Tuple(TupleExpr { items, .. }) => {
-                if items.len() > 0 {
+                if !items.is_empty() {
                     write!(self.writer, "(")?;
                 }
                 for (i, expr) in items.iter().enumerate() {
@@ -154,7 +154,7 @@ impl<W: Write> Formatter<W> {
                     }
                     self.format_expr(expr)?;
                 }
-                if items.len() > 0 {
+                if !items.is_empty() {
                     write!(self.writer, ")")?;
                 }
                 Ok(())

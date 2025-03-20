@@ -1,15 +1,16 @@
+type error<'a> = 'a
+
+type io::error = error<str>
+type fmt::error = error<str>
+
 fn main {
-    let x: str = bar "hello"
+    let e: fmt::error = foo
 }
 
 fn foo {
-    bar 1
+    let e = io::error (error "error")
+
+    match e
+    | error as e => e
 }
 
-fn bar x {
-    foo
-    baz
-    x
-}
-
-fn baz {}

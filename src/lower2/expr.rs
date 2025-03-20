@@ -646,8 +646,9 @@ impl ExprLowerer<'_, '_> {
                     };
 
                     let ty = solve::Ty::inter(self.ty(ty)?, solve::Ty::neg(input_ty.clone()));
-
                     input_ty = solve::Ty::union(input_ty, ty.clone());
+
+                    let ty = solve::Ty::inter(ty, target.ty.clone());
 
                     let scope_len = self.scope.len();
 

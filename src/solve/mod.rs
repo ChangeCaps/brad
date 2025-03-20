@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use crate::diagnostic::{Diagnostic, Report, Reporter, Span};
+use crate::diagnostic::{Diagnostic, Reporter, Span};
 
 pub use dnf::*;
 pub use ty::*;
@@ -452,6 +452,12 @@ impl Solver {
 
                     (LnfBase::Ref(lt), RnfBase::Ref(rt)) => {
                         self.subty(lt, rt, span);
+                        self.subty(rt, lt, span);
+                        continue;
+                    }
+
+                    (_, RnfBase::Ref(rt)) => {
+                        self.subty(&lnf.to_ty(), rt, span);
                         continue;
                     }
 

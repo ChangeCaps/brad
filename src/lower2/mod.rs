@@ -1,6 +1,8 @@
-use std::{collections::HashMap, mem};
+use std::collections::HashMap;
 
-use crate::{ast, attribute::Attributes, diagnostic::Reporter, hir2 as hir, solve};
+use crate::{
+    ast, attribute::Attributes, diagnostic::Reporter, hir2 as hir, parse::Interner, solve,
+};
 
 mod expr;
 mod import;
@@ -44,8 +46,9 @@ struct TypeInfo {
     ast: ast::Type,
 }
 
-pub struct Lowerer<'r> {
-    reporter: &'r mut dyn Reporter,
+pub struct Lowerer<'a> {
+    reporter: &'a mut dyn Reporter,
+    interner: &'a mut Interner,
 
     modules: Vec<(hir::ModuleId, ast::Module)>,
 
@@ -60,12 +63,13 @@ pub struct Lowerer<'r> {
 }
 
 impl<'a> Lowerer<'a> {
-    pub fn new(reporter: &'a mut dyn Reporter) -> Self {
+    pub fn new(reporter: &'a mut dyn Reporter, interner: &'a mut Interner) -> Self {
         let mut program = hir::Program::new();
         let root = program.modules.insert(hir::Module::new());
 
         Self {
             reporter,
+            interner,
 
             modules: Vec::new(),
 

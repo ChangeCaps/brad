@@ -11,7 +11,7 @@ pub use formatter::Formatter;
 pub use source::{Source, SourceId, Sources};
 pub use span::Span;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Report {
     diagnostics: Vec<Diagnostic>,
 }
@@ -92,7 +92,7 @@ impl fmt::Display for Severity {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Diagnostic {
     pub severity: Severity,
     pub code: Option<String>,
@@ -101,7 +101,7 @@ pub struct Diagnostic {
     pub notes: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Label {
     pub message: Option<String>,
     pub span: Span,
