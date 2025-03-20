@@ -55,6 +55,7 @@ pub struct ModuleArgs {
 pub enum Cmd {
     Lex(FileArgs),
     Ast(FileArgs),
+    Hir2(ModuleArgs),
     Lua(ModuleArgs),
     RandomAst {
         #[command(flatten)]
@@ -135,6 +136,24 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
                 }
                 _ => unreachable!(),
             };
+
+            Ok(())
+        }
+
+        Cmd::Hir2(f) => {
+            let mut rep = diagnostic::Report::new();
+
+            let mut compiler = Compiler::new(sources);
+
+            for package in f.packages.iter() {
+                let name = Path::new(package).file_stem().unwrap().to_str().unwrap();
+                compiler.add_package(name, package).unwrap();
+            }
+
+            compiler.tokenize2(&mut rep).map_err(|_| rep.clone())?;
+            compiler.parse2(&mut rep).map_err(|_| rep.clone())?;
+
+            let _ = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
 
             Ok(())
         }

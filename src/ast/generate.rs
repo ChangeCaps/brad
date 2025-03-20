@@ -296,12 +296,13 @@ impl Generator {
         }
 
         // Generate a set of types and type aliases
-        let n = self.rng.random_range(0..=self.opts.max_custom_tys);
-        for _ in 0..n {
-            let ty = self.ty();
-            let name = self.name(None);
-            self.named_types.push((name, ty.clone()));
-        }
+        // Not implemented correctly (instantiation)
+        // let n = self.rng.random_range(0..=self.opts.max_custom_tys);
+        // for _ in 0..n {
+        //     let ty = self.ty();
+        //     let name = self.name(None);
+        //     self.named_types.push((name, ty.clone()));
+        // }
 
         let n = self.rng.random_range(0..=self.opts.max_custom_tys);
         for _ in 0..n {
