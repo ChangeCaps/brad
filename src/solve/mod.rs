@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use crate::diagnostic::{Diagnostic, Report, Reporter, Span};
+use crate::diagnostic::{Diagnostic, Reporter, Span};
 
 pub use dnf::*;
 pub use ty::*;

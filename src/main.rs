@@ -81,8 +81,8 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
 
     match &args.command {
         Cmd::RandomAst(options) => {
-            let generator = ast::Generator::new();
-            let module = ast::Generator::generate(generator, options.clone());
+            let mut generator = ast::Generator::new(options.clone());
+            let module = generator.generate();
             let mut formatter = ast::Formatter::new(std::io::stdout());
             formatter.format_module(&module).unwrap();
             Ok(())
@@ -114,7 +114,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
                     println!("{:#?}", ast);
                 }
                 Cmd::Lua(_) => {
-                    let mut report = diagnostic::Report::new();
+                    let report = diagnostic::Report::new();
 
                     let ast = parse::module(&mut tokens)?;
 

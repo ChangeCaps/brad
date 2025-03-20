@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem};
+use std::collections::HashMap;
 
 use crate::{ast, attribute::Attributes, diagnostic::Reporter, hir2 as hir, solve};
 
