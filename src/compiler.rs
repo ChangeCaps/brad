@@ -3,7 +3,6 @@ use crate::{
     diagnostic::{Diagnostic, Report, Source, SourceId, Sources},
     hir,
     interpret::Interpreter,
-    lower::Lowerer,
     mir,
     parse::{self, Interner, Tokens},
 };
