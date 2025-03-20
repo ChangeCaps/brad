@@ -48,15 +48,15 @@ impl Lowerer<'_> {
                         for arg in &ast.args {
                             input.push(hir::Argument {
                                 binding: hir::Binding::Wild { span: arg.span },
-                                ty: solve::Ty::Var(self.solver.fresh_var()),
+                                ty: solve::Ty::Var(self.program.solver.fresh_var()),
                             });
                         }
 
-                        let output = solve::Ty::Var(self.solver.fresh_var());
+                        let output = solve::Ty::Var(self.program.solver.fresh_var());
 
                         let generics = ast
                             .generics()
-                            .map(|_| solve::Ty::Var(self.solver.fresh_var()))
+                            .map(|_| solve::Ty::Var(self.program.solver.fresh_var()))
                             .collect();
 
                         // create a body for the function

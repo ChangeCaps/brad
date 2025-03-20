@@ -75,9 +75,7 @@ impl Codegen {
             }
         }
 
-        if let Err(err) = self.solver.finish() {
-            report.extend(err);
-        }
+        let _ = self.solver.finish(&mut report);
 
         if !report.is_empty() {
             return Err(report);

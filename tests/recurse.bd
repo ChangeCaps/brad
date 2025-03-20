@@ -1,20 +1,15 @@
 fn main {
-  foo
+    let x: str = bar "hello"
 }
 
 fn foo {
-  bar
+    bar 1
 }
 
-fn bar {
-  foo
-  baz
+fn bar x {
+    foo
+    baz
+    x
 }
 
-fn baz {
-  qux
-}
-
-fn qux {
-  baz
-}
+fn baz {}

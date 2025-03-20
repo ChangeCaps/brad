@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    mem,
-};
+use std::{collections::HashMap, mem};
 
 use crate::{ast, attribute::Attributes, diagnostic::Reporter, hir2 as hir, solve};
 
@@ -20,6 +17,7 @@ struct FuncInfo {
     ast: ast::Func,
 }
 
+#[derive(Clone)]
 struct AliasInfo {
     /// The module that the alias is defined in.
     module: hir::ModuleId,
@@ -31,6 +29,7 @@ struct AliasInfo {
     ast: ast::Alias,
 }
 
+#[derive(Clone)]
 struct TypeInfo {
     /// The module that the type is defined in.
     module: hir::ModuleId,
@@ -53,8 +52,6 @@ pub struct Lowerer<'r> {
     program: hir::Program,
     root: hir::ModuleId,
 
-    solver: solve::Solver,
-
     funcs: HashMap<hir::BodyId, FuncInfo>,
     aliases: HashMap<solve::Tag, AliasInfo>,
     types: HashMap<solve::Tag, TypeInfo>,
@@ -74,8 +71,6 @@ impl<'a> Lowerer<'a> {
 
             program,
             root,
-
-            solver: solve::Solver::new(Default::default()),
 
             funcs: HashMap::new(),
             aliases: HashMap::new(),
@@ -100,16 +95,18 @@ impl<'a> Lowerer<'a> {
         self.lower_aliases()?;
         self.lower_functions()?;
 
+        self.program.solver.finish(self.reporter)?;
+
         Ok(self.program)
     }
 
     fn lower_types(&mut self) -> Result<(), ()> {
-        for (tag, info) in mem::take(&mut self.types) {
+        for (tag, info) in self.types.clone() {
             let mut generics = Vec::new();
 
             if let Some(ref ast_generics) = info.ast.generics {
                 for generic in &ast_generics.params {
-                    let ty = solve::Ty::Var(self.solver.fresh_var());
+                    let ty = solve::Ty::Var(self.program.solver.fresh_var());
                     generics.push((generic.name, ty));
                 }
             }
@@ -200,12 +197,12 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_aliases(&mut self) -> Result<(), ()> {
-        for (tag, info) in mem::take(&mut self.aliases) {
+        for (tag, info) in self.aliases.clone() {
             let mut generics = Vec::new();
 
             if let Some(ref ast_generics) = info.ast.generics {
                 for generic in &ast_generics.params {
-                    let ty = solve::Ty::Var(self.solver.fresh_var());
+                    let ty = solve::Ty::Var(self.program.solver.fresh_var());
                     generics.push((generic.name, ty));
                 }
             }
@@ -228,10 +225,6 @@ impl<'a> Lowerer<'a> {
             let info = self.funcs.remove(&body_id).unwrap();
 
             self.lower_function(&mut calls, body_id, info)?;
-        }
-
-        for (_, body) in self.program.bodies.iter() {
-            println!("{}: {}", body.name, self.solver.format_ty(&body.ty()));
         }
 
         Ok(())

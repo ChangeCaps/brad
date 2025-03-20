@@ -22,7 +22,7 @@ impl Lowerer<'_> {
                     return Err(());
                 }
 
-                solve::Ty::Var(self.solver.fresh_var())
+                solve::Ty::Var(self.program.solver.fresh_var())
             }
 
             ast::Ty::Int(_) => solve::Ty::INT,
@@ -53,7 +53,7 @@ impl Lowerer<'_> {
                     match generics.iter().find(|(name, _)| name == &generic.name) {
                         Some((_, ty)) => ty.clone(),
                         None => {
-                            let ty = solve::Ty::Var(self.solver.fresh_var());
+                            let ty = solve::Ty::Var(self.program.solver.fresh_var());
                             generics.push((generic.name, ty.clone()));
                             ty
                         }
@@ -85,7 +85,7 @@ impl Lowerer<'_> {
 
                 let Some(ref spec) = path.spec else {
                     let args = (0..arg_count)
-                        .map(|_| solve::Ty::Var(self.solver.fresh_var()))
+                        .map(|_| solve::Ty::Var(self.program.solver.fresh_var()))
                         .collect::<Vec<_>>();
 
                     return Ok(solve::Ty::app(tag, args));

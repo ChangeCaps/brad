@@ -41,7 +41,7 @@ pub enum ExprKind {
     Call(Box<Expr>, Box<Expr>),
     Assign(Box<Expr>, Box<Expr>),
     Ref(Box<Expr>),
-    Match(Box<Expr>, Vec<Arm>),
+    Match(Box<Expr>, MatchBody),
     Loop(Box<Expr>),
     Break(Option<Box<Expr>>),
     Let(Binding, Box<Expr>),
@@ -56,16 +56,22 @@ pub struct Init {
 }
 
 #[derive(Clone, Debug)]
+pub struct MatchBody {
+    pub arms: Vec<Arm>,
+    pub default: Option<Box<(Binding, Expr)>>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Arm {
     pub pattern: Pattern,
-    pub expr: Expr,
+    pub body: Expr,
     pub span: Span,
 }
 
 #[derive(Clone, Debug)]
 pub enum Pattern {
-    Ty {
-        ty: Ty,
+    Tag {
+        tag: Tag,
         binding: Binding,
         span: Span,
     },

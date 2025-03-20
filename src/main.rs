@@ -118,13 +118,14 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
 
                     let ast = parse::module(&mut tokens)?;
 
+                    /*
                     let mut lowerer = lower2::Lowerer::new(&mut report);
                     lowerer.add_module(&[], ast);
                     let hir = lowerer.finish().map_err(|_| report)?;
 
                     println!("{:#?}", hir);
+                    */
 
-                    /*
                     let codegen = lua::Codegen::new();
                     let lua = codegen.finish(ast)?;
 
@@ -138,7 +139,6 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
                         .expect("failed to execute process");
 
                     println!("{}", String::from_utf8_lossy(&output.stdout));
-                    */
                 }
                 Cmd::Fmt {
                     command: FmtCmd::Ast(_),

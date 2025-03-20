@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use crate::diagnostic::{Diagnostic, Report, Span};
+use crate::diagnostic::{Diagnostic, Report, Reporter, Span};
 
 pub use dnf::*;
 pub use ty::*;
@@ -133,12 +133,16 @@ impl Solver {
         self.bounds.get_mut(&var).unwrap()
     }
 
-    pub fn finish(self) -> Result<(), Report> {
-        if self.diagnostics.is_empty() {
-            Ok(())
-        } else {
-            Err(Report::from(self.diagnostics))
+    pub fn finish(&mut self, reporter: &mut dyn Reporter) -> Result<(), ()> {
+        if !self.diagnostics.is_empty() {
+            for diagnostic in self.diagnostics.drain(..) {
+                reporter.emit(diagnostic);
+            }
+
+            return Err(());
         }
+
+        Ok(())
     }
 
     pub fn instance(&mut self, ty: &Ty) -> Ty {
@@ -453,7 +457,7 @@ impl Solver {
 
                     (lb, rb) => {
                         let lkind = match lb {
-                            LnfBase::None => lnf.to_ty().to_string(),
+                            LnfBase::None => self.format_ty(&lnf.to_ty()),
                             LnfBase::Record(_) => String::from("record"),
                             LnfBase::Tuple(_) => String::from("tuple"),
                             LnfBase::Func(_, _) => String::from("function"),
@@ -462,7 +466,7 @@ impl Solver {
                         };
 
                         let rkind = match rb {
-                            RnfBase::None => rnf.to_ty().to_string(),
+                            RnfBase::None => self.format_ty(&rnf.to_ty()),
                             RnfBase::Field(_, _) => String::from("record"),
                             RnfBase::Func(_, _) => String::from("function"),
                             RnfBase::Tuple(_) => String::from("tuple"),
