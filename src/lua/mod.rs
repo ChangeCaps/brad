@@ -257,7 +257,8 @@ impl<W: Write> Codegen<'_, W> {
                 let target = self.expr(target)?;
                 let value = self.expr(value)?;
 
-                format!("{} = {}", target, value)
+                writeln!(self.code, "  {} = {}", target, value)?;
+                String::from("make_tag('none')")
             }
 
             hir::ExprKind::Ref(_) => todo!(),
@@ -321,7 +322,7 @@ impl<W: Write> Codegen<'_, W> {
 
                 self.loop_tmp = old_loop_tmp;
 
-                String::from("make_none()")
+                String::from("make_tag('none')")
             }
 
             hir::ExprKind::Break(ref value) => {
@@ -336,7 +337,7 @@ impl<W: Write> Codegen<'_, W> {
                     None => writeln!(self.code, "  break")?,
                 }
 
-                String::from("make_none()")
+                String::from("make_tag('none')")
             }
 
             hir::ExprKind::Let(ref binding, ref value) => {
@@ -357,7 +358,7 @@ impl<W: Write> Codegen<'_, W> {
                     output = Some(self.expr(expr)?);
                 }
 
-                output.unwrap_or(String::from("make_none()"))
+                output.unwrap_or(String::from("make_tag('none')"))
             }
         })
     }
