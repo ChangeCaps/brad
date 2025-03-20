@@ -10,67 +10,8 @@ use std::collections::BTreeMap;
 use std::mem::discriminant;
 use std::sync::LazyLock;
 
-fn is_subtype_of(a: &ast::Ty, b: &ast::Ty) -> bool {
-    if discriminant(a) != discriminant(b) {
-        return false;
-    }
-
-    match (a, b) {
-        (ast::Ty::Int(_), ast::Ty::Int(_))
-        | (ast::Ty::Float(_), ast::Ty::Float(_))
-        | (ast::Ty::Str(_), ast::Ty::Str(_))
-        | (ast::Ty::None(_), ast::Ty::None(_))
-        | (ast::Ty::True(_), ast::Ty::True(_))
-        | (ast::Ty::False(_), ast::Ty::False(_)) => true,
-        (ast::Ty::Union { tys: a, .. }, ast::Ty::Union { tys: b, .. }) => {
-            let mut a = a.clone();
-            let mut b = b.clone();
-
-            a.sort();
-            b.sort();
-
-            a.iter().zip(b.iter()).all(|(a, b)| is_subtype_of(a, b))
-        }
-        (ast::Ty::Tuple { tys: a, .. }, ast::Ty::Tuple { tys: b, .. }) => {
-            a.iter().zip(b.iter()).all(|(a, b)| is_subtype_of(a, b))
-        }
-        (ast::Ty::List { ty: a, .. }, ast::Ty::List { ty: b, .. }) => is_subtype_of(a, b),
-        (ast::Ty::Record { fields: a, .. }, ast::Ty::Record { fields: b, .. }) => {
-            let mut a = a.clone();
-            let mut b = b.clone();
-
-            a.sort();
-            b.sort();
-
-            a.iter()
-                .zip(b.iter())
-                .all(|(a, b)| is_subtype_of(&a.ty, &b.ty))
-        }
-        (ast::Ty::Ref { ty: a, .. }, ast::Ty::Ref { ty: b, .. }) => is_subtype_of(a, b),
-        (
-            ast::Ty::Func {
-                input: a,
-                output: b,
-                ..
-            },
-            ast::Ty::Func {
-                input: c,
-                output: d,
-                ..
-            },
-        ) => is_subtype_of(a, c) && is_subtype_of(b, d),
-        (any, ast::Ty::Union { tys, .. }) => tys.iter().any(|ty| is_subtype_of(any, ty)),
-        _ => false,
-    }
-}
-
 #[allow(non_upper_case_globals)]
 const span: Span = Span::new(SourceId(0), 0, 0);
-
-static AST_BOOL: LazyLock<ast::Ty, fn() -> ast::Ty> = LazyLock::new(|| ast::Ty::Union {
-    tys: vec![ast::Ty::True(span), ast::Ty::False(span)],
-    span,
-});
 
 /// Only allocate the collection once.
 /// (name, weight, generator)
@@ -163,17 +104,17 @@ pub struct GeneratorOptions {
     #[clap(long, default_value = "2")]
     pub max_match_arms: usize,
     #[clap(long, default_value = "3")]
-    pub max_union_tys: usize,
+    pub max_union_size: usize,
     #[clap(long, default_value = "3")]
-    pub max_record_fields: usize,
+    pub max_record_size: usize,
     #[clap(long, default_value = "3")]
-    pub max_tuple_tys: usize,
+    pub max_tuple_size: usize,
     #[clap(long, default_value = "3")]
-    pub max_custom_tys: usize,
+    pub max_tys_rounds: usize,
     #[clap(long, default_value = "1")]
     pub max_depth: usize,
     #[clap(long, default_value = "30")]
-    pub max_allowed_complexity: usize,
+    pub max_complexity: usize,
     #[clap(long, default_value = "100")]
     pub max_bruteforce_attempts: usize,
 }
@@ -192,12 +133,12 @@ impl Default for GeneratorOptions {
             min_exprs: 0,
             max_exprs: 50,
             max_match_arms: 2,
-            max_union_tys: 3,
-            max_record_fields: 3,
-            max_tuple_tys: 3,
-            max_custom_tys: 3,
+            max_union_size: 3,
+            max_record_size: 3,
+            max_tuple_size: 3,
+            max_tys_rounds: 3,
             max_depth: 1,
-            max_allowed_complexity: 30,
+            max_complexity: 30,
             max_bruteforce_attempts: 100,
         }
     }
@@ -208,10 +149,25 @@ pub struct Generator {
     rng: rand::rngs::ThreadRng,
     interner: Interner,
 
-    types: Vec<ast::Ty>,
-    named_types: Vec<(&'static str, ast::Ty)>,
-    alias_types: Vec<(&'static str, ast::Ty)>,
+    /// Types (Basic types, ADT's, aliases to ADT's, new types)
+    tys: Types,
     bodies: Vec<(&'static str, ast::Func)>,
+}
+
+struct GeneratorCtx {
+    name: &'static str,
+    depth: usize,
+    complexity: usize,
+    in_loop: bool,
+    locals: BTreeMap<&'static str, Vec<(usize, ast::Ty)>>,
+    computed_locals: BTreeMap<&'static str, ast::Ty>,
+}
+
+struct Types {
+    tys: Vec<ast::Ty>,
+    adts: Vec<ast::Ty>,
+    alias_tys: Vec<(&'static str, ast::Ty)>,
+    named_tys: Vec<(&'static str, ast::Ty)>,
 }
 
 impl Generator {
@@ -220,9 +176,7 @@ impl Generator {
             opts,
             rng: rand::rng(),
             interner: Interner::new(),
-            types: Vec::new(),
-            named_types: Vec::new(),
-            alias_types: Vec::new(),
+            tys: Types::new(),
             bodies: Vec::new(),
         }
     }
@@ -232,50 +186,52 @@ impl Generator {
     /// - Generate a set of random function declarations
     /// - Populate the function bodies with random expressions
     pub fn generate(&mut self) -> ast::Module {
-        // Generate a set of base types.
-        self.types.clear();
-        self.types.push(ast::Ty::Int(span));
-        self.types.push(ast::Ty::Str(span));
-        self.types.push(ast::Ty::None(span));
-        self.types.push(AST_BOOL.clone());
+        let mut decls = Vec::new();
 
+        // Generate a set of base types.
+        self.tys.reset();
+
+        self.tys.tys.push(ast::Ty::Int(span));
+        self.tys.tys.push(ast::Ty::Str(span));
+        self.tys.tys.push(ast::Ty::None(span));
+        self.tys.tys.push(ast::Ty::True(span));
+        self.tys.tys.push(ast::Ty::False(span));
+
+        // Optional base types (tags)
         if self.opts.enable_floats {
-            self.types.push(ast::Ty::Float(span));
+            self.tys.tys.push(ast::Ty::Float(span));
         }
 
         // Generate a set of custom types.
-        let n = self.rng.random_range(0..=self.opts.max_custom_tys);
-        for _ in 0..n {
-            let mut tys = (2..=self.opts.max_union_tys)
-                .map(|_| self.ty())
-                .collect::<Vec<_>>();
-
-            // Deduplicate the types
+        for _ in 0..self.rng.random_range(0..=self.opts.max_tys_rounds) {
+            // Generate a random union type.
+            let mut tys: Vec<_> = (2..=self.opts.max_union_size).map(|_| self.ty()).collect();
             tys.sort();
             tys.dedup();
 
             // Can be 1
             if tys.len() >= 2 {
-                self.types.push(ast::Ty::Union { tys, span });
+                self.tys.adts.push(ast::Ty::Union { tys, span });
             }
 
-            let tys = (2..=self.opts.max_tuple_tys)
-                .map(|_| self.ty())
-                .collect::<Vec<_>>();
+            // Generate a random tuple
+            let tys: Vec<_> = (2..=self.opts.max_tuple_size).map(|_| self.ty()).collect();
 
             assert!(tys.len() >= 2);
 
-            self.types.push(ast::Ty::Tuple { tys, span });
+            self.tys.adts.push(ast::Ty::Tuple { tys, span });
 
+            // Generate a random list
             if self.opts.enable_list_ty {
                 let ty = self.ty();
-                self.types.push(ast::Ty::List {
+                self.tys.adts.push(ast::Ty::List {
                     ty: Box::new(ty),
                     span,
                 });
             }
 
-            let fields = (0..self.opts.max_record_fields)
+            // Generate a random record
+            let fields = (0..self.opts.max_record_size)
                 .map(|_| ast::Field {
                     name: self.name(None),
                     ty: self.ty(),
@@ -283,27 +239,41 @@ impl Generator {
                 })
                 .collect::<Vec<_>>();
 
-            self.types.push(ast::Ty::Record { fields, span });
-        }
+            self.tys.adts.push(ast::Ty::Record { fields, span });
 
-        // Generate a set of types and type aliases
-        let n = self.rng.random_range(0..=self.opts.max_custom_tys);
-        for _ in 0..n {
+            // Generate a random alias
             let ty = self.ty();
             let name = self.name(None);
-            self.named_types.push((name, ty.clone()));
-        }
+            self.tys.alias_tys.push((name, ty.clone()));
+            decls.push(ast::Decl::Alias(ast::Alias {
+                attrs: Default::default(),
+                name: ast::Name {
+                    segments: vec![name],
+                    span,
+                },
+                generics: None,
+                ty: ty.clone(),
+                span,
+            }));
 
-        let n = self.rng.random_range(0..=self.opts.max_custom_tys);
-        for _ in 0..n {
+            // Generate a random named type
             let ty = self.ty();
             let name = self.name(None);
-            self.alias_types.push((name, ty.clone()));
+            self.tys.named_tys.push((name, ty.clone()));
+            decls.push(ast::Decl::Type(ast::Type {
+                attrs: Default::default(),
+                name: ast::Name {
+                    segments: vec![name],
+                    span,
+                },
+                generics: None,
+                ty: Some(ty),
+                span,
+            }));
         }
 
         // Generate a set of function bodies
-        let n = self.rng.random_range(1..=self.opts.max_functions);
-        for i in 0..n {
+        for i in 0..self.rng.random_range(1..=self.opts.max_functions) {
             let name = if i != 0 {
                 self.name(None)
             } else {
@@ -351,35 +321,6 @@ impl Generator {
             }
         }
 
-        let mut decls =
-            Vec::with_capacity(self.bodies.len() + self.named_types.len() + self.alias_types.len());
-
-        self.named_types.iter().for_each(|(name, ty)| {
-            decls.push(ast::Decl::Type(ast::Type {
-                attrs: Default::default(),
-                name: ast::Name {
-                    segments: vec![*name],
-                    span,
-                },
-                generics: None,
-                ty: Some(ty.clone()),
-                span,
-            }))
-        });
-
-        self.alias_types.iter().for_each(|(name, ty)| {
-            decls.push(ast::Decl::Alias(ast::Alias {
-                attrs: Default::default(),
-                name: ast::Name {
-                    segments: vec![*name],
-                    span,
-                },
-                generics: None,
-                ty: ty.clone(),
-                span,
-            }))
-        });
-
         self.bodies
             .iter()
             .for_each(|(_, body)| decls.push(ast::Decl::Func(body.clone())));
@@ -392,11 +333,14 @@ impl Generator {
         let len = self.rng.random_range(1..=10);
         let mut name = String::with_capacity(len);
 
-        for _ in 0..self.opts.max_bruteforce_attempts {
-            name.clear();
+        let charset_first = b"abcdefghijklmnopqrstuvwxyz";
+        let charset_full = b"abcdefghijklmnopqrstuvwxyz1234567890_--''";
 
-            for _ in 0..len {
-                name.push(self.rng.random_range(b'a'..=b'z') as char);
+        for _ in 0..self.opts.max_bruteforce_attempts {
+            name.push(*charset_first.choose(&mut self.rng).unwrap() as char);
+
+            for _ in 0..len - 1 {
+                name.push(*charset_full.choose(&mut self.rng).unwrap() as char);
             }
 
             // Is a keyword no bueno.
@@ -415,11 +359,11 @@ impl Generator {
             }
 
             // If it's a type name, no bueno.
-            if self.named_types.iter().any(|(n, _)| *n == name) {
+            if self.tys.named_tys.iter().any(|(n, _)| *n == name) {
                 continue;
             }
 
-            if self.alias_types.iter().any(|(n, _)| *n == name) {
+            if self.tys.alias_tys.iter().any(|(n, _)| *n == name) {
                 continue;
             }
 
@@ -429,23 +373,8 @@ impl Generator {
         unreachable!()
     }
 
-    /// Randomly selects a type.
     fn ty(&mut self) -> ast::Ty {
-        // Weight each of the 3 types by their length
-        let weights = [
-            self.types.len(),
-            self.named_types.len(),
-            self.alias_types.len(),
-        ];
-
-        let index = WeightedIndex::new(weights).unwrap().sample(&mut self.rng);
-
-        match index {
-            0 => self.types.choose(&mut self.rng).unwrap().clone(),
-            1 => self.named_types.choose(&mut self.rng).unwrap().1.clone(),
-            2 => self.alias_types.choose(&mut self.rng).unwrap().1.clone(),
-            _ => unreachable!(),
-        }
+        self.tys.random_any(&mut self.rng)
     }
 
     fn argument(&mut self, ctx: Option<&GeneratorCtx>, ty: &ast::Ty) -> ast::Argument {
@@ -485,7 +414,7 @@ impl Generator {
 
     // Potentially multi-line block.
     fn expr_multi(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
-        if ctx.complexity >= self.opts.max_allowed_complexity {
+        if ctx.complexity >= self.opts.max_complexity {
             return None;
         }
 
@@ -529,7 +458,7 @@ impl Generator {
 
     // Simple, non-block expression.
     fn expr(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
-        if ctx.complexity >= self.opts.max_allowed_complexity {
+        if ctx.complexity >= self.opts.max_complexity {
             return None;
         }
 
@@ -566,7 +495,7 @@ impl Generator {
             .filter(|(name, v)| {
                 *name != "main"
                     && *name != ctx.name
-                    && is_subtype_of(&v.output.clone().unwrap(), ty)
+                    && self.tys.is_subtype_of(&v.output.clone().unwrap(), ty)
             })
             .map(|(_, v)| v)
             .collect::<Vec<_>>();
@@ -682,7 +611,7 @@ impl Generator {
         let valid_locals = ctx
             .computed_locals
             .iter()
-            .filter(|(_, local_ty)| is_subtype_of(local_ty, ty))
+            .filter(|(_, local_ty)| self.tys.is_subtype_of(local_ty, ty))
             .map(|(name, _)| *name)
             .collect::<Vec<_>>();
 
@@ -755,6 +684,22 @@ impl Generator {
             ast::Ty::Union { tys, .. } => {
                 let ty = tys.choose(&mut self.rng).unwrap();
                 self.expr_value(ctx, ty)
+            }
+
+            ast::Ty::Path(p) => {
+                let (named, ty) = self.tys.resolve_path(p).unwrap();
+
+                let value = self.expr_value(ctx, &ty);
+
+                if named {
+                    ast::Expr::Call(ast::CallExpr {
+                        target: Box::new(ast::Expr::Path(p.clone())),
+                        input: Box::new(value),
+                        span,
+                    })
+                } else {
+                    value
+                }
             }
 
             _ => {
@@ -831,7 +776,7 @@ impl Generator {
     }
 
     fn expr_match(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
-        let match_ty = self.ty();
+        let match_ty = self.tys.random_tagged(&mut self.rng);
         let target = self.expr(ctx, &match_ty)?;
         let mut arms = Vec::with_capacity(self.opts.max_match_arms);
 
@@ -850,6 +795,14 @@ impl Generator {
                 span,
             };
 
+            // Exact same type is already covered.
+            if arms.iter().any(|arm: &ast::MatchArm| {
+                let ast::Pattern::Ty { ty, .. } = &arm.pattern;
+                ty == &match_ty || self.tys.is_subtype_of(&match_ty, ty)
+            }) {
+                continue;
+            }
+
             arms.push(arm);
         }
 
@@ -865,14 +818,172 @@ impl Generator {
     }
 }
 
-/// Generator context.
-pub struct GeneratorCtx {
-    name: &'static str,
-    depth: usize,
-    complexity: usize,
-    in_loop: bool,
-    locals: BTreeMap<&'static str, Vec<(usize, ast::Ty)>>,
-    computed_locals: BTreeMap<&'static str, ast::Ty>,
+impl Types {
+    fn new() -> Self {
+        Self {
+            tys: Vec::new(),
+            adts: Vec::new(),
+            alias_tys: Vec::new(),
+            named_tys: Vec::new(),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.tys.clear();
+        self.adts.clear();
+        self.alias_tys.clear();
+        self.named_tys.clear();
+    }
+
+    /// Return any random type
+    fn random_any(&self, rng: &mut rand::rngs::ThreadRng) -> ast::Ty {
+        let weights = [
+            self.tys.len(),
+            self.adts.len(),
+            self.alias_tys.len(),
+            self.named_tys.len(),
+        ];
+
+        let index = WeightedIndex::new(weights).unwrap().sample(rng);
+
+        match index {
+            0 => self.tys.choose(rng).unwrap().clone(),
+            1 => self.adts.choose(rng).unwrap().clone(),
+            2 => ast::Ty::Path(ast::Path {
+                segments: vec![ast::PathSegment {
+                    name: self.alias_tys.choose(rng).unwrap().0,
+                    span,
+                }],
+                spec: None,
+                span,
+            }),
+            3 => ast::Ty::Path(ast::Path {
+                segments: vec![ast::PathSegment {
+                    name: self.named_tys.choose(rng).unwrap().0,
+                    span,
+                }],
+                spec: None,
+                span,
+            }),
+            _ => unreachable!(),
+        }
+    }
+
+    /// Return a random *tagged* type.
+    fn random_tagged(&self, rng: &mut rand::rngs::ThreadRng) -> ast::Ty {
+        let weights = [self.tys.len(), self.named_tys.len()];
+
+        let index = WeightedIndex::new(weights).unwrap().sample(rng);
+
+        match index {
+            0 => self.tys.choose(rng).unwrap().clone(),
+            1 => ast::Ty::Path(ast::Path {
+                segments: vec![ast::PathSegment {
+                    name: self.named_tys.choose(rng).unwrap().0,
+                    span,
+                }],
+                spec: None,
+                span,
+            }),
+            _ => unreachable!(),
+        }
+    }
+
+    fn resolve_path(&self, path: &ast::Path) -> Option<(bool, ast::Ty)> {
+        match path.segments.as_slice() {
+            [segment] => {
+                if let Some(ty) = self
+                    .named_tys
+                    .iter()
+                    .find(|(name, _)| *name == segment.name)
+                {
+                    return Some((true, ty.1.clone()));
+                }
+
+                if let Some(ty) = self
+                    .alias_tys
+                    .iter()
+                    .find(|(name, _)| *name == segment.name)
+                {
+                    return Some((false, ty.1.clone()));
+                }
+
+                None
+            }
+            _ => None,
+        }
+    }
+
+    fn is_subtype_of(&self, a: &ast::Ty, b: &ast::Ty) -> bool {
+        if discriminant(a) != discriminant(b) {
+            return false;
+        }
+
+        match (a, b) {
+            (ast::Ty::Path(p), _) => {
+                if let Some((_, ty)) = self.resolve_path(p) {
+                    self.is_subtype_of(&ty, b)
+                } else {
+                    false
+                }
+            }
+            (_, ast::Ty::Path(p)) => {
+                if let Some((_, ty)) = self.resolve_path(p) {
+                    self.is_subtype_of(a, &ty)
+                } else {
+                    false
+                }
+            }
+            (ast::Ty::Int(_), ast::Ty::Int(_))
+            | (ast::Ty::Float(_), ast::Ty::Float(_))
+            | (ast::Ty::Str(_), ast::Ty::Str(_))
+            | (ast::Ty::None(_), ast::Ty::None(_))
+            | (ast::Ty::True(_), ast::Ty::True(_))
+            | (ast::Ty::False(_), ast::Ty::False(_)) => true,
+            (ast::Ty::Union { tys: a, .. }, ast::Ty::Union { tys: b, .. }) => {
+                let mut a = a.clone();
+                let mut b = b.clone();
+
+                a.sort();
+                b.sort();
+
+                a.iter()
+                    .zip(b.iter())
+                    .all(|(a, b)| self.is_subtype_of(a, b))
+            }
+            (ast::Ty::Tuple { tys: a, .. }, ast::Ty::Tuple { tys: b, .. }) => a
+                .iter()
+                .zip(b.iter())
+                .all(|(a, b)| self.is_subtype_of(a, b)),
+            (ast::Ty::List { ty: a, .. }, ast::Ty::List { ty: b, .. }) => self.is_subtype_of(a, b),
+            (ast::Ty::Record { fields: a, .. }, ast::Ty::Record { fields: b, .. }) => {
+                let mut a = a.clone();
+                let mut b = b.clone();
+
+                a.sort();
+                b.sort();
+
+                a.iter()
+                    .zip(b.iter())
+                    .all(|(a, b)| self.is_subtype_of(&a.ty, &b.ty))
+            }
+            (ast::Ty::Ref { ty: a, .. }, ast::Ty::Ref { ty: b, .. }) => self.is_subtype_of(a, b),
+            (
+                ast::Ty::Func {
+                    input: a,
+                    output: b,
+                    ..
+                },
+                ast::Ty::Func {
+                    input: c,
+                    output: d,
+                    ..
+                },
+            ) => self.is_subtype_of(a, c) && self.is_subtype_of(b, d),
+            (any, ast::Ty::Union { tys, .. }) => tys.iter().any(|ty| self.is_subtype_of(any, ty)),
+            _ => false,
+        }
+    }
 }
 
 impl GeneratorCtx {
