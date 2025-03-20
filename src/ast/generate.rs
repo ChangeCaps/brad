@@ -214,6 +214,15 @@ pub struct Generator {
     bodies: Vec<(&'static str, ast::Func)>,
 }
 
+struct GeneratorCtx {
+    name: &'static str,
+    depth: usize,
+    complexity: usize,
+    in_loop: bool,
+    locals: BTreeMap<&'static str, Vec<(usize, ast::Ty)>>,
+    computed_locals: BTreeMap<&'static str, ast::Ty>,
+}
+
 impl Generator {
     pub fn new(opts: GeneratorOptions) -> Self {
         Self {
@@ -431,7 +440,7 @@ impl Generator {
 
     /// Randomly selects a type.
     fn ty(&mut self) -> ast::Ty {
-        // Weight each of the 3 types by their length
+        // Weigh each of the 3 types by their length (normal distribution).
         let weights = [
             self.types.len(),
             self.named_types.len(),
@@ -863,16 +872,6 @@ impl Generator {
             None
         }
     }
-}
-
-/// Generator context.
-pub struct GeneratorCtx {
-    name: &'static str,
-    depth: usize,
-    complexity: usize,
-    in_loop: bool,
-    locals: BTreeMap<&'static str, Vec<(usize, ast::Ty)>>,
-    computed_locals: BTreeMap<&'static str, ast::Ty>,
 }
 
 impl GeneratorCtx {

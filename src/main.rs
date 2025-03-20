@@ -56,7 +56,12 @@ pub enum Cmd {
     Lex(FileArgs),
     Ast(FileArgs),
     Lua(ModuleArgs),
-    RandomAst(GeneratorOptions),
+    RandomAst {
+        #[command(flatten)]
+        options: GeneratorOptions,
+        #[command(flatten)]
+        formatter_options: ast::FormatterOptions,
+    },
     Fmt {
         #[command(subcommand)]
         command: FmtCmd,
@@ -70,7 +75,12 @@ pub enum Cmd {
 
 #[derive(Subcommand)]
 pub enum FmtCmd {
-    Ast(FileArgs),
+    Ast {
+        #[command(flatten)]
+        file: FileArgs,
+        #[command(flatten)]
+        options: ast::FormatterOptions,
+    },
     // Hir(FileArgs),
     Mir(ModuleArgs),
     // Lir(FileArgs),
@@ -80,10 +90,13 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
     let args = Cli::parse();
 
     match &args.command {
-        Cmd::RandomAst(options) => {
+        Cmd::RandomAst {
+            options,
+            formatter_options,
+        } => {
             let mut generator = ast::Generator::new(options.clone());
             let module = generator.generate();
-            let mut formatter = ast::Formatter::new(std::io::stdout());
+            let mut formatter = ast::Formatter::new(std::io::stdout(), formatter_options.clone());
             formatter.format_module(&module).unwrap();
             Ok(())
         }
@@ -91,7 +104,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
         Cmd::Lex(f)
         | Cmd::Ast(f)
         | Cmd::Fmt {
-            command: FmtCmd::Ast(f),
+            command: FmtCmd::Ast { file: f, .. },
         } => {
             let mut interner = Interner::new();
             let content = std::fs::read_to_string(f.file.clone()).unwrap();
@@ -113,10 +126,11 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
                     println!("{:#?}", ast);
                 }
                 Cmd::Fmt {
-                    command: FmtCmd::Ast(_),
+                    command: FmtCmd::Ast { .. },
                 } => {
                     let ast = parse::module(&mut tokens)?;
-                    let mut formatter = ast::Formatter::new(std::io::stdout());
+                    let mut formatter =
+                        ast::Formatter::new(std::io::stdout(), ast::FormatterOptions::default());
                     formatter.format_module(&ast).unwrap();
                 }
                 _ => unreachable!(),

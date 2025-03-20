@@ -1,4 +1,5 @@
 use crate::ast::{Binding, CallExpr, Decl, Expr, Func, Generics, Module, Pattern, TupleExpr, Ty};
+use clap::Args;
 use std::{io, io::Write};
 
 const INDENT_SIZE: usize = 4;
@@ -7,16 +8,24 @@ pub struct Formatter<W: Write> {
     indent: usize,
     call_depth: usize,
     writer: W,
+    opts: FormatterOptions,
 }
 
 type Result = io::Result<()>;
 
+#[derive(Args, Default, Clone)]
+pub struct FormatterOptions {
+    #[arg(short, long, default_value = "false")]
+    exclude_types: bool,
+}
+
 impl<W: Write> Formatter<W> {
-    pub fn new(writer: W) -> Self {
+    pub fn new(writer: W, opts: FormatterOptions) -> Self {
         Formatter {
             indent: 0,
             call_depth: 0,
             writer,
+            opts,
         }
     }
 
@@ -63,22 +72,24 @@ impl<W: Write> Formatter<W> {
                 }
 
                 for arg in &func_decl.args {
-                    match &arg.ty {
-                        Some(ty) => {
+                    match (&arg.ty, self.opts.exclude_types) {
+                        (Some(ty), false) => {
                             write!(self.writer, " (")?;
                             self.format_binding(&arg.binding)?;
                             write!(self.writer, ": ")?;
                             self.format_ty(ty)?;
                             write!(self.writer, ")")?
                         }
-                        None => self.format_binding(&arg.binding)?,
+                        _ => self.format_binding(&arg.binding)?,
                     };
                 }
 
-                if let Some(ty) = &func_decl.output {
-                    write!(self.writer, " -> ")?;
-                    self.format_ty(ty)?;
-                };
+                if !self.opts.exclude_types {
+                    if let Some(ty) = &func_decl.output {
+                        write!(self.writer, " -> ")?;
+                        self.format_ty(ty)?;
+                    };
+                }
 
                 if let Func {
                     body: Some(body),
@@ -233,6 +244,14 @@ impl<W: Write> Formatter<W> {
             Expr::Let(let_expr) => {
                 write!(self.writer, "let ")?;
                 self.format_binding(&let_expr.binding)?;
+
+                if !self.opts.exclude_types {
+                    if let Some(ty) = &let_expr.ty {
+                        write!(self.writer, ": ")?;
+                        self.format_ty(ty)?;
+                    }
+                }
+
                 write!(self.writer, " = ")?;
                 self.format_expr(&let_expr.value)
             }
