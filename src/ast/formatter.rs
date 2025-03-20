@@ -103,7 +103,7 @@ impl<W: Write> Formatter<W> {
                     self.format_ty(ty)?;
                 }
 
-                Ok(())
+                writeln!(self.writer)
             }
             Decl::Alias(alias_decl) => {
                 write!(self.writer, "alias {}", alias_decl.name)?;

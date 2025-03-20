@@ -6,10 +6,8 @@ use rand::distr::weighted::WeightedIndex;
 use rand::distr::Distribution;
 use rand::prelude::IndexedRandom;
 use rand::Rng;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::mem::discriminant;
-use std::rc::Rc;
 use std::sync::LazyLock;
 
 fn is_subtype_of(a: &ast::Ty, b: &ast::Ty) -> bool {
@@ -79,7 +77,7 @@ static AST_BOOL: LazyLock<ast::Ty, fn() -> ast::Ty> = LazyLock::new(|| ast::Ty::
 type ExprGeneratorCollection = Vec<(
     &'static str,
     usize,
-    Box<dyn Fn(&BodyGenerator, &mut GeneratorCtx, &ast::Ty) -> Option<ast::Expr> + Send + Sync>,
+    Box<dyn Fn(&mut Generator, &mut GeneratorCtx, &ast::Ty) -> Option<ast::Expr> + Send + Sync>,
 )>;
 
 static EXPR_MULTI_COLLECTION: LazyLock<ExprGeneratorCollection, fn() -> ExprGeneratorCollection> =
@@ -142,8 +140,6 @@ static EXPR_SINGLE_COLLECTION: LazyLock<ExprGeneratorCollection, fn() -> ExprGen
 
 #[derive(Args, Debug, Clone)]
 pub struct GeneratorOptions {
-    #[clap(long, default_value = "100")]
-    pub functions: usize,
     #[clap(long, default_value = "false")]
     pub enable_match: bool,
     #[clap(long, default_value = "false")]
@@ -156,6 +152,8 @@ pub struct GeneratorOptions {
     pub enable_unary: bool,
     #[clap(long, default_value = "false")]
     pub enable_floats: bool,
+    #[clap(long, default_value = "10")]
+    pub max_functions: usize,
     #[clap(long, default_value = "3")]
     pub max_function_args: usize,
     #[clap(long, default_value = "0")]
@@ -183,13 +181,13 @@ pub struct GeneratorOptions {
 impl Default for GeneratorOptions {
     fn default() -> Self {
         Self {
-            functions: 100,
             enable_match: true,
             enable_loop: true,
             enable_ref_ty: true,
             enable_list_ty: false,
             enable_unary: true,
             enable_floats: true,
+            max_functions: 1,
             max_function_args: 3,
             min_exprs: 0,
             max_exprs: 50,
@@ -205,80 +203,196 @@ impl Default for GeneratorOptions {
     }
 }
 
-pub struct GeneratorCtx {
+pub struct Generator {
+    opts: GeneratorOptions,
     rng: rand::rngs::ThreadRng,
-    depth: usize,
-    complexity: usize,
-    in_loop: bool,
-    locals_history: BTreeMap<&'static str, Vec<(usize, ast::Ty)>>,
-    locals: BTreeMap<&'static str, ast::Ty>,
-    options: GeneratorOptions,
+    interner: Interner,
+
+    types: Vec<ast::Ty>,
+    named_types: Vec<(&'static str, ast::Ty)>,
+    alias_types: Vec<(&'static str, ast::Ty)>,
+    bodies: Vec<(&'static str, ast::Func)>,
 }
 
-impl GeneratorCtx {
-    pub fn new(rng: rand::rngs::ThreadRng, options: GeneratorOptions) -> Self {
+impl Generator {
+    pub fn new(opts: GeneratorOptions) -> Self {
         Self {
-            rng,
-            depth: 0,
-            complexity: 0,
-            in_loop: false,
-            locals_history: BTreeMap::new(),
-            locals: BTreeMap::new(),
-            options,
+            opts,
+            rng: rand::rng(),
+            interner: Interner::new(),
+            types: Vec::new(),
+            named_types: Vec::new(),
+            alias_types: Vec::new(),
+            bodies: Vec::new(),
         }
     }
 
-    pub fn with_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-        self.depth += 1;
-        let ret: T = f(self);
-        self.depth -= 1;
-        // Recompute the locals and remove history from depth that is no longer valid.
-        self.locals.clear();
-        for (name, history) in self.locals_history.iter_mut() {
-            history.retain(|(d, _)| *d <= self.depth);
-            if let Some((_, ty)) = history.last() {
-                self.locals.insert(*name, ty.clone());
+    /// Generate a random module with a main function with somewhat correct types.
+    /// - Generate a set of random types
+    /// - Generate a set of random function declarations
+    /// - Populate the function bodies with random expressions
+    pub fn generate(&mut self) -> ast::Module {
+        // Generate a set of base types.
+        self.types.clear();
+        self.types.push(ast::Ty::Int(span));
+        self.types.push(ast::Ty::Str(span));
+        self.types.push(ast::Ty::None(span));
+        self.types.push(AST_BOOL.clone());
+
+        if self.opts.enable_floats {
+            self.types.push(ast::Ty::Float(span));
+        }
+
+        // Generate a set of custom types.
+        let n = self.rng.random_range(0..=self.opts.max_custom_tys);
+        for _ in 0..n {
+            let mut tys = (2..=self.opts.max_union_tys)
+                .map(|_| self.ty())
+                .collect::<Vec<_>>();
+
+            // Deduplicate the types
+            tys.sort();
+            tys.dedup();
+
+            // Can be 1
+            if tys.len() >= 2 {
+                self.types.push(ast::Ty::Union { tys, span });
+            }
+
+            let tys = (2..=self.opts.max_tuple_tys)
+                .map(|_| self.ty())
+                .collect::<Vec<_>>();
+
+            assert!(tys.len() >= 2);
+
+            self.types.push(ast::Ty::Tuple { tys, span });
+
+            if self.opts.enable_list_ty {
+                let ty = self.ty();
+                self.types.push(ast::Ty::List {
+                    ty: Box::new(ty),
+                    span,
+                });
+            }
+
+            let fields = (0..self.opts.max_record_fields)
+                .map(|_| ast::Field {
+                    name: self.name(None),
+                    ty: self.ty(),
+                    span,
+                })
+                .collect::<Vec<_>>();
+
+            self.types.push(ast::Ty::Record { fields, span });
+        }
+
+        // Generate a set of types and type aliases
+        let n = self.rng.random_range(0..=self.opts.max_custom_tys);
+        for _ in 0..n {
+            let ty = self.ty();
+            let name = self.name(None);
+            self.named_types.push((name, ty.clone()));
+        }
+
+        let n = self.rng.random_range(0..=self.opts.max_custom_tys);
+        for _ in 0..n {
+            let ty = self.ty();
+            let name = self.name(None);
+            self.alias_types.push((name, ty.clone()));
+        }
+
+        // Generate a set of function bodies
+        let n = self.rng.random_range(1..=self.opts.max_functions);
+        for i in 0..n {
+            let name = if i != 0 {
+                self.name(None)
+            } else {
+                self.interner.intern("main")
+            };
+
+            // Do not create duplicate function names.
+            if self.bodies.iter().any(|(n, _)| *n == name) {
+                continue;
+            }
+
+            let ret_ty = self.ty();
+
+            let args_count = self.rng.random_range(0..=self.opts.max_function_args);
+            let args = (0..args_count)
+                .map(|_| self.argument(None, &ret_ty))
+                .collect();
+
+            let body = ast::Func {
+                attrs: Default::default(),
+                is_extern: false,
+                name: ast::Name {
+                    segments: vec![name],
+                    span,
+                },
+                generics: None,
+                args,
+                output: Some(ret_ty),
+                body: None,
+                span,
+            };
+
+            self.bodies.push((name, body));
+        }
+
+        // Populate the function bodies with random expressions
+        for (name, body) in self.bodies.clone().iter() {
+            let mut ctx = GeneratorCtx::new(name);
+            let ty = body.output.as_ref().unwrap();
+            let expr = self.expr_block(&mut ctx, ty).unwrap();
+
+            // Find original body and set expr
+            if let Some((_, body)) = self.bodies.iter_mut().find(|(n, _)| n == name) {
+                body.body = Some(expr);
             }
         }
-        ret
+
+        let mut decls =
+            Vec::with_capacity(self.bodies.len() + self.named_types.len() + self.alias_types.len());
+
+        self.named_types.iter().for_each(|(name, ty)| {
+            decls.push(ast::Decl::Type(ast::Type {
+                attrs: Default::default(),
+                name: ast::Name {
+                    segments: vec![*name],
+                    span,
+                },
+                generics: None,
+                ty: Some(ty.clone()),
+                span,
+            }))
+        });
+
+        self.alias_types.iter().for_each(|(name, ty)| {
+            decls.push(ast::Decl::Alias(ast::Alias {
+                attrs: Default::default(),
+                name: ast::Name {
+                    segments: vec![*name],
+                    span,
+                },
+                generics: None,
+                ty: ty.clone(),
+                span,
+            }))
+        });
+
+        self.bodies
+            .iter()
+            .for_each(|(_, body)| decls.push(ast::Decl::Func(body.clone())));
+
+        ast::Module { decls }
     }
 
-    pub fn with_loop<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-        let old_in_loop = self.in_loop;
-        self.in_loop = true;
-        let ret: T = f(self);
-        self.in_loop = old_in_loop;
-        ret
-    }
-
-    pub fn with_complexity<T>(&mut self, complexity: usize, f: impl FnOnce(&mut Self) -> T) -> T {
-        self.complexity += complexity;
-        let ret: T = f(self);
-        self.complexity -= complexity;
-        ret
-    }
-
-    pub fn extend_locals(&mut self, binding: &ast::Binding, ty: &ast::Ty) {
-        match binding {
-            ast::Binding::Wild { .. } => {}
-            ast::Binding::Bind { name, .. } => {
-                let local_history = self.locals_history.entry(*name).or_default();
-                local_history.push((self.depth, ty.clone()));
-                self.locals.insert(*name, ty.clone());
-            }
-            ast::Binding::Tuple { bindings, .. } => {
-                for binding in bindings {
-                    self.extend_locals(binding, ty);
-                }
-            }
-        }
-    }
-
-    pub fn random_name(&mut self) -> String {
+    /// Generate a random (interned) name.
+    fn name(&mut self, ctx: Option<&GeneratorCtx>) -> &'static str {
         let len = self.rng.random_range(1..=10);
         let mut name = String::with_capacity(len);
 
-        for _ in 0..self.options.max_bruteforce_attempts {
+        for _ in 0..self.opts.max_bruteforce_attempts {
             name.clear();
 
             for _ in 0..len {
@@ -291,157 +405,50 @@ impl GeneratorCtx {
             }
 
             // Is a local, no bueno.
-            if self.locals.contains_key(name.as_str()) {
+            if ctx.is_some() && ctx.unwrap().locals().contains_key(name.as_str()) {
                 continue;
             }
 
-            return name;
+            // If it's a function name, no bueno.
+            if self.bodies.iter().any(|(n, _)| *n == name) {
+                continue;
+            }
+
+            // If it's a type name, no bueno.
+            if self.named_types.iter().any(|(n, _)| *n == name) {
+                continue;
+            }
+
+            if self.alias_types.iter().any(|(n, _)| *n == name) {
+                continue;
+            }
+
+            return self.interner.intern(name.as_str());
         }
 
         unreachable!()
     }
-}
 
-impl Default for GeneratorCtx {
-    fn default() -> Self {
-        Self::new(rand::rng(), GeneratorOptions::default())
-    }
-}
+    /// Randomly selects a type.
+    fn ty(&mut self) -> ast::Ty {
+        // Weight each of the 3 types by their length
+        let weights = [
+            self.types.len(),
+            self.named_types.len(),
+            self.alias_types.len(),
+        ];
 
-pub struct Generator {
-    bodies: Vec<(&'static str, Rc<RefCell<BodyGenerator>>)>,
-    types: Vec<ast::Ty>,
-    interner: Rc<RefCell<Interner>>,
-}
+        let index = WeightedIndex::new(weights).unwrap().sample(&mut self.rng);
 
-/// Randomize a single ast module no cross-module references.
-///
-/// Start by generating a list of types
-/// Then generate functions using these types.
-/// Then generate function bodies using the available other functions, and arguments.
-impl Generator {
-    pub fn new() -> Rc<RefCell<Self>> {
-        let interner = Rc::new(RefCell::new(Interner::new()));
-        Rc::new(RefCell::new(Self {
-            bodies: Vec::new(),
-            types: Vec::new(),
-            interner,
-        }))
-    }
-
-    pub fn generate(self_rc: Rc<RefCell<Self>>, options: GeneratorOptions) -> ast::Module {
-        let ctx = &mut GeneratorCtx::new(rand::rng(), options.clone());
-
-        self_rc.borrow_mut().populate_types(ctx);
-        Self::populate_bodies(self_rc.clone(), ctx);
-
-        // Ensure self_rc is dropped before calling generate on the bodies
-        let bodies = self_rc.borrow().bodies.clone();
-
-        ast::Module {
-            decls: bodies
-                .iter()
-                .map(|(_, b)| ast::Decl::Func(b.borrow().generate(options.clone())))
-                .collect::<Vec<_>>(),
+        match index {
+            0 => self.types.choose(&mut self.rng).unwrap().clone(),
+            1 => self.named_types.choose(&mut self.rng).unwrap().1.clone(),
+            2 => self.alias_types.choose(&mut self.rng).unwrap().1.clone(),
+            _ => unreachable!(),
         }
     }
 
-    fn populate_types(&mut self, ctx: &mut GeneratorCtx) {
-        let mut interner = self.interner.borrow_mut();
-
-        self.types.clear();
-        self.types.push(ast::Ty::Int(span));
-        self.types.push(ast::Ty::Str(span));
-        self.types.push(ast::Ty::None(span));
-        self.types.push(AST_BOOL.clone());
-
-        if ctx.options.enable_floats {
-            self.types.push(ast::Ty::Float(span));
-        }
-
-        // Generate a couple of random unions, tuples, lists and records
-        for _ in 0..ctx.options.max_custom_tys {
-            let mut tys = (2..ctx.options.max_union_tys)
-                .map(|_| self.ty(ctx))
-                .collect::<Vec<_>>();
-
-            // Deduplicate the types
-            tys.sort();
-            tys.dedup();
-
-            self.types.push(ast::Ty::Union { tys, span });
-
-            let tys = (2..ctx.options.max_tuple_tys)
-                .map(|_| self.ty(ctx))
-                .collect::<Vec<_>>();
-
-            self.types.push(ast::Ty::Tuple { tys, span });
-
-            if ctx.options.enable_list_ty {
-                let ty = self.ty(ctx);
-                self.types.push(ast::Ty::List {
-                    ty: Box::new(ty),
-                    span,
-                });
-            }
-
-            let fields = (0..ctx.options.max_record_fields)
-                .map(|_| ast::Field {
-                    name: interner.intern(ctx.random_name().as_str()),
-                    ty: self.ty(ctx),
-                    span,
-                })
-                .collect::<Vec<_>>();
-
-            self.types.push(ast::Ty::Record { fields, span });
-        }
-    }
-
-    fn populate_bodies(self_rc: Rc<RefCell<Self>>, ctx: &mut GeneratorCtx) {
-        let interner = self_rc.borrow().interner.clone();
-
-        for i in 0..(ctx.options.functions + 1) {
-            let (name, args) = if i != ctx.options.functions {
-                let mut args = vec![];
-                // Controls function argument count
-                let argc = ctx.rng.random_range(1..=ctx.options.max_function_args);
-
-                for _ in 0..argc {
-                    args.push(self_rc.borrow().ty(ctx));
-                }
-
-                (ctx.random_name(), args)
-            } else {
-                ("main".to_string(), vec![])
-            };
-
-            if self_rc.borrow().bodies.iter().any(|(n, _)| *n == name) {
-                continue;
-            }
-
-            let ret_ty = self_rc.borrow().ty(ctx);
-
-            let body = Rc::new(RefCell::new(BodyGenerator::new(
-                self_rc.clone(),
-                interner.clone(),
-                name.clone(),
-                ret_ty,
-                args,
-            )));
-
-            self_rc
-                .borrow_mut()
-                .bodies
-                .push((interner.borrow_mut().intern(name.as_str()), body));
-        }
-    }
-
-    fn ty(&self, ctx: &mut GeneratorCtx) -> ast::Ty {
-        // Select a random type
-        self.types.choose(&mut ctx.rng).unwrap().clone()
-    }
-
-    fn argument(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> ast::Argument {
+    fn argument(&mut self, ctx: Option<&GeneratorCtx>, ty: &ast::Ty) -> ast::Argument {
         ast::Argument {
             binding: self.binding(ctx, ty),
             ty: Some(ty.clone()),
@@ -449,7 +456,7 @@ impl Generator {
         }
     }
 
-    fn binding(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> ast::Binding {
+    fn binding(&mut self, ctx: Option<&GeneratorCtx>, ty: &ast::Ty) -> ast::Binding {
         // Special case for tuple bindings. In the future records as well :)
         if let ast::Ty::Tuple { tys, .. } = ty {
             return ast::Binding::Tuple {
@@ -459,94 +466,32 @@ impl Generator {
         }
 
         ast::Binding::Bind {
-            mutable: ctx.rng.random_bool(0.3),
-            name: self
-                .interner
-                .borrow_mut()
-                .intern(ctx.random_name().as_str()),
-            span,
-        }
-    }
-}
-
-pub struct BodyGenerator {
-    generator: Rc<RefCell<Generator>>,
-    interner: Rc<RefCell<Interner>>,
-    name: &'static str,
-    args: Vec<ast::Argument>,
-    output: ast::Ty,
-}
-
-impl BodyGenerator {
-    pub fn new(
-        generator: Rc<RefCell<Generator>>,
-        interner: Rc<RefCell<Interner>>,
-        name: String,
-        output: ast::Ty,
-        args: Vec<ast::Ty>,
-    ) -> Self {
-        let args = args
-            .iter()
-            .map(|ty| {
-                generator
-                    .borrow()
-                    .argument(&mut GeneratorCtx::default(), ty)
-            })
-            .collect();
-
-        let name = interner.borrow_mut().intern(name.as_str());
-
-        Self {
-            generator,
-            interner,
-            name,
-            args,
-            output,
-        }
-    }
-
-    fn as_path(&self) -> ast::Path {
-        ast::Path {
-            segments: vec![ast::PathSegment {
-                name: self.name,
-                span,
-            }],
-            spec: None,
+            mutable: self.rng.random_bool(0.3),
+            name: self.name(ctx),
             span,
         }
     }
 
-    fn generate(&self, options: GeneratorOptions) -> ast::Func {
-        let mut ctx = GeneratorCtx::new(rand::rng(), options);
+    fn pattern(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> ast::Pattern {
+        let binding = self.binding(Some(ctx), ty);
+        ctx.extend_locals(&binding, ty);
 
-        self.args
-            .iter()
-            .for_each(|arg| ctx.extend_locals(&arg.binding, &arg.ty.clone().unwrap()));
-
-        ast::Func {
-            attrs: Default::default(),
-            is_extern: false,
-            name: ast::Name {
-                segments: vec![self.name],
-                span,
-            },
-            generics: None,
-            args: self.args.clone(),
-            output: Some(self.output.clone()),
-            body: Some(self.expr_block(&mut ctx, &self.output).unwrap()),
+        ast::Pattern::Ty {
+            ty: ty.clone(),
+            binding: Some(binding),
             span,
         }
     }
 
     // Potentially multi-line block.
-    fn expr_multi(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
-        if ctx.complexity >= ctx.options.max_allowed_complexity {
+    fn expr_multi(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
+        if ctx.complexity >= self.opts.max_allowed_complexity {
             return None;
         }
 
         let mut choices = EXPR_MULTI_COLLECTION.iter().collect::<Vec<_>>();
 
-        if !ctx.options.enable_loop {
+        if !self.opts.enable_loop {
             choices.retain(|(name, _, _)| *name != "loop");
         }
 
@@ -554,11 +499,11 @@ impl BodyGenerator {
             choices.retain(|(name, _, _)| *name != "break");
         }
 
-        if !ctx.options.enable_match {
+        if !self.opts.enable_match {
             choices.retain(|(name, _, _)| *name != "match");
         }
 
-        if ctx.depth >= ctx.options.max_depth {
+        if ctx.depth >= self.opts.max_depth {
             choices.retain(|(name, _, _)| *name != "block");
         }
 
@@ -570,7 +515,7 @@ impl BodyGenerator {
         while !choices.is_empty() {
             let index = WeightedIndex::new(choices.iter().map(|(_, w, _)| *w))
                 .unwrap()
-                .sample(&mut ctx.rng);
+                .sample(&mut self.rng);
 
             if let Some(expr) = choices[index].2(self, ctx, ty) {
                 return Some(expr);
@@ -583,25 +528,25 @@ impl BodyGenerator {
     }
 
     // Simple, non-block expression.
-    fn expr(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
-        if ctx.complexity >= ctx.options.max_allowed_complexity {
+    fn expr(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
+        if ctx.complexity >= self.opts.max_allowed_complexity {
             return None;
         }
 
         let mut choices = EXPR_SINGLE_COLLECTION.iter().collect::<Vec<_>>();
 
-        if !ctx.options.enable_ref_ty {
+        if !self.opts.enable_ref_ty {
             choices.retain(|(name, _, _)| *name != "ref");
         }
 
-        if !ctx.options.enable_unary {
+        if !self.opts.enable_unary {
             choices.retain(|(name, _, _)| *name != "unary");
         }
 
         while !choices.is_empty() {
             let index = WeightedIndex::new(choices.iter().map(|(_, w, _)| *w))
                 .unwrap()
-                .sample(&mut ctx.rng);
+                .sample(&mut self.rng);
 
             if let Some(expr) = choices[index].2(self, ctx, ty) {
                 return Some(expr);
@@ -613,30 +558,39 @@ impl BodyGenerator {
         None
     }
 
-    fn expr_call_function(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
-        let generator = self.generator.borrow();
-
+    fn expr_call_function(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
         // Find fitting function.
-        let values = generator
+        let values = self
             .bodies
             .iter()
             .filter(|(name, v)| {
-                *name != "main" && *name != self.name && is_subtype_of(&v.borrow().output, ty)
+                *name != "main"
+                    && *name != ctx.name
+                    && is_subtype_of(&v.output.clone().unwrap(), ty)
             })
             .map(|(_, v)| v)
             .collect::<Vec<_>>();
 
-        let func = values.choose(&mut ctx.rng)?;
+        let func = values.choose(&mut self.rng)?;
 
-        let borrow = func.borrow();
-        let func_args = borrow.args.clone();
+        let func_args = func.args.clone();
 
-        let mut call_expr = ast::Expr::Path(borrow.as_path());
+        let mut call_expr = ast::Expr::Path(ast::Path {
+            segments: func
+                .name
+                .segments
+                .iter()
+                .cloned()
+                .map(|name| ast::PathSegment { name, span })
+                .collect(),
+            spec: None,
+            span,
+        });
 
         for arg in func_args {
             let ty = match &arg.ty {
                 Some(ty) => ty,
-                None => &generator.ty(ctx),
+                None => &self.ty(),
             };
 
             if let Some(input_expr) = self.expr(ctx, ty) {
@@ -654,7 +608,7 @@ impl BodyGenerator {
     }
 
     fn expr_binary_op(
-        &self,
+        &mut self,
         ctx: &mut GeneratorCtx,
         lhs: &ast::Ty,
         rhs: &ast::Ty,
@@ -698,12 +652,12 @@ impl BodyGenerator {
         Some(ast::Expr::Binary(ast::BinaryExpr {
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
-            op: *choices.choose(&mut ctx.rng).unwrap(),
+            op: *choices.choose(&mut self.rng).unwrap(),
             span,
         }))
     }
 
-    fn expr_unary_op(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
+    fn expr_unary_op(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
         let choices = match ty {
             ast::Ty::Int(_) => vec![ast::UnaryOp::Neg, ast::UnaryOp::BitNot],
             _ => {
@@ -713,7 +667,7 @@ impl BodyGenerator {
 
         if let Some(expr) = self.expr(ctx, ty) {
             Some(ast::Expr::Unary(ast::UnaryExpr {
-                op: *choices.choose(&mut ctx.rng).unwrap(),
+                op: *choices.choose(&mut self.rng).unwrap(),
                 target: Box::new(expr),
                 span,
             }))
@@ -724,9 +678,9 @@ impl BodyGenerator {
 
     /// Either a local or a literal. Must be infallible to be used with literal, as it falls back to
     /// a literal if no locals are available.
-    fn expr_value(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> ast::Expr {
+    fn expr_value(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> ast::Expr {
         let valid_locals = ctx
-            .locals
+            .computed_locals
             .iter()
             .filter(|(_, local_ty)| is_subtype_of(local_ty, ty))
             .map(|(name, _)| *name)
@@ -735,7 +689,7 @@ impl BodyGenerator {
         if !valid_locals.is_empty() {
             return ast::Expr::Path(ast::Path {
                 segments: vec![ast::PathSegment {
-                    name: valid_locals.choose(&mut ctx.rng).unwrap(),
+                    name: valid_locals.choose(&mut self.rng).unwrap(),
                     span,
                 }],
                 spec: None,
@@ -747,31 +701,28 @@ impl BodyGenerator {
     }
 
     /// Literal is by definition infallible (and must stay so).
-    fn expr_literal(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> ast::Expr {
+    fn expr_literal(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> ast::Expr {
         let l = match ty {
             ast::Ty::Int(_) => ast::Expr::Literal(ast::Literal::Int {
-                value: ctx.rng.random_range(0..=100),
+                value: self.rng.random_range(0..=100),
                 span,
             }),
             ast::Ty::Float(_) => ast::Expr::Literal(ast::Literal::Float {
-                value: ctx.rng.random_range(0.0..=100.0),
+                value: self.rng.random_range(0.0..=100.0),
                 span,
             }),
 
             ast::Ty::Str(_) => ast::Expr::Literal(ast::Literal::String {
-                value: self
-                    .interner
-                    .borrow_mut()
-                    .intern(ctx.random_name().as_str()),
+                value: self.name(Some(ctx)),
                 span,
             }),
             ast::Ty::None(_) => ast::Expr::Literal(ast::Literal::None { span }),
             ast::Ty::True(_) => ast::Expr::Literal(ast::Literal::True { span }),
             ast::Ty::False(_) => ast::Expr::Literal(ast::Literal::False { span }),
             ast::Ty::List { ty, .. } => {
-                let count = ctx
+                let count = self
                     .rng
-                    .random_range(ctx.options.min_exprs..=ctx.options.max_exprs);
+                    .random_range(self.opts.min_exprs..=self.opts.max_exprs);
                 let mut items = Vec::with_capacity(count);
                 for _ in 0..count {
                     items.push(self.expr_value(ctx, ty));
@@ -802,7 +753,7 @@ impl BodyGenerator {
             }
 
             ast::Ty::Union { tys, .. } => {
-                let ty = tys.choose(&mut ctx.rng).unwrap();
+                let ty = tys.choose(&mut self.rng).unwrap();
                 self.expr_value(ctx, ty)
             }
 
@@ -814,7 +765,7 @@ impl BodyGenerator {
         l
     }
 
-    fn expr_loop(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
+    fn expr_loop(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
         ctx.with_loop(|ctx| {
             let expr = self.expr_block(ctx, ty)?;
 
@@ -825,7 +776,7 @@ impl BodyGenerator {
         })
     }
 
-    fn expr_break(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
+    fn expr_break(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
         if ctx.in_loop && matches!(ty, ast::Ty::None(_)) {
             Some(ast::Expr::Break(ast::BreakExpr { value: None, span }))
         } else {
@@ -833,16 +784,16 @@ impl BodyGenerator {
         }
     }
 
-    fn expr_block(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
+    fn expr_block(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
         ctx.with_scope(move |ctx| {
-            let count = ctx
+            let count = self
                 .rng
-                .random_range(ctx.options.min_exprs..=ctx.options.max_exprs);
+                .random_range(self.opts.min_exprs..=self.opts.max_exprs);
             let mut exprs = Vec::with_capacity(count + 1);
 
             // Generate count - 1 exprs
             for _ in 0..count {
-                let ty = &self.generator.borrow().ty(ctx);
+                let ty = &self.ty();
                 if let Some(expr) = self.expr_multi(ctx, ty) {
                     exprs.push(expr);
                 }
@@ -850,7 +801,7 @@ impl BodyGenerator {
 
             // Generate last expression (same as the block)
             exprs.push('out: {
-                for _ in 0..ctx.options.max_bruteforce_attempts {
+                for _ in 0..self.opts.max_bruteforce_attempts {
                     if let Some(expr) = self.expr_multi(ctx, ty) {
                         break 'out expr;
                     }
@@ -864,10 +815,9 @@ impl BodyGenerator {
     }
 
     /// A let binding returns none.
-    fn expr_let(&self, ctx: &mut GeneratorCtx) -> Option<ast::Expr> {
-        let generator = self.generator.borrow();
-        let ty = generator.ty(ctx);
-        let binding = generator.binding(ctx, &ty);
+    fn expr_let(&mut self, ctx: &mut GeneratorCtx) -> Option<ast::Expr> {
+        let ty = self.ty();
+        let binding = self.binding(Some(ctx), &ty);
         let value = self.expr(ctx, &ty)?;
 
         ctx.extend_locals(&binding, &ty);
@@ -880,12 +830,12 @@ impl BodyGenerator {
         }))
     }
 
-    fn expr_match(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
-        let match_ty = self.generator.borrow().ty(ctx);
+    fn expr_match(&mut self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> Option<ast::Expr> {
+        let match_ty = self.ty();
         let target = self.expr(ctx, &match_ty)?;
-        let mut arms = Vec::with_capacity(ctx.options.max_match_arms);
+        let mut arms = Vec::with_capacity(self.opts.max_match_arms);
 
-        for _ in 0..ctx.options.max_match_arms {
+        for _ in 0..self.opts.max_match_arms {
             // Should return a type that is a subtype of the context type.
             let (pattern, arm_expr) =
                 ctx.with_scope(|ctx| (self.pattern(ctx, &match_ty), self.expr(ctx, ty)));
@@ -913,16 +863,77 @@ impl BodyGenerator {
             None
         }
     }
+}
 
-    fn pattern(&self, ctx: &mut GeneratorCtx, ty: &ast::Ty) -> ast::Pattern {
-        let generator = self.generator.borrow();
-        let binding = generator.binding(ctx, ty);
-        ctx.extend_locals(&binding, ty);
+/// Generator context.
+pub struct GeneratorCtx {
+    name: &'static str,
+    depth: usize,
+    complexity: usize,
+    in_loop: bool,
+    locals: BTreeMap<&'static str, Vec<(usize, ast::Ty)>>,
+    computed_locals: BTreeMap<&'static str, ast::Ty>,
+}
 
-        ast::Pattern::Ty {
-            ty: ty.clone(),
-            binding: Some(binding),
-            span,
+impl GeneratorCtx {
+    pub fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            depth: 0,
+            complexity: 0,
+            in_loop: false,
+            locals: BTreeMap::new(),
+            computed_locals: BTreeMap::new(),
+        }
+    }
+
+    pub fn locals(&self) -> &BTreeMap<&'static str, ast::Ty> {
+        &self.computed_locals
+    }
+
+    pub fn with_scope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        self.depth += 1;
+        let ret: T = f(self);
+        self.depth -= 1;
+        // Recompute the locals and remove history from depth that is no longer valid.
+        self.computed_locals.clear();
+        for (name, history) in self.locals.iter_mut() {
+            history.retain(|(d, _)| *d <= self.depth);
+            if let Some((_, ty)) = history.last() {
+                self.computed_locals.insert(*name, ty.clone());
+            }
+        }
+        ret
+    }
+
+    pub fn with_loop<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        let old_in_loop = self.in_loop;
+        self.in_loop = true;
+        let ret: T = f(self);
+        self.in_loop = old_in_loop;
+        ret
+    }
+
+    pub fn with_complexity<T>(&mut self, complexity: usize, f: impl FnOnce(&mut Self) -> T) -> T {
+        self.complexity += complexity;
+        let ret: T = f(self);
+        self.complexity -= complexity;
+        ret
+    }
+
+    pub fn extend_locals(&mut self, binding: &ast::Binding, ty: &ast::Ty) {
+        match binding {
+            ast::Binding::Wild { .. } => {}
+            ast::Binding::Bind { name, .. } => {
+                let local_history = self.locals.entry(*name).or_default();
+                local_history.push((self.depth, ty.clone()));
+                self.computed_locals.insert(*name, ty.clone());
+            }
+            ast::Binding::Tuple { bindings, .. } => {
+                for binding in bindings {
+                    self.extend_locals(binding, ty);
+                }
+            }
         }
     }
 }
