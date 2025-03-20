@@ -1,9 +1,9 @@
 import std::io
 import std::string
 
-fn print (x: 'a) -> none {
+fn print<'a> (x: 'a) -> none {
   x |> format<'a> |> io::println
 }
 
 #[intrinsic = "debug::format"]
-extern fn format (value: 'a) -> str
+extern fn format<'a> (value: 'a) -> str

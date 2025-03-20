@@ -500,7 +500,7 @@ impl Solver {
                     disjuncts.push(c2);
                 }
 
-                self.simplify_cnf_strict(Cnf(disjuncts))
+                Cnf(disjuncts)
             }
 
             // (a | b | ..) & (c | d | ..) & .. => (a & c & ..) | (a & d & ..) | ..
@@ -517,7 +517,7 @@ impl Solver {
                     }
                 }
 
-                self.simplify_cnf_strict(Cnf(disjuncts))
+                Cnf(disjuncts)
             }
 
             Ty::Record(fields) => {
@@ -547,6 +547,8 @@ impl Solver {
     }
 
     pub(super) fn inter_conjunct(&self, lhs: Conjunct, rhs: Conjunct) -> Conjunct {
+        //println!("inter conjunct");
+
         Conjunct {
             lnf: self.inter_lnf(lhs.lnf, rhs.lnf),
             vars: lhs.vars.union(&rhs.vars).cloned().collect(),

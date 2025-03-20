@@ -72,7 +72,7 @@ impl Modules {
     ) -> ModuleId {
         let mut name = self[from].name.clone().unwrap_or_default();
 
-        for (i, segment) in segments.iter().enumerate() {
+        for segment in segments {
             match self[from].modules.get(segment) {
                 Some((id, _)) => {
                     name = self[*id].name.clone().unwrap_or_default();
@@ -86,7 +86,6 @@ impl Modules {
 
                     name.push_str(segment);
 
-                    let vis = if i == 0 { vis } else { Vis::Priv };
                     let id = self.insert(Module::new().with_name(&name));
                     self[from].modules.insert(segment, (id, vis));
                     from = id;
@@ -107,7 +106,7 @@ impl Modules {
         let module = self.insert_module(from, &segments[0..segments.len() - 1], vis);
         let last = segments.last().unwrap();
 
-        match self[module].bodies.insert(last, (body, Vis::Pub)) {
+        match self[module].bodies.insert(last, (body, vis)) {
             Some((body, _)) => Err(body),
             None => Ok(()),
         }

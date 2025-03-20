@@ -11,9 +11,6 @@ pub fn codegen(code: &mut impl Write, hir: &hir::Program) -> io::Result<()> {
         codegen_body(code, hir, body).unwrap();
     }
 
-    writeln!(code, "print(M['main']())")?;
-    writeln!(code, "return M")?;
-
     Ok(())
 }
 
@@ -24,10 +21,6 @@ fn codegen_body(code: &mut impl Write, hir: &hir::Program, body: &hir::Body) -> 
         writeln!(code, "  return function(a{i})")?;
     }
 
-    for i in 0..body.locals.len() {
-        writeln!(code, "  local l{i}")?;
-    }
-
     let mut codegen = Codegen {
         hir,
         body,
@@ -36,16 +29,48 @@ fn codegen_body(code: &mut impl Write, hir: &hir::Program, body: &hir::Body) -> 
         next_tmp: 0,
     };
 
-    for (i, input) in body.input.iter().enumerate() {
-        codegen.binding(&input.binding, &format!("a{i}"))?;
-    }
+    match body.expr {
+        Some(ref expr) => {
+            for i in 0..body.locals.len() {
+                writeln!(codegen.code, "  local l{i}")?;
+            }
 
-    let value = match body.expr {
-        Some(ref expr) => codegen.expr(expr)?,
-        None => todo!(),
+            for (i, input) in body.input.iter().enumerate() {
+                codegen.binding(&input.binding, &format!("a{i}"))?;
+            }
+
+            let value = codegen.expr(expr)?;
+
+            writeln!(code, "  return {}", value)?;
+        }
+
+        None => {
+            assert!(body.is_extern);
+
+            let function = if let Some(intrinsic) = body.attrs.find_value("intrinsic") {
+                match intrinsic {
+                    "debug::format" => "brad_debug_format",
+                    _ => panic!("unsupported intrinsic: {}", intrinsic),
+                }
+            } else if let Some(link) = body.attrs.find_value("link") {
+                link
+            } else {
+                panic!("extern function without link attribute")
+            };
+
+            write!(codegen.code, "  return {function}(")?;
+
+            for i in 0..body.input.len() {
+                if i > 0 {
+                    write!(codegen.code, ", ")?;
+                }
+
+                write!(codegen.code, "a{i}")?;
+            }
+
+            writeln!(codegen.code, ")")?;
+        }
     };
-
-    writeln!(code, "  return {}", value)?;
 
     for _ in 0..body.input.len() {
         writeln!(code, "  end")?;
@@ -99,15 +124,25 @@ impl<W: Write> Codegen<'_, W> {
             hir::ExprKind::Int(value) => format!("make_int({value})"),
             hir::ExprKind::Float(value) => format!("make_float({value})"),
             hir::ExprKind::ZeroSize(tag) => format!("make_tag('{}')", tag.name),
-            hir::ExprKind::String(value) => format!("make_str('{value}')"),
             hir::ExprKind::Local(id) => format!("l{}", id.0),
+
+            hir::ExprKind::String(value) => {
+                let value = value
+                    .replace("\\", "\\\\")
+                    .replace("\n", "\\n")
+                    .replace("\t", "\\t")
+                    .replace("\r", "\\r")
+                    .replace("\"", "\\\"");
+
+                format!("make_str('{value}')")
+            }
 
             hir::ExprKind::Tag(tag, ref value) => {
                 let value = self.expr(value)?;
                 format!("add_tag('{}', {})", tag.name, value)
             }
 
-            hir::ExprKind::Func(body, _) => {
+            hir::ExprKind::Func(body) => {
                 format!("M['{}']()", self.hir[body].name)
             }
 

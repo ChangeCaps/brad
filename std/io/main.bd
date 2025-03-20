@@ -1,18 +1,10 @@
 import std::string
 
-type file = int
+type error = std::error<none>
 
-#[link = "brad_file_open"]
-extern fn open (path: str) (mode: str) -> file
-
-#[link = "brad_file_write"]
-extern fn write (file: file) (data: str) -> none
-
-#[link = "brad_file_read"]
-extern fn read (file: file) -> str
-
-#[link = "brad_file_close"]
-extern fn close (file: file) -> none
+type error::file-not-found = error
+type error::file-not-open  = error
+type error::end-of-file    = error
 
 #[link = "brad_print"]
 extern fn print (a: str) -> none

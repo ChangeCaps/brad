@@ -8,6 +8,7 @@ mod expr;
 mod import;
 mod ty;
 
+#[derive(Clone)]
 struct FuncInfo {
     /// The module that the function is defined in.
     module: hir::ModuleId,
@@ -40,7 +41,9 @@ struct TypeInfo {
     generics: usize,
 
     /// The body of the type constructor.
-    body: hir::BodyId,
+    ///
+    /// This is `None` if the type is extern.
+    body: Option<hir::BodyId>,
 
     /// The AST of the type.
     ast: ast::Type,
@@ -118,7 +121,7 @@ impl<'a> Lowerer<'a> {
             let params: Vec<_> = generics.iter().map(|(_, ty)| ty.clone()).collect();
 
             // we have to generate the constructor function, this is not pretty...
-            let body = match &info.ast.ty {
+            let ty_body = match &info.ast.ty {
                 Some(ty) => {
                     let mut generics = Generics::Explicit(&generics);
 
@@ -126,45 +129,47 @@ impl<'a> Lowerer<'a> {
 
                     let ty = solve::Ty::inter(solve::Ty::Tag(tag), body.clone());
 
-                    let mut locals = hir::Locals::new();
+                    if let Some(body_id) = info.body {
+                        let mut locals = hir::Locals::new();
 
-                    let local = locals.insert(hir::Local {
-                        is_mutable: false,
-                        name: "input",
-                        ty: body.clone(),
-                        span: info.ast.span,
-                    });
-
-                    let body = hir::Body {
-                        attrs: Attributes::new(),
-                        is_extern: false,
-                        name: info.ast.name.to_string(),
-                        generics: params.clone(),
-                        locals,
-                        input: vec![hir::Argument {
-                            binding: hir::Binding::Bind {
-                                local,
-                                span: info.ast.span,
-                            },
+                        let local = locals.insert(hir::Local {
+                            is_mutable: false,
+                            name: "input",
                             ty: body.clone(),
-                        }],
-                        output: ty.clone(),
-                        expr: Some(hir::Expr {
-                            kind: hir::ExprKind::Tag(
-                                tag,
-                                Box::new(hir::Expr {
-                                    kind: hir::ExprKind::Local(local),
-                                    ty: body.clone(),
-                                    span: info.ast.span,
-                                }),
-                            ),
-                            ty: ty.clone(),
                             span: info.ast.span,
-                        }),
-                        span: info.ast.span,
-                    };
+                        });
 
-                    self.program[info.body] = body;
+                        let body = hir::Body {
+                            attrs: Attributes::new(),
+                            is_extern: false,
+                            name: info.ast.name.to_string(),
+                            generics: params.clone(),
+                            locals,
+                            input: vec![hir::Argument {
+                                binding: hir::Binding::Bind {
+                                    local,
+                                    span: info.ast.span,
+                                },
+                                ty: body.clone(),
+                            }],
+                            output: ty.clone(),
+                            expr: Some(hir::Expr {
+                                kind: hir::ExprKind::Tag(
+                                    tag,
+                                    Box::new(hir::Expr {
+                                        kind: hir::ExprKind::Local(local),
+                                        ty: body.clone(),
+                                        span: info.ast.span,
+                                    }),
+                                ),
+                                ty: ty.clone(),
+                                span: info.ast.span,
+                            }),
+                            span: info.ast.span,
+                        };
+
+                        self.program[body_id] = body;
+                    }
 
                     ty
                 }
@@ -172,29 +177,31 @@ impl<'a> Lowerer<'a> {
                 None => {
                     let ty = solve::Ty::Tag(tag);
 
-                    let body = hir::Body {
-                        attrs: Attributes::new(),
-                        is_extern: false,
-                        name: info.ast.name.to_string(),
-                        generics: params.clone(),
-                        locals: hir::Locals::new(),
-                        input: Vec::new(),
-                        output: ty.clone(),
-                        expr: Some(hir::Expr {
-                            kind: hir::ExprKind::ZeroSize(tag),
-                            ty: ty.clone(),
+                    if let Some(body_id) = info.body {
+                        let body = hir::Body {
+                            attrs: Attributes::new(),
+                            is_extern: false,
+                            name: info.ast.name.to_string(),
+                            generics: params.clone(),
+                            locals: hir::Locals::new(),
+                            input: Vec::new(),
+                            output: ty.clone(),
+                            expr: Some(hir::Expr {
+                                kind: hir::ExprKind::ZeroSize(tag),
+                                ty: ty.clone(),
+                                span: info.ast.span,
+                            }),
                             span: info.ast.span,
-                        }),
-                        span: info.ast.span,
-                    };
+                        };
 
-                    self.program[info.body] = body;
+                        self.program[body_id] = body;
+                    }
 
                     solve::Ty::Tag(tag)
                 }
             };
 
-            self.program.solver.add_applicable(tag, body, params);
+            self.program.solver.add_applicable(tag, ty_body, params);
         }
 
         Ok(())

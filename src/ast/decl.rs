@@ -43,6 +43,7 @@ pub struct Argument {
 #[derive(Clone, Debug)]
 pub struct Type {
     pub attrs: Attributes,
+    pub is_extern: bool,
     pub name: Name,
     pub generics: Option<Generics>,
     pub ty: Option<Ty>,

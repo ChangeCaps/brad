@@ -204,24 +204,6 @@ impl Solver {
 
             (Ty::Ref(lhs), Ty::Ref(rhs)) => self.is_subty(lhs, rhs) && self.is_subty(rhs, lhs),
 
-            (Ty::App(lhs), Ty::App(rhs)) => {
-                if lhs.tag != rhs.tag {
-                    return false;
-                }
-
-                if lhs.args.len() == rhs.args.len() {
-                    return false;
-                }
-
-                for (lhs, rhs) in lhs.args.iter().zip(&rhs.args) {
-                    if !self.is_subty(lhs, rhs) {
-                        return false;
-                    }
-                }
-
-                true
-            }
-
             (Ty::App(app), rhs) => {
                 let lhs = self.expand(app);
                 self.is_subty(&lhs, rhs)

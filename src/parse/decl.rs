@@ -14,8 +14,27 @@ pub fn decl(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     let (token, span) = input.peek();
 
     match token {
-        Token::Fn | Token::Extern => funcy(input, attrs),
-        Token::Type => r#type(input, attrs),
+        Token::Fn => funcy(input, false, attrs),
+        Token::Type => r#type(input, false, attrs),
+
+        Token::Extern => {
+            input.consume();
+            let (token, _) = input.peek();
+
+            match token {
+                Token::Fn => funcy(input, true, attrs),
+                Token::Type => r#type(input, true, attrs),
+
+                _ => {
+                    let diagnostic = Diagnostic::error("expected::declaration")
+                        .message(format!("expected `fn` or `type`, found `{}`", token))
+                        .span(span);
+
+                    Err(diagnostic)
+                }
+            }
+        }
+
         Token::Alias => alias(input, attrs),
         Token::Import => import(input, attrs),
         _ => {
@@ -28,9 +47,7 @@ pub fn decl(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     }
 }
 
-fn funcy(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic> {
-    let is_extern = input.take(Token::Extern);
-
+fn funcy(input: &mut Tokens, is_extern: bool, attrs: Attributes) -> Result<ast::Decl, Diagnostic> {
     input.expect(Token::Fn)?;
 
     let name = name(input)?;
@@ -98,7 +115,7 @@ fn argument(input: &mut Tokens) -> Result<ast::Argument, Diagnostic> {
     Ok(ast::Argument { binding, ty, span })
 }
 
-fn r#type(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic> {
+fn r#type(input: &mut Tokens, is_extern: bool, attrs: Attributes) -> Result<ast::Decl, Diagnostic> {
     input.expect(Token::Type)?;
 
     let name = name(input)?;
@@ -109,7 +126,7 @@ fn r#type(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic
         None
     };
 
-    let ty = if input.take(Token::Eq) {
+    let ty = if !is_extern && input.take(Token::Eq) {
         Some(ty(input)?)
     } else {
         None
@@ -119,6 +136,7 @@ fn r#type(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic
 
     Ok(ast::Decl::Type(ast::Type {
         attrs,
+        is_extern,
         name,
         generics,
         ty,

@@ -59,12 +59,15 @@ impl Lowerer<'_> {
                             .map(|_| solve::Ty::Var(self.program.solver.fresh_var()))
                             .collect();
 
+                        let module_name = self.program[module].name.as_ref().unwrap();
+                        let full_name = format!("{}::{}", module_name, ast.name);
+
                         // create a body for the function
                         // with temporary data that will be filled in later
                         let body = hir::Body {
                             attrs: ast.attrs.clone(),
                             is_extern: ast.is_extern,
-                            name: ast.name.to_string(),
+                            name: full_name,
                             generics,
                             locals: hir::Locals::new(),
                             input,
@@ -119,8 +122,10 @@ impl Lowerer<'_> {
                         ref generics,
                         ..
                     }) => {
-                        let tag_name = self.interner.intern(&name.to_string());
-                        let tag = self.make_tag(tag_name);
+                        let module_name = self.program[module].name.as_ref().unwrap();
+                        let full_name = format!("{}::{}", module_name, name);
+                        let full_name = self.interner.intern(&full_name);
+                        let tag = self.make_tag(full_name);
 
                         // compute the number of generics
                         let generics = generics.as_ref().map_or(0, |g| g.params.len());
@@ -147,6 +152,19 @@ impl Lowerer<'_> {
                         }
 
                         match decl {
+                            ast::Decl::Type(ast) if ast.is_extern => {
+                                let info = TypeInfo {
+                                    module,
+                                    generics,
+                                    body: None,
+                                    ast,
+                                };
+
+                                self.types.insert(tag, info);
+
+                                continue;
+                            }
+
                             ast::Decl::Type(_) => {}
 
                             // if the declaration is an alias, we need to store the alias info and
@@ -171,7 +189,7 @@ impl Lowerer<'_> {
                         let body = hir::Body {
                             attrs: Attributes::new(),
                             is_extern: false,
-                            name: name.to_string(),
+                            name: full_name.to_string(),
                             generics: Vec::new(),
                             locals: hir::Locals::new(),
                             input: Vec::new(),
@@ -210,7 +228,7 @@ impl Lowerer<'_> {
                             let info = TypeInfo {
                                 module,
                                 generics,
-                                body: body_id,
+                                body: Some(body_id),
                                 ast,
                             };
 
@@ -285,22 +303,28 @@ impl Lowerer<'_> {
         if let Some((body, _)) = self.program[module].bodies.get(name).cloned() {
             has_any = true;
 
-            let value = (body, hir::Vis::Priv);
-            self.program[id].bodies.insert(name, value);
+            if !self.program[id].bodies.contains_key(name) {
+                let value = (body, hir::Vis::Priv);
+                self.program[id].bodies.insert(name, value);
+            }
         }
 
         if let Some((ty, _, _)) = self.program[module].types.get(name).cloned() {
             has_any = true;
 
-            let value = (ty, hir::Vis::Priv, path.span);
-            self.program[id].types.insert(name, value);
+            if !self.program[id].types.contains_key(name) {
+                let value = (ty, hir::Vis::Priv, path.span);
+                self.program[id].types.insert(name, value);
+            }
         }
 
         if let Some((module, _)) = self.program[module].modules.get(name).cloned() {
             has_any = true;
 
-            let value = (module, hir::Vis::Priv);
-            self.program[id].modules.insert(name, value);
+            if !self.program[id].modules.contains_key(name) {
+                let value = (module, hir::Vis::Priv);
+                self.program[id].modules.insert(name, value);
+            }
         }
 
         if !has_any {

@@ -33,21 +33,61 @@ impl Lowerer<'_> {
             module: info.module,
             body: body_id,
 
-            generics: &generics,
+            generics: &mut Generics::Explicit(&generics),
 
             scope: Vec::new(),
             loop_ty: None,
         };
 
+        // lower the arguments
         for (i, arg) in info.ast.args.iter().enumerate() {
             // fetch the type of the argument
             let ty = lowerer.program[body_id].input[i].ty.clone();
+
+            // check that the expected type is a subtype of the actual type
+            //
+            // if the function is extern, require it
+            if let Some(ref expected_ty) = arg.ty {
+                // lower the expected type
+                let expected_ty = lowerer.ty(expected_ty)?;
+
+                lowerer.subty(&ty, &expected_ty, arg.span);
+                lowerer.subty(&expected_ty, &ty, arg.span);
+            } else if info.ast.is_extern {
+                let diagnostic = Diagnostic::error("invalid::extern::arg")
+                    .message("extern functions must have explicit types for all arguments")
+                    .span(arg.span);
+
+                lowerer.reporter.emit(diagnostic);
+
+                return Err(());
+            }
 
             // lower the binding
             let binding = lowerer.binding(&ty, &arg.binding)?;
 
             // replace the binding in the input
             lowerer.program[body_id].input[i].binding = binding;
+        }
+
+        // constrain the output type, if one is provided
+        //
+        // if the function is extern, require it
+        if let Some(ref expected_ty) = info.ast.output {
+            // lower the expected type
+            let expected_ty = lowerer.ty(expected_ty)?;
+
+            let output_ty = lowerer.program[body_id].output.clone();
+            lowerer.subty(&expected_ty, &output_ty, info.ast.span);
+            lowerer.subty(&output_ty, &expected_ty, info.ast.span);
+        } else if info.ast.is_extern {
+            let diagnostic = Diagnostic::error("invalid::extern::output")
+                .message("extern functions must have an explicit return type")
+                .span(info.ast.span);
+
+            lowerer.reporter.emit(diagnostic);
+
+            return Err(());
         }
 
         self.program[body_id].expr = match info.ast.body {
@@ -74,7 +114,7 @@ pub struct ExprLowerer<'a, 'r> {
     pub module: hir::ModuleId,
     pub body: hir::BodyId,
 
-    pub generics: &'a [(&'static str, solve::Ty)],
+    pub generics: &'a mut Generics<'a>,
 
     pub scope: Vec<hir::LocalId>,
     pub loop_ty: Option<solve::Ty>,
@@ -105,12 +145,7 @@ impl ExprLowerer<'_, '_> {
     }
 
     pub fn ty(&mut self, ast: &ast::Ty) -> Result<solve::Ty, ()> {
-        self.lowerer.lower_ty(
-            self.module,
-            &mut Generics::Explicit(self.generics),
-            true,
-            ast,
-        )
+        self.lowerer.lower_ty(self.module, self.generics, true, ast)
     }
 
     pub fn fresh_var(&mut self) -> solve::Ty {
@@ -340,19 +375,6 @@ impl ExprLowerer<'_, '_> {
             let body = &self.program.bodies[body_id];
             let ty = body.ty();
 
-            // compute the generic parameters
-            let mut ty_map = HashMap::new();
-            let mut generics = Vec::new();
-
-            for generic in body.generics.clone() {
-                let ty = self.fresh_var();
-                generics.push(ty.clone());
-                ty_map.insert(generic, ty);
-            }
-
-            // substitute the generic parameters into the type
-            let ty = ty.subst(&ty_map);
-
             // if the target isn't recursive with the current body, then
             // we can instantiate the type with fresh variables for the
             // subsumption check
@@ -365,7 +387,7 @@ impl ExprLowerer<'_, '_> {
             };
 
             return Ok(hir::Expr {
-                kind: hir::ExprKind::Func(body_id, generics),
+                kind: hir::ExprKind::Func(body_id),
                 ty,
                 span: path.span,
             });
@@ -645,10 +667,9 @@ impl ExprLowerer<'_, '_> {
                         }
                     };
 
-                    let ty = solve::Ty::inter(self.ty(ty)?, solve::Ty::neg(input_ty.clone()));
+                    let ty = self.ty(ty)?;
+                    let ty = solve::Ty::inter(ty, solve::Ty::neg(input_ty.clone()));
                     input_ty = solve::Ty::union(input_ty, ty.clone());
-
-                    let ty = solve::Ty::inter(ty, target.ty.clone());
 
                     let scope_len = self.scope.len();
 

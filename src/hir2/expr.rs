@@ -30,7 +30,7 @@ pub enum ExprKind {
     String(&'static str),
     Local(LocalId),
     Tag(Tag, Box<Expr>),
-    Func(BodyId, Vec<Ty>),
+    Func(BodyId),
     List(Vec<Expr>),
     Tuple(Vec<Expr>),
     Record(Vec<Init>),

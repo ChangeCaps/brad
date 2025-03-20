@@ -262,6 +262,7 @@ impl Generator {
             self.tys.named_tys.push((name, ty.clone()));
             decls.push(ast::Decl::Type(ast::Type {
                 attrs: Default::default(),
+                is_extern: false,
                 name: ast::Name {
                     segments: vec![name],
                     span,

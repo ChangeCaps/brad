@@ -1,9 +1,14 @@
 #![allow(dead_code)]
 
 use clap::{Args, Parser, Subcommand};
-use diagnostic::{Source, Sources};
+use diagnostic::{Report, Source, Sources};
 use parse::{Interner, Tokens};
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+    process,
+};
 
 use crate::ast::GeneratorOptions;
 use compiler::Compiler;
@@ -87,7 +92,7 @@ pub enum FmtCmd {
     // Lir(FileArgs),
 }
 
-fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
+fn main2(sources: &mut Sources) -> Result<(), Report> {
     let args = Cli::parse();
 
     match &args.command {
@@ -108,7 +113,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
             command: FmtCmd::Ast { file: f, .. },
         } => {
             let mut interner = Interner::new();
-            let content = std::fs::read_to_string(f.file.clone()).unwrap();
+            let content = fs::read_to_string(f.file.clone()).unwrap();
 
             let source = Source {
                 content,
@@ -141,7 +146,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
         }
 
         Cmd::Hir2(f) => {
-            let mut rep = diagnostic::Report::new();
+            let mut rep = Report::new();
 
             let mut compiler = Compiler::new(sources);
 
@@ -159,7 +164,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
         }
 
         Cmd::Lua(f) => {
-            let mut rep = diagnostic::Report::new();
+            let mut rep = Report::new();
 
             let mut compiler = Compiler::new(sources);
 
@@ -171,18 +176,33 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
             compiler.tokenize2(&mut rep).map_err(|_| rep.clone())?;
             compiler.parse2(&mut rep).map_err(|_| rep.clone())?;
 
-            let mut file = std::fs::File::create("out.lua").unwrap();
+            let mut file = fs::File::create("out.lua").unwrap();
 
-            compiler.lua(&mut rep, &mut file).unwrap();
+            compiler.lua(&mut rep, &mut file).map_err(|_| rep.clone())?;
 
-            let output = std::process::Command::new("lua")
+            let main_package = Path::new(f.packages.last().unwrap())
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap();
+
+            let entrypoint = format!("{}::main", main_package);
+
+            file.write_all(format!("M['{}']()", entrypoint).as_bytes())
+                .unwrap();
+
+            file.flush().unwrap();
+
+            drop(file);
+
+            let output = process::Command::new("lua")
                 .arg("out.lua")
+                .stdout(process::Stdio::inherit())
+                .stderr(process::Stdio::inherit())
                 .output()
                 .expect("failed to execute process");
 
-            print!("{}", String::from_utf8_lossy(&output.stdout));
-
-            Ok(())
+            process::exit(output.status.code().unwrap_or(1));
         }
 
         Cmd::Interpret(f)
@@ -215,7 +235,7 @@ fn main2(sources: &mut Sources) -> Result<(), diagnostic::Report> {
                     let llvm_ir = compiler.compile(entrypoint.clone().as_str())?;
 
                     if let Some(output) = &f.output {
-                        std::fs::write(output, llvm_ir.clone()).unwrap();
+                        fs::write(output, llvm_ir.clone()).unwrap();
                     } else {
                         //println!("{}", llvm_ir);
                     }

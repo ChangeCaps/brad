@@ -1,0 +1,19 @@
+import std::io
+
+#[link = "brad_file"]
+extern type file
+
+#[link = "brad_file_open"]
+extern fn open (path: str) (mode: str) -> file | io::error::file-not-found
+
+#[link = "brad_file_write"]
+extern fn write (file: file) (data: str) -> none | io::error::file-not-open
+
+#[link = "brad_file_read"]
+extern fn read (file: file) -> str | io::error::end-of-file
+
+#[link = "brad_file_flush"]
+extern fn flush (file: file) -> none
+
+#[link = "brad_file_close"]
+extern fn close (file: file) -> none

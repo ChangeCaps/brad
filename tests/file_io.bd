@@ -1,9 +1,11 @@
+import std::fs
 import std::io
+import std::error
 
 fn main -> none {
-  let file = io::open "./tests/file_io.bd" "r"
-  let data = io::read file
-  io::close file
-  io::println data
-  none
+  fs::open "./tests/file_io.bd" "r" 
+    |> error::assert
+    |> fs::read
+    |> error::assert
+    |> io::print
 }
