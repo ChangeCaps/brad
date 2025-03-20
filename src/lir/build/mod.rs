@@ -66,7 +66,9 @@ impl<'a> Builder<'a> {
     }
 
     fn build_body(&mut self, bid: sir::Bid) -> lir::Bid {
-        if let Some(id) = self.body_map.get(&bid) { return *id };
+        if let Some(id) = self.body_map.get(&bid) {
+            return *id;
+        };
 
         let argc = self.sir.bodies[bid].arguments;
 
@@ -561,10 +563,9 @@ impl<'a> Builder<'a> {
                         .push((lir::Access::Field(name), self.map_tid(*id)));
                 }
                 sir::Proj::Tuple(index) => {
-                    lplace.access.push((
-                        lir::Access::Tuple(*index as u32),
-                        self.map_tid(*id),
-                    ));
+                    lplace
+                        .access
+                        .push((lir::Access::Tuple(*index as u32), self.map_tid(*id)));
                 }
                 sir::Proj::Index(ref op) => {
                     let index = self.decompose_operand(bid, sbid, block, op);
@@ -663,13 +664,17 @@ impl<'a> Builder<'a> {
     }
 
     fn map_tid(&mut self, sid: sir::Tid) -> lir::Tid {
-        if let Some(id) = self.type_map.get(&self.sir.types[sid]) { return *id };
+        if let Some(id) = self.type_map.get(&self.sir.types[sid]) {
+            return *id;
+        };
 
         self.map_type(self.sir.types[sid].clone())
     }
 
     fn map_type(&mut self, ty: sir::Ty) -> lir::Tid {
-        if let Some(id) = self.type_map.get(&ty) { return *id };
+        if let Some(id) = self.type_map.get(&ty) {
+            return *id;
+        };
 
         let lt = match ty {
             sir::Ty::Int => lir::Ty::Int,
@@ -682,18 +687,24 @@ impl<'a> Builder<'a> {
             sir::Ty::Ref(tid) => lir::Ty::Ref(self.map_tid(tid)),
             sir::Ty::List(tid) => lir::Ty::List(self.map_tid(tid)),
             sir::Ty::Func(tid, tid1) => lir::Ty::Func(self.map_tid(tid), self.map_tid(tid1)),
-            sir::Ty::Tuple(ref tids) => lir::Ty::Tuple(tids.iter().fold(Vec::new(), |mut vec, tid| {
+            sir::Ty::Tuple(ref tids) => {
+                lir::Ty::Tuple(tids.iter().fold(Vec::new(), |mut vec, tid| {
                     vec.push(self.map_tid(*tid));
                     vec
-                })),
-            sir::Ty::Record(ref items) => lir::Ty::Record(items.iter().fold(Vec::new(), |mut vec, (name, tid)| {
+                }))
+            }
+            sir::Ty::Record(ref items) => {
+                lir::Ty::Record(items.iter().fold(Vec::new(), |mut vec, (name, tid)| {
                     vec.push((name, self.map_tid(*tid)));
                     vec
-                })),
-            sir::Ty::Union(ref btree_set) => lir::Ty::Union(btree_set.iter().fold(Vec::new(), |mut vec, tid| {
+                }))
+            }
+            sir::Ty::Union(ref btree_set) => {
+                lir::Ty::Union(btree_set.iter().fold(Vec::new(), |mut vec, tid| {
                     vec.push(self.map_tid(*tid));
                     vec
-                })),
+                }))
+            }
         };
 
         let id = self.lir.types.get_id(lt);
