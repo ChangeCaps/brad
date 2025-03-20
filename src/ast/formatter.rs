@@ -78,9 +78,19 @@ impl<W: Write> Formatter<W> {
                             self.format_binding(&arg.binding)?;
                             write!(self.writer, ": ")?;
                             self.format_ty(ty)?;
-                            write!(self.writer, ")")?
+                            write!(self.writer, ")")?;
                         }
-                        _ => self.format_binding(&arg.binding)?,
+                        _ => {
+                            write!(self.writer, " ")?;
+
+                            if let Binding::Bind { mutable: true, .. } = &arg.binding {
+                                write!(self.writer, "(")?;
+                                self.format_binding(&arg.binding)?;
+                                write!(self.writer, ")")?
+                            } else {
+                                self.format_binding(&arg.binding)?;
+                            }
+                        }
                     };
                 }
 
