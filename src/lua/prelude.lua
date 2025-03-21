@@ -31,38 +31,29 @@ local function shallow_clone(value)
 end
 
 local tag_metatable = {
-  __tostring = function(tag)
-    local result = ''
-
-    for k, _ in pairs(tag['__type_tags']) do
-      if #result > 0 then
-        result = result .. ' '
-      end
-
-      result = result .. k
-    end
-
-    return result
-  end,
+  __tostring = function(tag) return tag['__tag_name'] end,
+  __eq = function(a, b) return a['__type_tags'] == b['__type_tags'] end,
 }
 
 local int_metatable = {
-  __type_tags = { ['int'] = true },
   __tostring = function(value) return tostring(value.value) end,
+
+  __eq = function(a, b) return a.value == b.value end,
 }
 
 local float_metatable = {
-  __type_tags = { ['float'] = true },
   __tostring = function(value) return tostring(value.value) end,
+
+  __eq = function(a, b) return a.value == b.value end,
 }
 
 local str_metatable = {
-  __type_tags = { ['str'] = true },
   __tostring = function(value) return value.value end,
+
+  __eq = function(a, b) return a.value == b.value end,
 }
 
 local tuple_metatable = {
-  __type_tags = { ['tuple'] = true },
   __tostring = function(value)
     local result = '('
 
@@ -76,10 +67,23 @@ local tuple_metatable = {
 
     return result .. ')'
   end,
+
+  __eq = function(a, b)
+    if #a ~= #b then
+      return false
+    end
+
+    for i, v in ipairs(a) do
+      if v ~= b[i] then
+        return false
+      end
+    end
+
+    return true
+  end,
 }
 
 local record_metatable = {
-  __type_tags = { ['record'] = true },
   __tostring = function(value)
     local result = '{'
 
@@ -97,10 +101,25 @@ local record_metatable = {
 
     return result .. '}'
   end,
+
+  __eq = function(a, b)
+    for k, v in pairs(a) do
+      if b[k] ~= v then
+        return false
+      end
+    end
+
+    for k, v in pairs(b) do
+      if a[k] ~= v then
+        return false
+      end
+    end
+
+    return true
+  end,
 }
 
 local array_metatable = {
-  __type_tags = { ['array'] = true },
   __tostring = function(value)
     local result = '['
 
@@ -114,11 +133,26 @@ local array_metatable = {
 
     return result .. ']'
   end,
+
+  __eq = function(a, b)
+    if #a ~= #b then
+      return false
+    end
+
+    for i, v in ipairs(a) do
+      if v ~= b[i] then
+        return false
+      end
+    end
+
+    return true
+  end,
 }
 
 local function make_tag(name)
   local value = {
-    ["__type_tags"] = { [name] = true }
+    ["__type_tags"] = { [name] = true },
+    ["__tag_name"] = name,
   }
 
   setmetatable(value, tag_metatable)
