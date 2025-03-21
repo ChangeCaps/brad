@@ -13,6 +13,12 @@ pub struct Local {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LocalId(pub usize);
 
+impl LocalId {
+    pub fn index(self) -> usize {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Locals {
     locals: Vec<Local>,

@@ -214,6 +214,7 @@ impl<'a> BodyLowerer<'a> {
             ast::Expr::Unary(e) => self.lower_unary(e, ty),
             ast::Expr::Binary(e) => self.lower_binary(e, ty),
             ast::Expr::Call(e) => self.lower_call(e, ty),
+            ast::Expr::Lambda(e) => self.lower_lambda(e, ty),
             ast::Expr::Assign(e) => self.lower_assign(e, ty),
             ast::Expr::Ref(e) => self.lower_ref(e, ty),
             ast::Expr::Match(e) => self.lower_match(e, ty),
@@ -639,6 +640,14 @@ impl<'a> BodyLowerer<'a> {
         let span = ast.span;
 
         Ok(hir::Expr { kind, ty, span })
+    }
+
+    fn lower_lambda(
+        &mut self,
+        _ast: ast::LambdaExpr,
+        _ty: Option<hir::Ty>,
+    ) -> Result<hir::Expr, Diagnostic> {
+        todo!()
     }
 
     fn lower_assign(

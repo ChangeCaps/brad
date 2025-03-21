@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
+    mem,
     ops::{Deref, DerefMut},
 };
 
@@ -25,18 +26,21 @@ impl Lowerer<'_> {
             .zip(self.program[body_id].generics.iter().cloned())
             .collect::<Vec<_>>();
 
+        let output_ty = self.program[body_id].output.clone();
+
         let mut lowerer = ExprLowerer {
             lowerer: self,
 
             calls,
 
             module: info.module,
-            body: body_id,
+            context: Context::Body(body_id),
 
             generics: &mut Generics::Explicit(&generics),
 
             scope: Vec::new(),
             loop_ty: None,
+            output_ty,
         };
 
         // lower the arguments
@@ -106,18 +110,47 @@ impl Lowerer<'_> {
     }
 }
 
-pub struct ExprLowerer<'a, 'r> {
-    pub lowerer: &'a mut Lowerer<'r>,
+struct ExprLowerer<'a, 'r> {
+    lowerer: &'a mut Lowerer<'r>,
 
-    pub calls: &'a mut HashMap<hir::BodyId, Vec<hir::BodyId>>,
+    calls: &'a mut HashMap<hir::BodyId, Vec<hir::BodyId>>,
 
-    pub module: hir::ModuleId,
-    pub body: hir::BodyId,
+    module: hir::ModuleId,
+    context: Context,
 
-    pub generics: &'a mut Generics<'a>,
+    generics: &'a mut Generics<'a>,
 
-    pub scope: Vec<hir::LocalId>,
-    pub loop_ty: Option<solve::Ty>,
+    scope: Vec<Variable>,
+    loop_ty: Option<solve::Ty>,
+    output_ty: solve::Ty,
+}
+
+struct Variable {
+    local: hir::LocalId,
+    name: &'static str,
+    depth: usize,
+}
+
+enum Context {
+    None,
+
+    Body(hir::BodyId),
+
+    Lambda {
+        parent: Box<Self>,
+        locals: hir::Locals,
+        captures: Vec<hir::Capture>,
+    },
+}
+
+impl Context {
+    fn body(&self) -> hir::BodyId {
+        match self {
+            Context::None => unreachable!(),
+            Context::Body(body) => *body,
+            Context::Lambda { parent, .. } => parent.body(),
+        }
+    }
 }
 
 impl<'r> Deref for ExprLowerer<'_, 'r> {
@@ -135,15 +168,6 @@ impl DerefMut for ExprLowerer<'_, '_> {
 }
 
 impl ExprLowerer<'_, '_> {
-    pub fn body(&self) -> &hir::Body {
-        &self.program[self.body]
-    }
-
-    pub fn body_mut(&mut self) -> &mut hir::Body {
-        let body = self.body;
-        &mut self.program[body]
-    }
-
     pub fn ty(&mut self, ast: &ast::Ty) -> Result<solve::Ty, ()> {
         self.lowerer.lower_ty(self.module, self.generics, true, ast)
     }
@@ -161,7 +185,7 @@ impl ExprLowerer<'_, '_> {
         let mut queue = self.calls.get(&body_id).cloned().unwrap_or_default();
 
         while let Some(body_id) = queue.pop() {
-            if body_id == self.body {
+            if body_id == self.context.body() {
                 return true;
             }
 
@@ -191,9 +215,17 @@ impl ExprLowerer<'_, '_> {
                     span,
                 };
 
-                let local = self.body_mut().locals.insert(local);
+                let local = match self.context {
+                    Context::None => unreachable!(),
+                    Context::Body(body_id) => self.program[body_id].locals.insert(local),
+                    Context::Lambda { ref mut locals, .. } => locals.insert(local),
+                };
 
-                self.scope.push(local);
+                self.scope.push(Variable {
+                    local,
+                    name,
+                    depth: 0,
+                });
 
                 hir::Binding::Bind { local, span }
             }
@@ -235,6 +267,7 @@ impl ExprLowerer<'_, '_> {
             ast::Expr::Unary(ast) => self.unary_expr(ast),
             ast::Expr::Binary(ast) => self.binary_expr(ast),
             ast::Expr::Call(ast) => self.call_expr(ast),
+            ast::Expr::Lambda(ast) => self.lambda_expr(ast),
             ast::Expr::Assign(ast) => self.assign_expr(ast),
             ast::Expr::Ref(ast) => self.ref_expr(ast),
             ast::Expr::Match(ast) => self.match_expr(ast),
@@ -345,25 +378,85 @@ impl ExprLowerer<'_, '_> {
         })
     }
 
-    fn path_expr(&mut self, path: &ast::Path) -> Result<hir::Expr, ()> {
-        if path.segments.len() == 1 && path.spec.is_none() {
-            let name = path.segments[0].name;
+    fn get_local<'a>(
+        program: &'a hir::Program,
+        context: &'a mut Context,
+        id: hir::LocalId,
+        depth: usize,
+    ) -> (hir::LocalId, &'a hir::Local) {
+        if depth == 0 {
+            match context {
+                Context::None => unreachable!(),
 
-            for &local_id in self.scope.iter().rev() {
-                let local = &self.body().locals[local_id];
+                Context::Body(body) => {
+                    let local = &program[*body].locals[id];
+                    return (id, local);
+                }
 
-                if local.name == name {
-                    return Ok(hir::Expr {
-                        kind: hir::ExprKind::Local(local_id),
-                        ty: local.ty.clone(),
-                        span: path.span,
-                    });
+                Context::Lambda { locals, .. } => {
+                    let local = &locals[id];
+                    return (id, local);
                 }
             }
         }
 
+        let Context::Lambda {
+            parent,
+            locals,
+            captures,
+            ..
+        } = context
+        else {
+            unreachable!();
+        };
+
+        let (outer, local) = Self::get_local(program, parent, id, depth - 1);
+
+        if let Some(c) = captures.iter().find(|c| c.outer == outer) {
+            return (c.inner, local);
+        }
+
+        let inner = locals.insert(hir::Local {
+            is_mutable: local.is_mutable,
+            name: local.name,
+            ty: local.ty.clone(),
+            span: local.span,
+        });
+
+        captures.push(hir::Capture { inner, outer });
+
+        (inner, &locals[inner])
+    }
+
+    fn path_expr(&mut self, path: &ast::Path) -> Result<hir::Expr, ()> {
+        if path.segments.len() == 1 && path.spec.is_none() {
+            let name = path.segments[0].name;
+
+            for var in self.scope.iter().rev() {
+                if var.name != name {
+                    continue;
+                }
+
+                let (id, local) = Self::get_local(
+                    &self.lowerer.program,
+                    &mut self.context,
+                    var.local,
+                    var.depth,
+                );
+
+                let kind = hir::ExprKind::Local(id);
+                let ty = local.ty.clone();
+                let span = path.span;
+
+                return Ok(hir::Expr { kind, ty, span });
+            }
+        }
+
         if let Some(body_id) = self.program.modules.get_body(self.module, &path.segments) {
-            self.calls.entry(self.body).or_default().push(body_id);
+            self.calls
+                .entry(self.context.body())
+                .or_default()
+                .push(body_id);
 
             if self.funcs.contains_key(&body_id) {
                 let info = self.funcs.remove(&body_id).unwrap();
@@ -582,6 +675,84 @@ impl ExprLowerer<'_, '_> {
             ty,
             span: ast.span,
         })
+    }
+
+    fn lambda_expr(&mut self, ast: &ast::LambdaExpr) -> Result<hir::Expr, ()> {
+        self.context = Context::Lambda {
+            parent: Box::new(mem::replace(&mut self.context, Context::None)),
+            locals: hir::Locals::new(),
+            captures: Vec::new(),
+        };
+
+        // store information about the current context
+        let old_loop_ty = self.loop_ty.take();
+        let old_output_ty = self.output_ty.clone();
+        let scope_len = self.scope.len();
+
+        // set up the lowerer for the lambda context
+        for var in &mut self.scope {
+            var.depth += 1;
+        }
+
+        // lower the arguments
+        let mut args = Vec::new();
+        let mut tys = Vec::new();
+
+        for binding in &ast.args {
+            let ty = self.fresh_var();
+            let binding = self.binding(&ty, binding)?;
+
+            args.push(binding);
+            tys.push(ty);
+        }
+
+        // set up the output type
+        let output_ty = self.fresh_var();
+        self.output_ty = output_ty.clone();
+
+        // lower the body of the lambda
+        let body = Box::new(self.expr(&ast.body)?);
+
+        // constrain the type of the body to be equal to the output type
+        self.subty(&body.ty, &output_ty, body.span);
+        self.subty(&output_ty, &body.ty, body.span);
+
+        // restore the context
+        let Context::Lambda {
+            parent,
+            locals,
+            captures,
+        } = mem::replace(&mut self.context, Context::None)
+        else {
+            unreachable!();
+        };
+
+        // restore the scope
+        self.scope.truncate(scope_len);
+
+        for var in &mut self.scope {
+            var.depth -= 1;
+        }
+
+        // restore the lowerer to the previous context
+        self.context = *parent;
+        self.loop_ty = old_loop_ty;
+        self.output_ty = old_output_ty;
+
+        let ty = tys
+            .into_iter()
+            .rev()
+            .fold(body.ty.clone(), |acc, ty| solve::Ty::func(ty, acc));
+
+        let kind = hir::ExprKind::Lambda {
+            captures,
+            args,
+            locals,
+            body,
+        };
+        let span = ast.span;
+
+        Ok(hir::Expr { kind, ty, span })
     }
 
     fn assign_expr(&mut self, ast: &ast::AssignExpr) -> Result<hir::Expr, ()> {

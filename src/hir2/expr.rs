@@ -3,7 +3,7 @@ use crate::{
     solve::{Tag, Ty},
 };
 
-use super::{BodyId, LocalId};
+use super::{BodyId, LocalId, Locals};
 
 #[derive(Clone, Debug)]
 pub struct Expr {
@@ -39,6 +39,21 @@ pub enum ExprKind {
     Unary(UnaryOp, Box<Expr>),
     Binary(BinaryOp, Box<Expr>, Box<Expr>),
     Call(Box<Expr>, Box<Expr>),
+
+    Lambda {
+        /// The locals that are captured by the lambda.
+        captures: Vec<Capture>,
+
+        /// The arguments to the lambda.
+        args: Vec<Binding>,
+
+        /// The locals that are defined by the lambda.
+        locals: Locals,
+
+        /// The body of the lambda.
+        body: Box<Expr>,
+    },
+
     Assign(Box<Expr>, Box<Expr>),
     Ref(Box<Expr>),
     Match(Box<Expr>, MatchBody),
@@ -46,6 +61,15 @@ pub enum ExprKind {
     Break(Option<Box<Expr>>),
     Let(Binding, Box<Expr>),
     Block(Vec<Expr>),
+}
+
+#[derive(Clone, Debug)]
+pub struct Capture {
+    /// The local in the inner context.
+    pub inner: LocalId,
+
+    /// The captured local in the outer context.
+    pub outer: LocalId,
 }
 
 #[derive(Clone, Debug)]

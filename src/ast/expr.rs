@@ -16,6 +16,7 @@ pub enum Expr {
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     Call(CallExpr),
+    Lambda(LambdaExpr),
     Assign(AssignExpr),
     Ref(RefExpr),
     Match(MatchExpr),
@@ -38,6 +39,7 @@ impl Expr {
             Self::Unary(e) => e.span,
             Self::Binary(e) => e.span,
             Self::Call(e) => e.span,
+            Self::Lambda(e) => e.span,
             Self::Assign(e) => e.span,
             Self::Ref(e) => e.span,
             Self::Match(e) => e.span,
@@ -232,6 +234,13 @@ impl fmt::Display for BinaryOp {
 pub struct CallExpr {
     pub target: Box<Expr>,
     pub input: Box<Expr>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub struct LambdaExpr {
+    pub args: Vec<Binding>,
+    pub body: Box<Expr>,
     pub span: Span,
 }
 

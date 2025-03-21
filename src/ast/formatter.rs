@@ -217,6 +217,7 @@ impl<W: Write> Formatter<W> {
 
                 Ok(())
             }
+            Expr::Lambda(_) => todo!(),
             Expr::Assign(assign_expr) => {
                 self.format_expr(&assign_expr.target)?;
                 write!(self.writer, " = ")?;

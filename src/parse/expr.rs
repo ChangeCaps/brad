@@ -485,6 +485,8 @@ fn term(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
             Ok(ast::Expr::Path(path))
         }
 
+        Token::Backslash => lambda(input),
+
         Token::Open(Delim::Paren) => {
             input.expect(Token::Open(Delim::Paren))?;
 
@@ -513,6 +515,33 @@ fn term(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
             Err(diagnostic)
         }
     }
+}
+
+fn lambda(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
+    let start = input.expect(Token::Backslash)?;
+
+    let mut args = Vec::new();
+
+    while !input.is(Token::Dot) {
+        let binding = binding(input)?;
+        args.push(binding);
+    }
+
+    input.expect(Token::Dot)?;
+
+    if args.is_empty() {
+        let diagnostic = Diagnostic::error("expected::lambda")
+            .message("expected at least one argument in lambda")
+            .label(start, "here");
+
+        return Err(diagnostic);
+    }
+
+    let body = Box::new(expr(input)?);
+
+    let span = start.join(body.span());
+
+    Ok(ast::Expr::Lambda(ast::LambdaExpr { args, body, span }))
 }
 
 fn list(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {

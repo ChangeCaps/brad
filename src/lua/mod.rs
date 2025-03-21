@@ -25,6 +25,7 @@ fn codegen_body(code: &mut impl Write, hir: &hir::Program, body: &hir::Body) -> 
         hir,
         body,
         code,
+        level: 0,
         loop_tmp: None,
         next_tmp: 0,
     };
@@ -87,6 +88,8 @@ struct Codegen<'a, W> {
 
     code: &'a mut W,
 
+    level: usize,
+
     loop_tmp: Option<String>,
     next_tmp: usize,
 }
@@ -102,7 +105,15 @@ impl<W: Write> Codegen<'_, W> {
     fn binding(&mut self, binding: &hir::Binding, value: &str) -> io::Result<()> {
         match binding {
             hir::Binding::Wild { .. } => {}
-            hir::Binding::Bind { local, .. } => writeln!(self.code, "  l{} = {}", local.0, value)?,
+
+            hir::Binding::Bind { local, .. } => writeln!(
+                self.code,
+                "  {}{} = {}",
+                "l".repeat(self.level + 1),
+                local.0,
+                value,
+            )?,
+
             hir::Binding::Tuple { bindings, .. } => {
                 let tmp = self.tmp();
 
@@ -124,7 +135,7 @@ impl<W: Write> Codegen<'_, W> {
             hir::ExprKind::Int(value) => format!("make_int({value})"),
             hir::ExprKind::Float(value) => format!("make_float({value})"),
             hir::ExprKind::ZeroSize(tag) => format!("make_tag('{}')", tag.name),
-            hir::ExprKind::Local(id) => format!("l{}", id.0),
+            hir::ExprKind::Local(id) => format!("{}{}", "l".repeat(self.level + 1), id.0),
 
             hir::ExprKind::String(value) => {
                 let value = value
@@ -286,6 +297,63 @@ impl<W: Write> Codegen<'_, W> {
                 let input = self.expr(input)?;
 
                 format!("{}({})", target, input)
+            }
+
+            hir::ExprKind::Lambda {
+                ref captures,
+                ref args,
+                ref locals,
+                ref body,
+            } => {
+                let tmp = self.tmp();
+                write!(self.code, "  local {} = function(a0)", tmp)?;
+
+                let mut codegen = Codegen {
+                    hir: self.hir,
+                    body: self.body,
+                    code: self.code,
+                    level: self.level + 1,
+                    loop_tmp: None,
+                    next_tmp: 0,
+                };
+
+                for i in 1..args.len() {
+                    writeln!(codegen.code, "  return function(a{})", i)?;
+                }
+
+                for i in 0..locals.len() {
+                    writeln!(
+                        codegen.code,
+                        "  local {}{}",
+                        "l".repeat(codegen.level + 1),
+                        i,
+                    )?;
+                }
+
+                for (i, binding) in args.iter().enumerate() {
+                    codegen.binding(binding, &format!("a{}", i))?;
+                }
+
+                for capture in captures {
+                    writeln!(
+                        codegen.code,
+                        "  {}{} = {}{}",
+                        "l".repeat(codegen.level + 1),
+                        capture.inner.index(),
+                        "l".repeat(codegen.level),
+                        capture.outer.index(),
+                    )?;
+                }
+
+                let value = codegen.expr(body)?;
+
+                writeln!(self.code, "  return {}", value)?;
+
+                for _ in 0..args.len() {
+                    writeln!(self.code, "  end")?;
+                }
+
+                tmp
             }
 
             hir::ExprKind::Assign(ref target, ref value) => {
