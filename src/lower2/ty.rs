@@ -130,7 +130,7 @@ impl Lowerer<'_> {
             }
 
             ast::Ty::List { ty, .. } => {
-                solve::Ty::list(self.lower_ty(module, generics, allow_wild, ty)?)
+                solve::Ty::array(self.lower_ty(module, generics, allow_wild, ty)?)
             }
 
             ast::Ty::Func { input, output, .. } => {

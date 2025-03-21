@@ -1,6 +1,5 @@
 import std::io
 
-#[link = "brad_file"]
 extern type file
 
 #[link = "brad_file_open"]

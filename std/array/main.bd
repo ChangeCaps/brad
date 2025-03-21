@@ -1,0 +1,2 @@
+#[link = "brad_array_len"]
+extern fn len<'a> (list: ['a]) -> int

@@ -1,22 +1,128 @@
 local function deep_clone(value)
   if type(value) == 'table' then
     local result = {}
+
     for k, v in pairs(value) do
       result[deep_clone(k)] = deep_clone(v)
     end
+
+    setmetatable(result, getmetatable(value))
+
     return result
   else
     return value
   end
 end
 
+local function shallow_clone(value)
+  if type(value) == 'table' then
+    local result = {}
+
+    setmetatable(result, getmetatable(value))
+
+    for k, v in pairs(value) do
+      result[k] = v
+    end
+
+    return result
+  else
+    return value
+  end
+end
+
+local tag_metatable = {
+  __tostring = function(tag)
+    local result = ''
+
+    for k, _ in pairs(tag['__type_tags']) do
+      if #result > 0 then
+        result = result .. ' '
+      end
+
+      result = result .. k
+    end
+
+    return result
+  end,
+}
+
+local int_metatable = {
+  __type_tags = { ['int'] = true },
+  __tostring = function(value) return tostring(value.value) end,
+}
+
+local float_metatable = {
+  __type_tags = { ['float'] = true },
+  __tostring = function(value) return tostring(value.value) end,
+}
+
+local str_metatable = {
+  __type_tags = { ['str'] = true },
+  __tostring = function(value) return value.value end,
+}
+
+local tuple_metatable = {
+  __type_tags = { ['tuple'] = true },
+  __tostring = function(value)
+    local result = '('
+
+    for i, v in ipairs(value) do
+      if i > 1 then
+        result = result .. ', '
+      end
+
+      result = result .. tostring(v)
+    end
+
+    return result .. ')'
+  end,
+}
+
+local record_metatable = {
+  __type_tags = { ['record'] = true },
+  __tostring = function(value)
+    local result = '{'
+
+    for k, v in pairs(value) do
+      if #result > 1 then
+        result = result .. ';'
+      end
+
+      result = result .. ' ' .. k .. ': ' .. tostring(v)
+    end
+
+    if #result > 1 then
+      result = result .. ' '
+    end
+
+    return result .. '}'
+  end,
+}
+
+local array_metatable = {
+  __type_tags = { ['array'] = true },
+  __tostring = function(value)
+    local result = '['
+
+    for i, v in ipairs(value) do
+      if i > 1 then
+        result = result .. ', '
+      end
+
+      result = result .. tostring(v)
+    end
+
+    return result .. ']'
+  end,
+}
+
 local function make_tag(name)
-  local value = {}
-  setmetatable(value, {
-    __type_tags = { [name] = true },
-    __tostring = function() return name end,
-    __eq = function(_, _) return true end,
-  })
+  local value = {
+    ["__type_tags"] = { [name] = true }
+  }
+
+  setmetatable(value, tag_metatable)
+
   return value
 end
 
@@ -29,130 +135,86 @@ local function make_bool(value)
 end
 
 local function make_int(value)
-  value = { value = value }
-  setmetatable(value, {
-    __type_tags = { ['int'] = true },
-    __tostring = function() return tostring(value.value) end,
-    __eq = function(a, b) return a.value == b.value end,
-  })
+  value = {
+    ["__type_tags"] = { ['int'] = true },
+    value = value,
+  }
+
+  setmetatable(value, int_metatable)
 
   return value
 end
 
 local function make_float(value)
-  value = { value = value }
-  setmetatable(value, {
-    __type_tags = { ['float'] = true },
-    __tostring = function() return tostring(value.value) end,
-    __eq = function(a, b) return a.value == b.value end,
-  })
+  value = {
+    ["__type_tags"] = { ['float'] = true },
+    value = value,
+  }
+
+  setmetatable(value, float_metatable)
 
   return value
 end
 
 local function make_str(value)
-  value = { value = value }
-  setmetatable(value, {
-    __type_tags = { ['str'] = true },
-    __tostring = function() return '"' .. value.value .. '"' end,
-    __eq = function(a, b) return a.value == b.value end,
-  })
+  value = {
+    ["__type_tags"] = { ['str'] = true },
+    value = value
+  }
+
+  setmetatable(value, str_metatable)
 
   return value
 end
 
 local function make_tuple(...)
-  local value = { ... }
-  setmetatable(value, {
-    __type_tags = {},
-    __tostring = function()
-      local result = '('
+  local value = {
+    ['__type_tags'] = {},
+    ...,
+  }
 
-      for i, v in ipairs(value) do
-        if i > 1 then
-          result = result .. ', '
-        end
-
-        result = result .. tostring(v)
-      end
-
-      return result .. ')'
-    end,
-  })
+  setmetatable(value, tuple_metatable)
 
   return value
 end
 
 local function make_record(value)
-  setmetatable(value, {
-    __type_tags = {},
-    __tostring = function()
-      local result = '{'
-
-      for k, v in pairs(value) do
-        if #result > 1 then
-          result = result .. ';'
-        end
-
-        result = result .. ' ' .. k .. ': ' .. tostring(v)
-      end
-
-      if #result > 1 then
-        result = result .. ' '
-      end
-
-      return result .. '}'
-    end,
-  })
-
+  value['__type_tags'] = {}
+  setmetatable(value, record_metatable)
   return value
 end
 
-local function make_list(...)
-  local value = { ... }
-
-  setmetatable(value, {
-    __type_tags = {},
-    __tostring = function()
-      local result = '['
-
-      for i, v in ipairs(value) do
-        if i > 1 then
-          result = result .. ', '
-        end
-
-        result = result .. tostring(v)
-      end
-
-      return result .. ']'
-    end,
-  })
-
+local function make_array(...)
+  local value = {
+    ['__type_tags'] = {},
+    ...,
+  }
+  setmetatable(value, array_metatable)
   return value
 end
 
 local function add_tag(tag, value)
-  getmetatable(value).__type_tags[tag] = true
+  value['__type_tags'][tag] = true
   return value
 end
 
 local function add_tags(tags, value)
   for _, tag in ipairs(tags) do
-    getmetatable(value).__type_tags[tag] = true
+    value['__type_tags'][tag] = true
   end
 
   return value
 end
 
 local function has_tag(tag, value)
-  return type(value) == 'table' and getmetatable(value).__type_tags[tag] ~= nil
+  return type(value) == 'table' and value['__type_tags'][tag] ~= nil
 end
 
 local function brad_debug_format(value)
   return make_str(tostring(value))
 end
 
-local function brad_list_len(list)
+local function brad_array_len(list)
   return make_int(#list)
 end
 

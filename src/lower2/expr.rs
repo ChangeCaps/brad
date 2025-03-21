@@ -298,8 +298,8 @@ impl ExprLowerer<'_, '_> {
         }
 
         Ok(hir::Expr {
-            kind: hir::ExprKind::List(items),
-            ty: solve::Ty::list(ty),
+            kind: hir::ExprKind::Array(items),
+            ty: solve::Ty::array(ty),
             span: ast.span,
         })
     }
@@ -375,6 +375,34 @@ impl ExprLowerer<'_, '_> {
             let body = &self.program.bodies[body_id];
             let ty = body.ty();
 
+            let mut map = HashMap::new();
+
+            match path.spec {
+                Some(ref spec) => {
+                    if spec.tys.len() != body.generics.len() {
+                        let diagnostic = Diagnostic::error("invalid::spec")
+                            .message("incorrect number of type arguments")
+                            .span(spec.span);
+
+                        self.reporter.emit(diagnostic);
+
+                        return Err(());
+                    }
+
+                    for (param, ty) in body.generics.clone().into_iter().zip(spec.tys.iter()) {
+                        let ty = self.ty(ty)?;
+                        map.insert(param, ty);
+                    }
+                }
+
+                None => {
+                    for param in body.generics.clone() {
+                        let ty = self.fresh_var();
+                        map.insert(param, ty);
+                    }
+                }
+            }
+
             // if the target isn't recursive with the current body, then
             // we can instantiate the type with fresh variables for the
             // subsumption check
@@ -382,7 +410,7 @@ impl ExprLowerer<'_, '_> {
             // importantly, if the body however is recursive, then we CANNOT
             // instantiate, as this would break the soundness of type inference
             let ty = match self.recurses(body_id) {
-                false => self.program.solver.instance(&ty),
+                false => self.program.solver.instance(&map, &ty),
                 true => ty,
             };
 
@@ -409,7 +437,7 @@ impl ExprLowerer<'_, '_> {
         let index = self.expr(&ast.index)?;
 
         let ty = self.fresh_var();
-        let list_ty = solve::Ty::list(ty.clone());
+        let list_ty = solve::Ty::array(ty.clone());
 
         self.subty(&target.ty, &list_ty, target.span);
         self.subty(&index.ty, &solve::Ty::INT, index.span);

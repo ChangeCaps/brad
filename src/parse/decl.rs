@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use super::{binding, consume_newlines, generics, ident, ty, Delim, Token, Tokens};
+use super::{binding, consume_newlines, expr, generics, ident, ty, Delim, Token, Tokens};
 use crate::{
     ast::{self, Name},
     attribute::{Attribute, Attributes},
@@ -59,7 +59,10 @@ fn funcy(input: &mut Tokens, is_extern: bool, attrs: Attributes) -> Result<ast::
 
     let mut args = Vec::new();
 
-    while !input.is(Token::Open(Delim::Brace)) && !input.is(Token::ThinArrow) {
+    while !input.is(Token::Open(Delim::Brace))
+        && !input.is(Token::ThinArrow)
+        && !input.is(Token::ThickArrow)
+    {
         args.push(argument(input)?);
     }
 
@@ -69,9 +72,17 @@ fn funcy(input: &mut Tokens, is_extern: bool, attrs: Attributes) -> Result<ast::
         None
     };
 
-    let body = match input.is(Token::Open(Delim::Brace)) {
-        true => Some(block(input)?),
-        false => None,
+    let (token, _) = input.peek();
+
+    let body = match token {
+        Token::ThickArrow => {
+            input.consume();
+            Some(expr(input)?)
+        }
+
+        Token::Open(Delim::Brace) => Some(block(input)?),
+
+        _ => None,
     };
 
     let span = name.span;

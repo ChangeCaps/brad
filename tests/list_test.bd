@@ -1,9 +1,17 @@
 import std::list
+import std::debug
 
 fn main -> none {
-  let x = [1; 2] 
+  let l = list::empty
+    |> list::prepend 1
+    |> list::prepend 2
+    |> list::prepend 3
+    |> list::filter is-odd
+    |> list::map (mul 2)
 
-  std::assert <| x[0] == 1
-  std::assert <| x[1] == 2
-  std::assert <| list::len<int> x == 2
+  debug::print <| l
 }
+
+fn is-odd x => x % 2 == 1
+
+fn mul x y => x * y

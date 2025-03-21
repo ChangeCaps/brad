@@ -138,6 +138,7 @@ impl Solver {
                 self.inline_vars(seen, t1, pol),
                 self.inline_vars(seen, t2, pol),
             ),
+
             Ty::Inter(t1, t2) => Ty::inter(
                 self.inline_vars(seen, t1, pol),
                 self.inline_vars(seen, t2, pol),
@@ -170,7 +171,7 @@ impl Solver {
                 Ty::func(input, output)
             }
 
-            Ty::List(ty) => self.inline_vars(seen, ty, pol),
+            Ty::Array(ty) => self.inline_vars(seen, ty, pol),
 
             Ty::Ref(ty) => self.inline_vars(seen, ty, pol),
 
@@ -296,7 +297,7 @@ impl Solver {
                 self.write_ty_impl(w, output, vars, self.prec(ty))?;
             }
 
-            Ty::List(inner) => {
+            Ty::Array(inner) => {
                 write!(w, "[")?;
                 self.write_ty_impl(w, inner, vars, 0)?;
                 write!(w, "]")?;
@@ -352,7 +353,7 @@ impl Solver {
         match ty {
             Ty::Tag(_)
             | Ty::Record(_)
-            | Ty::List(_)
+            | Ty::Array(_)
             | Ty::App(_)
             | Ty::Top
             | Ty::Bot

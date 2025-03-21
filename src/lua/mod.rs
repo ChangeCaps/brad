@@ -146,13 +146,13 @@ impl<W: Write> Codegen<'_, W> {
                 format!("M['{}']()", self.hir[body].name)
             }
 
-            hir::ExprKind::List(ref items) => {
+            hir::ExprKind::Array(ref items) => {
                 let items = items
                     .iter()
                     .map(|item| self.expr(item))
                     .collect::<io::Result<Vec<_>>>()?;
 
-                format!("make_list({})", items.join(", "))
+                format!("make_array({})", items.join(", "))
             }
 
             hir::ExprKind::Tuple(ref items) => {

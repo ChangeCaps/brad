@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt};
+use std::collections::HashMap;
 
 use crate::diagnostic::{Diagnostic, Reporter, Span};
 
@@ -9,46 +9,6 @@ mod dnf;
 mod format;
 mod simplify;
 mod ty;
-
-impl fmt::Display for Ty {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Ty::Union(lhs, rhs) => write!(f, "({} | {})", lhs, rhs),
-            Ty::Inter(lhs, rhs) => write!(f, "({} & {})", lhs, rhs),
-            Ty::Neg(ty) => write!(f, "~{}", ty),
-            Ty::Func(lhs, rhs) => write!(f, "({} -> {})", lhs, rhs),
-            Ty::List(ty) => write!(f, "[{}]", ty),
-            Ty::Ref(ty) => write!(f, "ref {}", ty),
-
-            Ty::Top => write!(f, "⊤"),
-            Ty::Bot => write!(f, "⊥"),
-            Ty::Var(idx) => write!(f, "'{}", idx.index),
-
-            Ty::Tag(tag) => write!(f, "{}", tag.name),
-
-            Ty::Record(fields) => {
-                let fields: Vec<_> = fields
-                    .iter()
-                    .map(|(ident, ty)| format!("{}: {}", ident, ty))
-                    .collect();
-
-                write!(f, "{{{}}}", fields.join(", "))
-            }
-
-            Ty::Tuple(tys) => {
-                let tys: Vec<_> = tys.iter().map(|ty| ty.to_string()).collect();
-
-                write!(f, "({})", tys.join(", "))
-            }
-
-            Ty::App(app) => {
-                let args: Vec<_> = app.args.iter().map(|ty| ty.to_string()).collect();
-
-                write!(f, "{}<{}>", app.tag.name, args.join(", "))
-            }
-        }
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct Options {
@@ -145,24 +105,28 @@ impl Solver {
         Ok(())
     }
 
-    pub fn instance(&mut self, ty: &Ty) -> Ty {
-        self.inst(&mut HashMap::new(), ty)
+    pub fn instance(&mut self, map: &HashMap<Ty, Ty>, ty: &Ty) -> Ty {
+        self.inst(&mut HashMap::new(), map, ty)
     }
 
-    fn inst(&mut self, map: &mut HashMap<Var, Var>, ty: &Ty) -> Ty {
+    fn inst(&mut self, vars: &mut HashMap<Var, Var>, map: &HashMap<Ty, Ty>, ty: &Ty) -> Ty {
         ty.clone().map(|ty| {
+            if let Some(ty) = map.get(&ty) {
+                return ty.clone();
+            }
+
             if let Ty::Var(var) = ty {
-                if let Some(&var) = map.get(&var) {
+                if let Some(&var) = vars.get(&var) {
                     return Ty::Var(var);
                 }
 
                 let new_var = self.fresh_var();
-                map.insert(var, new_var);
+                vars.insert(var, new_var);
 
                 let var = self.bounds(var).clone();
 
-                let lbs = var.lbs.iter().map(|ty| self.inst(map, ty)).collect();
-                let ubs = var.ubs.iter().map(|ty| self.inst(map, ty)).collect();
+                let lbs = var.lbs.iter().map(|ty| self.inst(vars, map, ty)).collect();
+                let ubs = var.ubs.iter().map(|ty| self.inst(vars, map, ty)).collect();
 
                 let var = self.bounds(new_var);
 
@@ -445,7 +409,7 @@ impl Solver {
                         return Err(diagnostic);
                     }
 
-                    (LnfBase::List(lt), RnfBase::List(rt)) => {
+                    (LnfBase::Array(lt), RnfBase::Array(rt)) => {
                         self.subty(lt, rt, span);
                         continue;
                     }
@@ -467,7 +431,7 @@ impl Solver {
                             LnfBase::Record(_) => String::from("record"),
                             LnfBase::Tuple(_) => String::from("tuple"),
                             LnfBase::Func(_, _) => String::from("function"),
-                            LnfBase::List(_) => String::from("list"),
+                            LnfBase::Array(_) => String::from("array"),
                             LnfBase::Ref(_) => String::from("reference"),
                         };
 
@@ -476,7 +440,7 @@ impl Solver {
                             RnfBase::Field(_, _) => String::from("record"),
                             RnfBase::Func(_, _) => String::from("function"),
                             RnfBase::Tuple(_) => String::from("tuple"),
-                            RnfBase::List(_) => String::from("list"),
+                            RnfBase::Array(_) => String::from("array"),
                             RnfBase::Ref(_) => String::from("reference"),
                         };
 

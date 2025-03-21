@@ -47,7 +47,7 @@ pub enum LnfBase {
     Record(BTreeMap<Field, Ty>),
     Tuple(Vec<Ty>),
     Func(Ty, Ty),
-    List(Ty),
+    Array(Ty),
     Ref(Ty),
 }
 
@@ -67,7 +67,7 @@ pub enum RnfBase {
     Field(&'static str, Ty),
     Tuple(Vec<Ty>),
     Func(Ty, Ty),
-    List(Ty),
+    Array(Ty),
     Ref(Ty),
 }
 
@@ -221,11 +221,11 @@ impl Lnf {
         }
     }
 
-    pub fn list(ty: Ty) -> Self {
+    pub fn array(ty: Ty) -> Self {
         Lnf::Base {
             tags: BTreeSet::new(),
             apps: BTreeSet::new(),
-            base: LnfBase::List(ty),
+            base: LnfBase::Array(ty),
         }
     }
 
@@ -265,7 +265,7 @@ impl Lnf {
                         Ty::func(input, output)
                     }
 
-                    LnfBase::List(ty) => Ty::list(ty.clone()),
+                    LnfBase::Array(ty) => Ty::array(ty.clone()),
                     LnfBase::Ref(ty) => Ty::ref_(ty.clone()),
 
                     LnfBase::Record(fields) => Ty::Record(fields.clone()),
@@ -333,11 +333,11 @@ impl Rnf {
         }
     }
 
-    pub fn list(ty: Ty) -> Self {
+    pub fn array(ty: Ty) -> Self {
         Rnf::Base {
             tags: BTreeSet::new(),
             apps: BTreeSet::new(),
-            base: RnfBase::List(ty),
+            base: RnfBase::Array(ty),
         }
     }
 
@@ -371,7 +371,7 @@ impl Rnf {
                     }
 
                     RnfBase::Field(field, ty) => Ty::record([(*field, ty.clone())]),
-                    RnfBase::List(ty) => Ty::list(ty.clone()),
+                    RnfBase::Array(ty) => Ty::array(ty.clone()),
                     RnfBase::Ref(ty) => Ty::ref_(ty.clone()),
                     RnfBase::Func(input, output) => Ty::func(input.clone(), output.clone()),
                     RnfBase::Tuple(tys) => Ty::tuple(tys.clone()),
@@ -466,7 +466,7 @@ impl Solver {
                 Dnf::lnf(Lnf::func(input, output))
             }
 
-            Ty::List(ty) => Dnf::lnf(Lnf::list(ty.as_ref().clone())),
+            Ty::Array(ty) => Dnf::lnf(Lnf::array(ty.as_ref().clone())),
             Ty::Ref(ty) => Dnf::lnf(Lnf::ref_(ty.as_ref().clone())),
 
             Ty::Tuple(tys) => Dnf::lnf(Lnf::tuple(tys.clone())),
@@ -538,7 +538,7 @@ impl Solver {
                 Cnf::rnf(Rnf::func(input, output))
             }
 
-            Ty::List(ty) => Cnf::rnf(Rnf::list(ty.as_ref().clone())),
+            Ty::Array(ty) => Cnf::rnf(Rnf::array(ty.as_ref().clone())),
             Ty::Ref(ty) => Cnf::rnf(Rnf::ref_(ty.as_ref().clone())),
 
             Ty::Tuple(tys) => Cnf::rnf(Rnf::tuple(tys.clone())),
@@ -547,8 +547,6 @@ impl Solver {
     }
 
     pub(super) fn inter_conjunct(&self, lhs: Conjunct, rhs: Conjunct) -> Conjunct {
-        //println!("inter conjunct");
-
         Conjunct {
             lnf: self.inter_lnf(lhs.lnf, rhs.lnf),
             vars: lhs.vars.union(&rhs.vars).cloned().collect(),

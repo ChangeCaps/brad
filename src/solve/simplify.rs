@@ -115,7 +115,7 @@ impl Solver {
                 Ty::func(input, output)
             }
 
-            Ty::List(ty) => Ty::list(self.simplify(ty)),
+            Ty::Array(ty) => Ty::array(self.simplify(ty)),
 
             Ty::Ref(ty) => Ty::ref_(self.simplify(ty)),
 
@@ -200,7 +200,7 @@ impl Solver {
                 .zip(rhs)
                 .all(|(lhs, rhs)| self.is_subty(lhs, rhs)),
 
-            (Ty::List(lhs), Ty::List(rhs)) => self.is_subty(lhs, rhs),
+            (Ty::Array(lhs), Ty::Array(rhs)) => self.is_subty(lhs, rhs),
 
             (Ty::Ref(lhs), Ty::Ref(rhs)) => self.is_subty(lhs, rhs) && self.is_subty(rhs, lhs),
 
@@ -244,7 +244,7 @@ impl Solver {
 
             (Ty::Func(..), _) | (_, Ty::Func(..)) => false,
             (Ty::Tuple(..), _) | (_, Ty::Tuple(..)) => false,
-            (Ty::List(..), _) | (_, Ty::List(..)) => false,
+            (Ty::Array(..), _) | (_, Ty::Array(..)) => false,
             (Ty::Ref(..), _) | (_, Ty::Ref(..)) => false,
             (Ty::Record(..), _) | (_, Ty::Record(..)) => false,
         }

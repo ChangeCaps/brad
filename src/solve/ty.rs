@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt,
+};
 
 use super::Var;
 
@@ -40,7 +43,7 @@ pub enum Ty {
     Record(BTreeMap<Field, Ty>),
     Tuple(Vec<Ty>),
     Func(Box<Ty>, Box<Ty>),
-    List(Box<Ty>),
+    Array(Box<Ty>),
     Ref(Box<Ty>),
     App(App),
     Tag(Tag),
@@ -75,8 +78,8 @@ impl Ty {
         Ty::Func(Box::new(input), Box::new(output))
     }
 
-    pub fn list(ty: Ty) -> Self {
-        Ty::List(Box::new(ty))
+    pub fn array(ty: Ty) -> Self {
+        Ty::Array(Box::new(ty))
     }
 
     pub fn ref_(ty: Ty) -> Self {
@@ -133,7 +136,7 @@ impl Ty {
                 output.visit_impl(f);
             }
 
-            Ty::List(ty) | Ty::Ref(ty) => ty.visit_impl(f),
+            Ty::Array(ty) | Ty::Ref(ty) => ty.visit_impl(f),
 
             Ty::App(app) => {
                 for ty in &app.args {
@@ -170,7 +173,7 @@ impl Ty {
 
             Ty::Func(input, output) => Ty::func(input.map_impl(f), output.map_impl(f)),
 
-            Ty::List(ty) => Ty::list(ty.map_impl(f)),
+            Ty::Array(ty) => Ty::array(ty.map_impl(f)),
             Ty::Ref(ty) => Ty::ref_(ty.map_impl(f)),
 
             Ty::App(app) => Ty::app(
@@ -179,6 +182,46 @@ impl Ty {
             ),
 
             ty @ (Ty::Var(_) | Ty::Tag(_) | Ty::Top | Ty::Bot) => ty,
+        }
+    }
+}
+
+impl fmt::Display for Ty {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ty::Union(lhs, rhs) => write!(f, "({} | {})", lhs, rhs),
+            Ty::Inter(lhs, rhs) => write!(f, "({} & {})", lhs, rhs),
+            Ty::Neg(ty) => write!(f, "~{}", ty),
+            Ty::Func(lhs, rhs) => write!(f, "({} -> {})", lhs, rhs),
+            Ty::Array(ty) => write!(f, "[{}]", ty),
+            Ty::Ref(ty) => write!(f, "ref {}", ty),
+
+            Ty::Top => write!(f, "⊤"),
+            Ty::Bot => write!(f, "⊥"),
+            Ty::Var(var) => write!(f, "'{}", var.index),
+
+            Ty::Tag(tag) => write!(f, "{}", tag.name),
+
+            Ty::Record(fields) => {
+                let fields: Vec<_> = fields
+                    .iter()
+                    .map(|(ident, ty)| format!("{}: {}", ident, ty))
+                    .collect();
+
+                write!(f, "{{{}}}", fields.join(", "))
+            }
+
+            Ty::Tuple(tys) => {
+                let tys: Vec<_> = tys.iter().map(|ty| ty.to_string()).collect();
+
+                write!(f, "({})", tys.join(", "))
+            }
+
+            Ty::App(app) => {
+                let args: Vec<_> = app.args.iter().map(|ty| ty.to_string()).collect();
+
+                write!(f, "{}<{}>", app.tag.name, args.join(", "))
+            }
         }
     }
 }

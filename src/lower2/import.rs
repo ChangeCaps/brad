@@ -54,11 +54,15 @@ impl Lowerer<'_> {
 
                         let output = solve::Ty::Var(self.program.solver.fresh_var());
 
-                        let generics = ast
-                            .generics()
-                            .map(|_| solve::Ty::Var(self.program.solver.fresh_var()))
-                            .collect();
+                        // lower the generics
+                        let mut generics = Vec::new();
 
+                        for _ in ast.generics() {
+                            let var = solve::Ty::Var(self.program.solver.fresh_var());
+                            generics.push(var);
+                        }
+
+                        // create the full name of the function
                         let module_name = self.program[module].name.as_ref().unwrap();
                         let full_name = format!("{}::{}", module_name, ast.name);
 

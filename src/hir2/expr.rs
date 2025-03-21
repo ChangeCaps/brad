@@ -31,7 +31,7 @@ pub enum ExprKind {
     Local(LocalId),
     Tag(Tag, Box<Expr>),
     Func(BodyId),
-    List(Vec<Expr>),
+    Array(Vec<Expr>),
     Tuple(Vec<Expr>),
     Record(Vec<Init>),
     Index(Box<Expr>, Box<Expr>),

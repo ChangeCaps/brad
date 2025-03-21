@@ -1,10 +1,10 @@
 /target
 Cargo.lock
-/my-test
 /obj
 /a.out
 /run.log
 /out.lua
+/playground.bd
 
 .venv
 __pycache__/
