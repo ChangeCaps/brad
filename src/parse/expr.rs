@@ -136,6 +136,7 @@ fn is_expr(input: &mut Tokens) -> bool {
         | Token::True
         | Token::False
         | Token::None
+        | Token::Backslash
         | Token::Open(_)
         | Token::Ident(_)
         | Token::Integer(_)

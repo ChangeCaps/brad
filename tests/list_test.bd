@@ -7,7 +7,7 @@ fn main -> none {
     |> list::prepend 2
     |> list::prepend 3
     |> list::filter is-odd
-    |> list::map (mul 2)
+    |> list::map \x. x * 2 
 
   debug::print <| l
 }
