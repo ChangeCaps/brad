@@ -62,9 +62,16 @@ impl Lowerer<'_> {
                             generics.push(var);
                         }
 
+                        let sub_module = self.program.modules.insert_module(
+                            module,
+                            &ast.name.segments[..ast.name.segments.len() - 1],
+                            hir::Vis::Pub,
+                        );
+
                         // create the full name of the function
-                        let module_name = self.program[module].name.as_ref().unwrap();
-                        let full_name = format!("{}::{}", module_name, ast.name);
+                        let short_name = ast.name.segments.last().unwrap();
+                        let module_name = self.program[sub_module].name.as_ref().unwrap();
+                        let full_name = format!("{}::{}", module_name, short_name);
 
                         // create a body for the function
                         // with temporary data that will be filled in later
@@ -92,15 +99,13 @@ impl Lowerer<'_> {
                         self.funcs.insert(body_id, info);
 
                         // insert the body into the module
-                        let result = self.program.modules.insert_body(
-                            module,
-                            &ast.name.segments,
-                            body_id,
-                            hir::Vis::Pub,
+                        let result = self.program[sub_module].bodies.insert(
+                            short_name, //
+                            (body_id, hir::Vis::Pub),
                         );
 
                         // check if the function was already declared
-                        if let Err(body_id) = result {
+                        if let Some((body_id, _)) = result {
                             let existing_span = self.program.bodies[body_id].span;
 
                             let diagnostic = Diagnostic::error("duplicate::function")
@@ -126,25 +131,30 @@ impl Lowerer<'_> {
                         ref generics,
                         ..
                     }) => {
-                        let module_name = self.program[module].name.as_ref().unwrap();
-                        let full_name = format!("{}::{}", module_name, name);
+                        let sub_module = self.program.modules.insert_module(
+                            module,
+                            &name.segments[..name.segments.len() - 1],
+                            hir::Vis::Pub,
+                        );
+
+                        let short_name = name.segments.last().unwrap();
+                        let module_name = self.program[sub_module].name.as_ref().unwrap();
+                        let full_name = format!("{}::{}", module_name, short_name);
                         let full_name = self.interner.intern(&full_name);
+
                         let tag = self.make_tag(full_name);
 
                         // compute the number of generics
                         let generics = generics.as_ref().map_or(0, |g| g.params.len());
 
                         // insert the tag into the module
-                        let result = self.program.modules.insert_type(
-                            module,
-                            &name.segments,
-                            tag,
-                            hir::Vis::Pub,
-                            span,
+                        let result = self.program[sub_module].types.insert(
+                            short_name, //
+                            (tag, hir::Vis::Pub, span),
                         );
 
                         // check if the type was already declared
-                        if let Err(existing_span) = result {
+                        if let Some((_, _, existing_span)) = result {
                             let diagnostic = Diagnostic::error("duplicate::type")
                                 .message(format!("duplicate declaration type `{}`", name))
                                 .label(span, "conflicting declaration")
@@ -206,15 +216,13 @@ impl Lowerer<'_> {
                         let body_id = self.program.bodies.insert(body);
 
                         // insert the body into the module
-                        let result = self.program.modules.insert_body(
-                            module,
-                            &name.segments,
-                            body_id,
-                            hir::Vis::Pub,
+                        let result = self.program[sub_module].bodies.insert(
+                            short_name, //
+                            (body_id, hir::Vis::Pub),
                         );
 
                         // check if the function was already declared
-                        if let Err(body_id) = result {
+                        if let Some((body_id, _)) = result {
                             let existing_span = self.program.bodies[body_id].span;
 
                             let diagnostic = Diagnostic::error("duplicate::function")

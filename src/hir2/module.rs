@@ -96,39 +96,6 @@ impl Modules {
         from
     }
 
-    pub fn insert_body(
-        &mut self,
-        from: ModuleId,
-        segments: &[&'static str],
-        body: BodyId,
-        vis: Vis,
-    ) -> Result<(), BodyId> {
-        let module = self.insert_module(from, &segments[0..segments.len() - 1], vis);
-        let last = segments.last().unwrap();
-
-        match self[module].bodies.insert(last, (body, vis)) {
-            Some((body, _)) => Err(body),
-            None => Ok(()),
-        }
-    }
-
-    pub fn insert_type(
-        &mut self,
-        from: ModuleId,
-        segments: &[&'static str],
-        ty: Tag,
-        vis: Vis,
-        span: Span,
-    ) -> Result<(), Span> {
-        let module = self.insert_module(from, &segments[0..segments.len() - 1], vis);
-        let last = segments.last().unwrap();
-
-        match self[module].types.insert(last, (ty, Vis::Pub, span)) {
-            Some((_, _, span)) => Err(span),
-            None => Ok(()),
-        }
-    }
-
     pub fn get_module<I, S>(&self, mut from: ModuleId, segments: I) -> Option<ModuleId>
     where
         S: AsRef<str>,
