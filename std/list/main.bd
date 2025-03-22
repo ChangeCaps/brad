@@ -1,4 +1,5 @@
 import std::list
+import std::array
 
 type std::list<'a> = none | 'a * list<'a>
 
@@ -30,6 +31,20 @@ fn concat<'a> (xs: list<'a>) (ys: list<'a>) -> list<'a> {
 
 fn extend<'a> (ys: list<'a>) (xs: list<'a>) -> list<'a> {
     concat ys xs
+}
+
+fn iter<'a> (xs: list<'a>) -> std::iter<'a> {
+    std::iter \_. {
+        match xs
+        | none      => none
+        | _ as h, t => h, iter t
+    }
+}
+
+fn collect<'a> (xs: std::iter<'a>) -> list<'a> {
+    match std::iter::next xs
+    | none => empty
+    | _ as h, t => prepend h (collect t)
 }
 
 fn map<'a, 'b> (f: 'a -> 'b) (xs: list<'a>) -> list<'b> {

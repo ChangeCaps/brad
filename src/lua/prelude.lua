@@ -32,6 +32,7 @@ end
 
 local tag_metatable = {
   __tostring = function(tag) return tag['__tag_name'] end,
+
   __eq = function(a, b) return a['__type_tags'] == b['__type_tags'] end,
 }
 
@@ -48,9 +49,15 @@ local float_metatable = {
 }
 
 local str_metatable = {
-  __tostring = function(value) return value.value end,
+  __tostring = function(value) return '"' .. value.value .. '"' end,
 
   __eq = function(a, b) return a.value == b.value end,
+}
+
+local func_metatable = {
+  __tostring = function(_) return 'function' end,
+
+  __eq = function(a, b) return a == b end,
 }
 
 local tuple_metatable = {
@@ -201,6 +208,17 @@ local function make_str(value)
   return value
 end
 
+local function make_func(value)
+  value = {
+    ["__type_tags"] = {},
+    value = value
+  }
+
+  setmetatable(value, func_metatable)
+
+  return value
+end
+
 local function make_tuple(...)
   local value = {
     ['__type_tags'] = {},
@@ -252,6 +270,20 @@ local function brad_array_len(list)
   return make_int(#list)
 end
 
+local function brad_array_concat(a, b)
+  local result = {}
+
+  for i, v in ipairs(a) do
+    result[i] = v
+  end
+
+  for i, v in ipairs(b) do
+    result[#a + i] = v
+  end
+
+  return make_array(table.unpack(result))
+end
+
 local function brad_print(str)
   io.stdout:write(str.value)
   return make_tag('none')
@@ -259,6 +291,16 @@ end
 
 local function brad_str_concat(a, b)
   return make_str(a.value .. b.value)
+end
+
+local function brad_str_chars(str)
+  local chars = {}
+
+  for i = 1, #str.value do
+    chars[i] = make_str(str.value:sub(i, i))
+  end
+
+  return make_array(table.unpack(chars))
 end
 
 local function brad_os_exit(code)

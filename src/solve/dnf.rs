@@ -424,7 +424,7 @@ impl Solver {
                     conjuncts.push(c2);
                 }
 
-                Dnf(conjuncts)
+                self.simplify_dnf_strict(Dnf(conjuncts))
             }
 
             // (a | b | ..) & (c | d | ..) & .. => (a & c & ..) | (a & d & ..) | ..
@@ -441,7 +441,7 @@ impl Solver {
                     }
                 }
 
-                Dnf(conjuncts)
+                self.simplify_dnf_strict(Dnf(conjuncts))
             }
 
             Ty::Record(fields) => {
@@ -500,7 +500,7 @@ impl Solver {
                     disjuncts.push(c2);
                 }
 
-                Cnf(disjuncts)
+                self.simplify_cnf_strict(Cnf(disjuncts))
             }
 
             // (a | b | ..) & (c | d | ..) & .. => (a & c & ..) | (a & d & ..) | ..
@@ -517,7 +517,7 @@ impl Solver {
                     }
                 }
 
-                Cnf(disjuncts)
+                self.simplify_cnf_strict(Cnf(disjuncts))
             }
 
             Ty::Record(fields) => {

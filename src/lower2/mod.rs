@@ -142,7 +142,7 @@ impl<'a> Lowerer<'a> {
                         let body = hir::Body {
                             attrs: Attributes::new(),
                             is_extern: false,
-                            name: info.ast.name.to_string(),
+                            name: tag.name.to_string(),
                             generics: params.clone(),
                             locals,
                             input: vec![hir::Argument {
@@ -181,7 +181,7 @@ impl<'a> Lowerer<'a> {
                         let body = hir::Body {
                             attrs: Attributes::new(),
                             is_extern: false,
-                            name: info.ast.name.to_string(),
+                            name: tag.name.to_string(),
                             generics: params.clone(),
                             locals: hir::Locals::new(),
                             input: Vec::new(),

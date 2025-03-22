@@ -18,7 +18,7 @@ fn codegen_body(code: &mut impl Write, hir: &hir::Program, body: &hir::Body) -> 
     writeln!(code, "M['{}'] = function()", body.name)?;
 
     for i in 0..body.input.len() {
-        writeln!(code, "  return function(a{i})")?;
+        writeln!(code, "  return make_func(function(a{i})")?;
     }
 
     let mut codegen = Codegen {
@@ -74,7 +74,7 @@ fn codegen_body(code: &mut impl Write, hir: &hir::Program, body: &hir::Body) -> 
     };
 
     for _ in 0..body.input.len() {
-        writeln!(code, "  end")?;
+        writeln!(code, "  end)")?;
     }
 
     writeln!(code, "end")?;
@@ -191,7 +191,7 @@ impl<W: Write> Codegen<'_, W> {
                 let target = self.expr(target)?;
                 let index = self.expr(index)?;
 
-                format!("{}[{}]", target, index)
+                format!("{}[{}.value + 1]", target, index)
             }
 
             hir::ExprKind::Field(ref target, field) => {
@@ -296,7 +296,7 @@ impl<W: Write> Codegen<'_, W> {
                 let target = self.expr(target)?;
                 let input = self.expr(input)?;
 
-                format!("{}({})", target, input)
+                format!("({}.value)({})", target, input)
             }
 
             hir::ExprKind::Lambda {
@@ -306,7 +306,7 @@ impl<W: Write> Codegen<'_, W> {
                 ref body,
             } => {
                 let tmp = self.tmp();
-                write!(self.code, "  local {} = function(a0)", tmp)?;
+                write!(self.code, "  local {} = make_func(function(a0)", tmp)?;
 
                 let mut codegen = Codegen {
                     hir: self.hir,
@@ -318,7 +318,7 @@ impl<W: Write> Codegen<'_, W> {
                 };
 
                 for i in 1..args.len() {
-                    writeln!(codegen.code, "  return function(a{})", i)?;
+                    writeln!(codegen.code, "  return make_func(function(a{})", i)?;
                 }
 
                 for i in 0..locals.len() {
@@ -350,7 +350,7 @@ impl<W: Write> Codegen<'_, W> {
                 writeln!(self.code, "  return {}", value)?;
 
                 for _ in 0..args.len() {
-                    writeln!(self.code, "  end")?;
+                    writeln!(self.code, "  end)")?;
                 }
 
                 tmp
