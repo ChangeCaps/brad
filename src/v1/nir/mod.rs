@@ -5,6 +5,9 @@ pub mod ty;
 
 #[allow(unused)]
 use body::*;
+#[allow(unused)]
 use build::*;
+#[allow(unused)]
 use stmt::*;
+#[allow(unused)]
 use ty::*;

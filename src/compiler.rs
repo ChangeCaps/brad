@@ -215,7 +215,7 @@ impl<'a> Compiler<'a> {
         Ok(crate::v1::llvm_codegen::codegen(sir))
     }
 
-    pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Diagnostic> {
+    pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Report> {
         crate::v1::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
         Ok(())
     }
