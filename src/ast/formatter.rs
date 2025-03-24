@@ -1,4 +1,5 @@
 use crate::ast::{Binding, CallExpr, Decl, Expr, Func, Generics, Module, Pattern, TupleExpr, Ty};
+use crate::attribute::Attributes;
 use clap::Args;
 use std::{io, io::Write};
 
@@ -48,6 +49,8 @@ impl<W: Write> Formatter<W> {
     }
 
     pub fn format_module(&mut self, module: &Module) -> Result {
+        self.format_attributes(&module.attrs, true)?;
+
         for decl in &module.decls {
             self.format_decl(decl)?;
         }
@@ -59,6 +62,8 @@ impl<W: Write> Formatter<W> {
         match decl {
             Decl::Func(func_decl) => {
                 writeln!(self.writer)?;
+
+                self.format_attributes(&func_decl.attrs, false)?;
 
                 if func_decl.is_extern {
                     write!(self.writer, "extern ")?;
@@ -284,6 +289,25 @@ impl<W: Write> Formatter<W> {
                 write!(self.writer, "}}")
             }
         }
+    }
+
+    pub fn format_attributes(&mut self, attrs: &Attributes, top_level: bool) -> Result {
+        for attr in &attrs.attributes {
+            write!(
+                self.writer,
+                "#{}[{}",
+                if top_level { "!" } else { "" },
+                attr.name
+            )?;
+
+            if let Some(value) = &attr.value {
+                write!(self.writer, " = {}", value)?;
+            }
+
+            writeln!(self.writer, "]")?;
+        }
+
+        Ok(())
     }
 
     pub fn format_binding(&mut self, binding: &Binding) -> Result {

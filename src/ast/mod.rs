@@ -14,7 +14,10 @@ pub use generic::*;
 pub use path::*;
 pub use ty::*;
 
+use crate::attribute::Attributes;
+
 #[derive(Clone, Debug)]
 pub struct Module {
+    pub attrs: Attributes,
     pub decls: Vec<Decl>,
 }

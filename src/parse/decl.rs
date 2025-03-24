@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub fn decl(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
-    let attrs = attributes(input)?;
+    let attrs = attributes(input, false)?;
 
     let (token, span) = input.peek();
 
@@ -189,19 +189,32 @@ fn import(input: &mut Tokens, attrs: Attributes) -> Result<ast::Decl, Diagnostic
     Ok(ast::Decl::Import(ast::Import { attrs, path }))
 }
 
-fn attributes(input: &mut Tokens) -> Result<Attributes, Diagnostic> {
+pub(super) fn attributes(input: &mut Tokens, top_level: bool) -> Result<Attributes, Diagnostic> {
     let mut attributes = Vec::new();
 
-    while input.is(Token::Pound) {
-        attributes.push(attribute(input)?);
+    loop {
+        if !input.is(Token::Pound) {
+            break;
+        }
+
+        if top_level && !input.nth_is(1, Token::Bang) {
+            break;
+        }
+
+        attributes.push(attribute(input, top_level)?);
         consume_newlines(input);
     }
 
     Ok(Attributes { attributes })
 }
 
-fn attribute(input: &mut Tokens) -> Result<Attribute, Diagnostic> {
+fn attribute(input: &mut Tokens, top_level: bool) -> Result<Attribute, Diagnostic> {
     input.expect(Token::Pound)?;
+
+    if top_level {
+        input.expect(Token::Bang)?;
+    }
+
     input.expect(Token::Open(Delim::Bracket))?;
 
     let (name, span) = ident(input)?;
