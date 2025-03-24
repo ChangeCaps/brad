@@ -9,7 +9,7 @@ mod value;
 use std::ops::DerefMut;
 use std::{collections::HashMap, ffi::CString, ops::Deref, ptr};
 
-use crate::sir;
+use super::sir;
 
 use llvm_sys::{
     analysis::{LLVMVerifierFailureAction, LLVMVerifyModule},
@@ -351,7 +351,7 @@ impl LLVMBody {
         let mut captures = Vec::new();
 
         for i in (0..body.captures + body.arguments).rev() {
-            let local = body.locals[crate::mir::Local(i)];
+            let local = body.locals[super::mir::Local(i)];
             captures.push(local);
 
             let ty = codegen.tid(local);
@@ -390,7 +390,7 @@ impl LLVMBody {
         let mut locals = Vec::new();
 
         for i in 0..body.locals.len() {
-            let local = body.locals[crate::mir::Local(i)];
+            let local = body.locals[super::mir::Local(i)];
             let ty = codegen.tid(local);
             let alloca = LLVMBuildAlloca(codegen.builder, ty, c"local".as_ptr());
             locals.push(alloca);
@@ -409,7 +409,7 @@ impl LLVMBody {
 
             let arg = LLVMBuildLoad2(
                 codegen.builder,
-                codegen.tid(body.locals[crate::mir::Local(local)]),
+                codegen.tid(body.locals[super::mir::Local(local)]),
                 arg,
                 c"load".as_ptr(),
             );

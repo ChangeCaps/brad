@@ -2,7 +2,7 @@ mod ty;
 
 pub use ty::*;
 
-use crate::mir;
+use super::mir;
 
 #[derive(Clone, Debug, Default)]
 pub struct Program {

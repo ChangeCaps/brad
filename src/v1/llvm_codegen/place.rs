@@ -2,7 +2,7 @@ use std::ffi::CString;
 
 use super::llvm_sys::{core::*, prelude::*};
 
-use crate::sir;
+use super::sir;
 
 use super::BodyCodegen;
 

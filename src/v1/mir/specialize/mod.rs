@@ -1,6 +1,6 @@
 use std::collections::{hash_map::Entry, HashMap};
 
-use crate::{attribute::Attributes, mir, sir};
+use crate::{attribute::Attributes, v1::mir, v1::sir};
 
 pub fn specialize(program: mir::Program, entry: mir::Bid) -> (sir::Program, sir::Bid) {
     let mut specializer = Specializer::new(&program);

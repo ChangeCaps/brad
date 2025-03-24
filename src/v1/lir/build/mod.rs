@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{attribute::Attributes, diagnostic::Diagnostic, lir, sir};
+use crate::{attribute::Attributes, diagnostic::Diagnostic, v1::lir, v1::sir};
 
 pub fn build(
     source: &sir::Program,

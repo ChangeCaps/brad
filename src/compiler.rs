@@ -1,10 +1,12 @@
+use crate::v1::interpret::Interpreter;
 use crate::{
     ast,
     diagnostic::{Diagnostic, Report, Reporter, Source, SourceId, Sources},
-    hir, hir2,
-    interpret::Interpreter,
-    lower, lower2, lua, mir,
+    hir2, lower2, lua,
     parse::{self, Interner, Tokens},
+    v1::hir,
+    v1::lower,
+    v1::mir,
 };
 use std::{
     fs,
@@ -210,11 +212,11 @@ impl<'a> Compiler<'a> {
         //let mut formatter = lir::Formatter::new(std::io::stdout());
         //formatter.format(&lir).unwrap();
 
-        Ok(crate::llvm_codegen::codegen(sir))
+        Ok(crate::v1::llvm_codegen::codegen(sir))
     }
 
     pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Diagnostic> {
-        crate::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
+        crate::v1::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
         Ok(())
     }
 }

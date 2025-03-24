@@ -1,4 +1,4 @@
-use crate::sir;
+use super::sir;
 
 enum Flow {
     Return(Value),

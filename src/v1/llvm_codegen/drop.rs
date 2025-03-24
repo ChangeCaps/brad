@@ -1,6 +1,6 @@
 use super::llvm_sys::prelude::*;
 
-use crate::sir;
+use super::sir;
 
 use super::BodyCodegen;
 

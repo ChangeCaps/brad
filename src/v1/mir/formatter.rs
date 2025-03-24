@@ -1,6 +1,5 @@
 use crate::attribute::Attribute;
-use crate::mir;
-use crate::mir::Const;
+use crate::v1::mir;
 
 const INDENT_SIZE: usize = 4;
 
@@ -284,10 +283,10 @@ impl<'a, W: std::io::Write> Formatter<'a, W> {
             mir::Operand::Const(r#const, _) => {
                 write!(self.writer, "const(",)?;
                 match r#const {
-                    Const::None => write!(self.writer, "none")?,
-                    Const::Int(v) => write!(self.writer, "{}", v)?,
-                    Const::Float(v) => write!(self.writer, "{}", v)?,
-                    Const::String(v) => write!(self.writer, "{:?}", v)?,
+                    mir::Const::None => write!(self.writer, "none")?,
+                    mir::Const::Int(v) => write!(self.writer, "{}", v)?,
+                    mir::Const::Float(v) => write!(self.writer, "{}", v)?,
+                    mir::Const::String(v) => write!(self.writer, "{:?}", v)?,
                 };
 
                 write!(self.writer, ")")

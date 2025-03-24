@@ -17,18 +17,12 @@ mod ast;
 mod attribute;
 mod compiler;
 mod diagnostic;
-mod hir;
 mod hir2;
-mod interpret;
-mod lir;
-mod llvm_codegen;
-mod lower;
 mod lower2;
 mod lua;
-mod mir;
 mod parse;
-mod sir;
 mod solve;
+mod v1;
 
 #[derive(Parser)]
 pub struct Cli {
@@ -253,7 +247,7 @@ fn main2(sources: &mut Sources) -> Result<(), Report> {
                     compiler.parse()?;
                     let hir = compiler.lower()?;
                     let mir = compiler.mir(hir)?;
-                    let mut formatter = mir::Formatter::new(std::io::stdout(), &mir);
+                    let mut formatter = v1::mir::Formatter::new(std::io::stdout(), &mir);
                     formatter.format_program().unwrap();
                     Ok(())
                 }

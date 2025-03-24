@@ -2,7 +2,7 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use expr::BodyLowerer;
 
-use crate::{ast, diagnostic::Diagnostic, hir};
+use crate::{ast, diagnostic::Diagnostic, v1::hir};
 
 mod expr;
 
