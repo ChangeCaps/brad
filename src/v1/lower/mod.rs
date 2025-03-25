@@ -275,8 +275,6 @@ impl Lowerer {
                     lower_ty(&self.program, &mut generics, m, ty)?
                 };
 
-                println!("[{:?}] Type with name: {} lowered with generics {:?}", named_id, decl.name, generics);
-
                 self.program[named_id].ty = Some(ty);
                 self.program[named_id].generics = generics;
             }
