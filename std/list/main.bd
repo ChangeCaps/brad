@@ -1,3 +1,5 @@
+#![not_v1]
+
 import std::list
 import std::array
 

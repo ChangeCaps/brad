@@ -326,7 +326,10 @@ impl Generator {
             .iter()
             .for_each(|(_, body)| decls.push(ast::Decl::Func(body.clone())));
 
-        ast::Module { decls }
+        ast::Module {
+            attrs: Default::default(),
+            decls,
+        }
     }
 
     /// Generate a random (interned) name.
