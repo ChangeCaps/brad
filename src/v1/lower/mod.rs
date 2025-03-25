@@ -634,7 +634,8 @@ fn resolve_item(
 
         _ => {
             let diagnostic = Diagnostic::error("unresolved::type")
-                .message(format!("module does not contain type `{}`", item.name));
+                .message(format!("module does not contain type `{}`", item.name))
+                .span(item.span);
 
             Err(diagnostic)
         }

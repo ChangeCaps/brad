@@ -1,3 +1,5 @@
+#![not_v1]
+
 #[link = "brad_array_len"]
 extern fn len<'a> (list: ['a]) -> int
 
@@ -5,11 +7,11 @@ extern fn len<'a> (list: ['a]) -> int
 extern fn concat<'a> (pre: ['a]) (post: ['a]) -> ['a]
 
 fn prepend<'a> (item: 'a) (xs: ['a]) -> ['a] {
-  concat [item] xs
+  concat<'a> [item] xs
 }
 
 fn append<'a> (xs: ['a]) (item: 'a) -> ['a] {
-  concat xs [item]
+  concat<'a> xs [item]
 }
 
 fn iter<'a> (xs: ['a]) -> std::iter<'a> {
