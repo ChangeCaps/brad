@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use crate::hir2 as hir;
 
-const LUA_PRELUDE: &str = include_str!("prelude.lua");
+const LUA_PRELUDE: &str = include_str!("../../rt/lua/prelude.lua");
 
 pub fn codegen(code: &mut impl Write, hir: &hir::Program) -> io::Result<()> {
     code.write_all(LUA_PRELUDE.as_bytes())?;

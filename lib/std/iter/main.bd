@@ -1,5 +1,3 @@
-#![not_v1]
-
 import std::iter
 
 type std::iter<'a> = none -> 'a * iter<'a> | none

@@ -1,5 +1,3 @@
-#![not_v1]
-
 #[link = "brad_array_len"]
 extern fn len<'a> (list: ['a]) -> int
 

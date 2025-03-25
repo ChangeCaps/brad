@@ -8,9 +8,7 @@ if [ "$#" -lt 1 ]; then
 fi
 
 
-make clean debug release build
-
-cargo run -- compile "$@" -d -o out.ll
+cargo run -- v1 llvm-ir "$@" -o out.ll
 
 last_pkg=$(eval echo "\${$#}")
 entry_module=$(basename "$last_pkg" .bd)

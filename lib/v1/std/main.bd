@@ -1,0 +1,19 @@
+import std::os
+import std::io
+
+fn panic (msg: str) -> ! {
+  io::println msg
+  os::exit 1
+}
+
+fn assert (cond: true | false) -> none {
+  match cond
+  | true  => none
+  | false => panic "assertion failed"
+}
+
+fn assert-eq (lhs: 'a) (rhs: 'a) -> none {
+  match lhs == rhs
+  | true  => none
+  | false => panic "assertion failed"
+}

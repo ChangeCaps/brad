@@ -1,6 +1,5 @@
 type error<'a> = 'a
 
-#[not_v1]
 fn error::assert<'a, 'e> (x: 'a | error<'e>) -> 'a {
   match x
   | error as e => panic <| debug::format e
