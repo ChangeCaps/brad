@@ -48,17 +48,17 @@ impl Lowerer<'_> {
                         for arg in &ast.args {
                             input.push(hir::Argument {
                                 binding: hir::Binding::Wild { span: arg.span },
-                                ty: solve::Ty::Var(self.program.solver.fresh_var()),
+                                ty: solve::Ty::var(self.program.solver.fresh_var()),
                             });
                         }
 
-                        let output = solve::Ty::Var(self.program.solver.fresh_var());
+                        let output = solve::Ty::var(self.program.solver.fresh_var());
 
                         // lower the generics
                         let mut generics = Vec::new();
 
                         for _ in ast.generics() {
-                            let var = solve::Ty::Var(self.program.solver.fresh_var());
+                            let var = self.program.solver.fresh_var();
                             generics.push(var);
                         }
 
@@ -207,7 +207,7 @@ impl Lowerer<'_> {
                             generics: Vec::new(),
                             locals: hir::Locals::new(),
                             input: Vec::new(),
-                            output: solve::Ty::NONE,
+                            output: solve::Ty::never(),
                             expr: None,
                             span,
                         };

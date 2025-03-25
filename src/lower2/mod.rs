@@ -110,15 +110,15 @@ impl<'a> Lowerer<'a> {
     fn lower_types(&mut self) -> Result<(), ()> {
         for (tag, info) in self.types.clone() {
             let mut generics = Vec::new();
+            let mut args = Vec::new();
 
             if let Some(ref ast_generics) = info.ast.generics {
                 for generic in &ast_generics.params {
-                    let ty = solve::Ty::Var(self.program.solver.fresh_var());
-                    generics.push((generic.name, ty));
+                    let var = self.program.solver.fresh_var();
+                    generics.push((generic.name, var));
+                    args.push(var);
                 }
             }
-
-            let params: Vec<_> = generics.iter().map(|(_, ty)| ty.clone()).collect();
 
             // we have to generate the constructor function, this is not pretty...
             let ty_body = match &info.ast.ty {
@@ -127,7 +127,7 @@ impl<'a> Lowerer<'a> {
 
                     let body = self.lower_ty(info.module, &mut generics, false, ty)?;
 
-                    let ty = solve::Ty::inter(solve::Ty::Tag(tag), body.clone());
+                    let ty = solve::Ty::inter_with(solve::Ty::tag(tag), body.clone());
 
                     if let Some(body_id) = info.body {
                         let mut locals = hir::Locals::new();
@@ -143,7 +143,7 @@ impl<'a> Lowerer<'a> {
                             attrs: Attributes::new(),
                             is_extern: false,
                             name: tag.name.to_string(),
-                            generics: params.clone(),
+                            generics: args.clone(),
                             locals,
                             input: vec![hir::Argument {
                                 binding: hir::Binding::Bind {
@@ -175,14 +175,14 @@ impl<'a> Lowerer<'a> {
                 }
 
                 None => {
-                    let ty = solve::Ty::Tag(tag);
+                    let ty = solve::Ty::tag(tag);
 
                     if let Some(body_id) = info.body {
                         let body = hir::Body {
                             attrs: Attributes::new(),
                             is_extern: false,
                             name: tag.name.to_string(),
-                            generics: params.clone(),
+                            generics: args.clone(),
                             locals: hir::Locals::new(),
                             input: Vec::new(),
                             output: ty.clone(),
@@ -197,11 +197,11 @@ impl<'a> Lowerer<'a> {
                         self.program[body_id] = body;
                     }
 
-                    solve::Ty::Tag(tag)
+                    solve::Ty::tag(tag)
                 }
             };
 
-            self.program.solver.add_applicable(tag, ty_body, params);
+            self.program.solver.add_applicable(tag, ty_body, args);
         }
 
         Ok(())
@@ -210,20 +210,20 @@ impl<'a> Lowerer<'a> {
     fn lower_aliases(&mut self) -> Result<(), ()> {
         for (tag, info) in self.aliases.clone() {
             let mut generics = Vec::new();
+            let mut args = Vec::new();
 
             if let Some(ref ast_generics) = info.ast.generics {
                 for generic in &ast_generics.params {
-                    let ty = solve::Ty::Var(self.program.solver.fresh_var());
+                    let ty = self.program.solver.fresh_var();
                     generics.push((generic.name, ty));
+                    args.push(ty);
                 }
             }
-
-            let params: Vec<_> = generics.iter().map(|(_, ty)| ty.clone()).collect();
 
             let mut generics = Generics::Explicit(&generics);
             let body = self.lower_ty(info.module, &mut generics, false, &info.ast.ty)?;
 
-            self.program.solver.add_applicable(tag, body, params);
+            self.program.solver.add_applicable(tag, body, args);
         }
 
         Ok(())
@@ -243,6 +243,6 @@ impl<'a> Lowerer<'a> {
 }
 
 pub enum Generics<'a> {
-    Explicit(&'a [(&'static str, solve::Ty)]),
-    Implicit(&'a mut Vec<(&'static str, solve::Ty)>),
+    Explicit(&'a [(&'static str, solve::Var)]),
+    Implicit(&'a mut Vec<(&'static str, solve::Var)>),
 }

@@ -55,8 +55,8 @@ impl Lowerer<'_> {
                 // lower the expected type
                 let expected_ty = lowerer.ty(expected_ty)?;
 
-                lowerer.subty(&ty, &expected_ty, arg.span);
-                lowerer.subty(&expected_ty, &ty, arg.span);
+                lowerer.subty(ty.clone(), expected_ty.clone(), arg.span);
+                lowerer.subty(expected_ty, ty.clone(), arg.span);
             } else if info.ast.is_extern {
                 let diagnostic = Diagnostic::error("invalid::extern::arg")
                     .message("extern functions must have explicit types for all arguments")
@@ -68,7 +68,7 @@ impl Lowerer<'_> {
             }
 
             // lower the binding
-            let binding = lowerer.binding(&ty, &arg.binding)?;
+            let binding = lowerer.binding(ty, &arg.binding)?;
 
             // replace the binding in the input
             lowerer.program[body_id].input[i].binding = binding;
@@ -82,8 +82,8 @@ impl Lowerer<'_> {
             let expected_ty = lowerer.ty(expected_ty)?;
 
             let output_ty = lowerer.program[body_id].output.clone();
-            lowerer.subty(&expected_ty, &output_ty, info.ast.span);
-            lowerer.subty(&output_ty, &expected_ty, info.ast.span);
+            lowerer.subty(expected_ty.clone(), output_ty.clone(), info.ast.span);
+            lowerer.subty(output_ty, expected_ty, info.ast.span);
         } else if info.ast.is_extern {
             let diagnostic = Diagnostic::error("invalid::extern::output")
                 .message("extern functions must have an explicit return type")
@@ -99,7 +99,7 @@ impl Lowerer<'_> {
                 let body = lowerer.expr(body)?;
 
                 let output = self.program[body_id].output.clone();
-                self.program.solver.subty(&body.ty, &output, body.span);
+                (self.program.solver).subty(body.ty.clone(), output, body.span);
 
                 Some(body)
             }
@@ -173,10 +173,10 @@ impl ExprLowerer<'_, '_> {
     }
 
     pub fn fresh_var(&mut self) -> solve::Ty {
-        solve::Ty::Var(self.program.solver.fresh_var())
+        solve::Ty::var(self.program.solver.fresh_var())
     }
 
-    pub fn subty(&mut self, lhs: &solve::Ty, rhs: &solve::Ty, span: Span) {
+    pub fn subty(&mut self, lhs: solve::Ty, rhs: solve::Ty, span: Span) {
         self.program.solver.subty(lhs, rhs, span);
     }
 
@@ -199,7 +199,7 @@ impl ExprLowerer<'_, '_> {
         false
     }
 
-    fn binding(&mut self, ty: &solve::Ty, ast: &ast::Binding) -> Result<hir::Binding, ()> {
+    fn binding(&mut self, ty: solve::Ty, ast: &ast::Binding) -> Result<hir::Binding, ()> {
         Ok(match *ast {
             ast::Binding::Wild { span } => hir::Binding::Wild { span },
 
@@ -211,7 +211,7 @@ impl ExprLowerer<'_, '_> {
                 let local = hir::Local {
                     is_mutable: mutable,
                     name,
-                    ty: ty.clone(),
+                    ty,
                     span,
                 };
 
@@ -237,15 +237,15 @@ impl ExprLowerer<'_, '_> {
                 for binding in bindings {
                     let ty = self.fresh_var();
 
-                    let binding = self.binding(&ty, binding)?;
+                    let binding = self.binding(ty.clone(), binding)?;
                     hir_bindings.push(binding);
 
                     tys.push(ty);
                 }
 
-                let tuple = solve::Ty::Tuple(tys);
+                let tuple = solve::Ty::tuple(tys);
 
-                self.subty(ty, &tuple, span);
+                self.subty(ty, tuple, span);
 
                 hir::Binding::Tuple {
                     bindings: hir_bindings,
@@ -282,37 +282,37 @@ impl ExprLowerer<'_, '_> {
         Ok(match ast {
             ast::Literal::Int { value, span } => hir::Expr {
                 kind: hir::ExprKind::Int(*value),
-                ty: solve::Ty::INT,
+                ty: solve::Ty::int(),
                 span: *span,
             },
 
             ast::Literal::Float { value, span } => hir::Expr {
                 kind: hir::ExprKind::Float(*value),
-                ty: solve::Ty::FLOAT,
+                ty: solve::Ty::float(),
                 span: *span,
             },
 
             ast::Literal::String { value, span } => hir::Expr {
                 kind: hir::ExprKind::String(value),
-                ty: solve::Ty::STR,
+                ty: solve::Ty::str(),
                 span: *span,
             },
 
             ast::Literal::True { span } => hir::Expr {
                 kind: hir::ExprKind::ZeroSize(solve::Tag::TRUE),
-                ty: solve::Ty::TRUE,
+                ty: solve::Ty::true_(),
                 span: *span,
             },
 
             ast::Literal::False { span } => hir::Expr {
                 kind: hir::ExprKind::ZeroSize(solve::Tag::FALSE),
-                ty: solve::Ty::FALSE,
+                ty: solve::Ty::false_(),
                 span: *span,
             },
 
             ast::Literal::None { span } => hir::Expr {
                 kind: hir::ExprKind::ZeroSize(solve::Tag::NONE),
-                ty: solve::Ty::NONE,
+                ty: solve::Ty::none(),
                 span: *span,
             },
         })
@@ -325,7 +325,7 @@ impl ExprLowerer<'_, '_> {
         for item in &ast.items {
             let item = self.expr(item)?;
 
-            self.subty(&item.ty, &ty, item.span);
+            self.subty(item.ty.clone(), ty.clone(), item.span);
 
             items.push(item);
         }
@@ -355,7 +355,7 @@ impl ExprLowerer<'_, '_> {
 
         Ok(hir::Expr {
             kind: hir::ExprKind::Record(fields),
-            ty: solve::Ty::Record(tys),
+            ty: solve::Ty::record(tys),
             span: ast.span,
         })
     }
@@ -373,7 +373,7 @@ impl ExprLowerer<'_, '_> {
 
         Ok(hir::Expr {
             kind: hir::ExprKind::Tuple(items),
-            ty: solve::Ty::Tuple(tys),
+            ty: solve::Ty::tuple(tys),
             span: ast.span,
         })
     }
@@ -503,7 +503,7 @@ impl ExprLowerer<'_, '_> {
             // importantly, if the body however is recursive, then we CANNOT
             // instantiate, as this would break the soundness of type inference
             let ty = match self.recurses(body_id) {
-                false => self.program.solver.instance(&map, &ty),
+                false => ty,
                 true => ty,
             };
 
@@ -532,29 +532,27 @@ impl ExprLowerer<'_, '_> {
         let ty = self.fresh_var();
         let list_ty = solve::Ty::array(ty.clone());
 
-        self.subty(&target.ty, &list_ty, target.span);
-        self.subty(&index.ty, &solve::Ty::INT, index.span);
+        self.subty(target.ty.clone(), list_ty, target.span);
+        self.subty(index.ty.clone(), solve::Ty::int(), index.span);
 
-        Ok(hir::Expr {
-            kind: hir::ExprKind::Index(Box::new(target), Box::new(index)),
-            ty,
-            span: ast.span,
-        })
+        let kind = hir::ExprKind::Index(Box::new(target), Box::new(index));
+        let span = ast.span;
+
+        Ok(hir::Expr { kind, ty, span })
     }
 
     fn field_expr(&mut self, ast: &ast::FieldExpr) -> Result<hir::Expr, ()> {
         let target = self.expr(&ast.target)?;
 
         let ty = self.fresh_var();
-        let record_ty = solve::Ty::Record(BTreeMap::from([(ast.name, ty.clone())]));
+        let record_ty = solve::Ty::record(BTreeMap::from([(ast.name, ty.clone())]));
 
-        self.subty(&target.ty, &record_ty, target.span);
+        self.subty(target.ty.clone(), record_ty, target.span);
 
-        Ok(hir::Expr {
-            kind: hir::ExprKind::Field(Box::new(target), ast.name),
-            ty,
-            span: ast.span,
-        })
+        let kind = hir::ExprKind::Field(Box::new(target), ast.name);
+        let span = ast.span;
+
+        Ok(hir::Expr { kind, ty, span })
     }
 
     fn unary_expr(&mut self, ast: &ast::UnaryExpr) -> Result<hir::Expr, ()> {
@@ -569,20 +567,24 @@ impl ExprLowerer<'_, '_> {
 
         let ty = match op {
             hir::UnaryOp::Neg | hir::UnaryOp::BitNot => {
-                self.subty(&target.ty, &solve::Ty::INT, target.span);
-                solve::Ty::INT
+                self.subty(target.ty.clone(), solve::Ty::int(), target.span);
+                solve::Ty::int()
             }
 
             hir::UnaryOp::Not => {
-                let boolean = solve::Ty::union(solve::Ty::TRUE, solve::Ty::FALSE);
-                self.subty(&target.ty, &boolean, target.span);
+                let boolean = solve::Ty::union_with(solve::Ty::true_(), solve::Ty::false_());
+
+                self.subty(target.ty.clone(), boolean.clone(), target.span);
+
                 boolean
             }
 
             hir::UnaryOp::Deref => {
                 let ty = self.fresh_var();
-                let ref_ty = solve::Ty::Ref(Box::new(ty.clone()));
-                self.subty(&target.ty, &ref_ty, target.span);
+                let ref_ty = solve::Ty::ref_(ty.clone());
+
+                self.subty(target.ty.clone(), ref_ty, target.span);
+
                 ty
             }
         };
@@ -629,29 +631,33 @@ impl ExprLowerer<'_, '_> {
             | hir::BinaryOp::BitXor
             | hir::BinaryOp::Shl
             | hir::BinaryOp::Shr => {
-                self.subty(&lhs.ty, &solve::Ty::INT, lhs.span);
-                self.subty(&rhs.ty, &solve::Ty::INT, rhs.span);
-                solve::Ty::INT
+                self.subty(lhs.ty.clone(), solve::Ty::int(), lhs.span);
+                self.subty(rhs.ty.clone(), solve::Ty::int(), rhs.span);
+
+                solve::Ty::int()
             }
 
             hir::BinaryOp::Lt | hir::BinaryOp::Le | hir::BinaryOp::Gt | hir::BinaryOp::Ge => {
-                self.subty(&lhs.ty, &solve::Ty::INT, lhs.span);
-                self.subty(&rhs.ty, &solve::Ty::INT, rhs.span);
-                solve::Ty::union(solve::Ty::TRUE, solve::Ty::FALSE)
+                self.subty(lhs.ty.clone(), solve::Ty::int(), lhs.span);
+                self.subty(rhs.ty.clone(), solve::Ty::int(), rhs.span);
+
+                solve::Ty::union_with(solve::Ty::true_(), solve::Ty::false_())
             }
 
             hir::BinaryOp::And | hir::BinaryOp::Or => {
-                let boolean = solve::Ty::union(solve::Ty::TRUE, solve::Ty::FALSE);
-                self.subty(&lhs.ty, &boolean, lhs.span);
-                self.subty(&rhs.ty, &boolean, rhs.span);
+                let boolean = solve::Ty::union_with(solve::Ty::true_(), solve::Ty::false_());
+
+                self.subty(lhs.ty.clone(), boolean.clone(), lhs.span);
+                self.subty(rhs.ty.clone(), boolean.clone(), rhs.span);
+
                 boolean
             }
 
             hir::BinaryOp::Eq | hir::BinaryOp::Ne => {
-                self.subty(&lhs.ty, &rhs.ty, lhs.span);
-                self.subty(&rhs.ty, &lhs.ty, rhs.span);
+                self.subty(lhs.ty.clone(), rhs.ty.clone(), lhs.span);
+                self.subty(rhs.ty.clone(), lhs.ty.clone(), rhs.span);
 
-                solve::Ty::union(solve::Ty::TRUE, solve::Ty::FALSE)
+                solve::Ty::union_with(solve::Ty::true_(), solve::Ty::false_())
             }
         };
 
@@ -668,13 +674,12 @@ impl ExprLowerer<'_, '_> {
         let ty = self.fresh_var();
         let func_ty = solve::Ty::func(input.ty.clone(), ty.clone());
 
-        self.subty(&target.ty, &func_ty, target.span);
+        self.subty(target.ty.clone(), func_ty, target.span);
 
-        Ok(hir::Expr {
-            kind: hir::ExprKind::Call(Box::new(target), Box::new(input)),
-            ty,
-            span: ast.span,
-        })
+        let kind = hir::ExprKind::Call(Box::new(target), Box::new(input));
+        let span = ast.span;
+
+        Ok(hir::Expr { kind, ty, span })
     }
 
     fn lambda_expr(&mut self, ast: &ast::LambdaExpr) -> Result<hir::Expr, ()> {
@@ -700,7 +705,7 @@ impl ExprLowerer<'_, '_> {
 
         for binding in &ast.args {
             let ty = self.fresh_var();
-            let binding = self.binding(&ty, binding)?;
+            let binding = self.binding(ty.clone(), binding)?;
 
             args.push(binding);
             tys.push(ty);
@@ -714,8 +719,8 @@ impl ExprLowerer<'_, '_> {
         let body = Box::new(self.expr(&ast.body)?);
 
         // constrain the type of the body to be equal to the output type
-        self.subty(&body.ty, &output_ty, body.span);
-        self.subty(&output_ty, &body.ty, body.span);
+        self.subty(body.ty.clone(), output_ty.clone(), body.span);
+        self.subty(output_ty, body.ty.clone(), body.span);
 
         // restore the context
         let Context::Lambda {
@@ -759,13 +764,13 @@ impl ExprLowerer<'_, '_> {
         let target = self.expr(&ast.target)?;
         let value = self.expr(&ast.value)?;
 
-        self.subty(&value.ty, &target.ty, value.span);
+        self.subty(value.ty.clone(), target.ty.clone(), value.span);
 
-        Ok(hir::Expr {
-            kind: hir::ExprKind::Assign(Box::new(target), Box::new(value)),
-            ty: solve::Ty::NONE,
-            span: ast.span,
-        })
+        let kind = hir::ExprKind::Assign(Box::new(target), Box::new(value));
+        let ty = solve::Ty::none();
+        let span = ast.span;
+
+        Ok(hir::Expr { kind, ty, span })
     }
 
     fn ref_expr(&mut self, ast: &ast::RefExpr) -> Result<hir::Expr, ()> {
@@ -784,8 +789,8 @@ impl ExprLowerer<'_, '_> {
         let mut arms = Vec::new();
         let mut default = None;
 
-        let mut input_ty = solve::Ty::Bot;
-        let mut output_ty = solve::Ty::Bot;
+        let mut input_ty = solve::Ty::never();
+        let mut output_ty = solve::Ty::never();
 
         for arm in &ast.arms {
             match arm.pattern {
@@ -796,18 +801,18 @@ impl ExprLowerer<'_, '_> {
                 } => {
                     if let ast::Ty::Wild(..) = ty {
                         let ty = self.fresh_var();
-                        let ty = solve::Ty::inter(ty, solve::Ty::neg(input_ty.clone()));
-                        input_ty = solve::Ty::union(input_ty, ty.clone());
+                        let ty = solve::Ty::inter_with(ty, solve::Ty::neg(input_ty.clone()));
+                        input_ty.union(ty.clone());
 
                         let scope_len = self.scope.len();
 
                         let binding = match binding {
-                            Some(ref binding) => self.binding(&ty, binding)?,
+                            Some(ref binding) => self.binding(ty, binding)?,
                             None => hir::Binding::Wild { span },
                         };
 
                         let body = self.expr(&arm.body)?;
-                        output_ty = solve::Ty::union(output_ty, body.ty.clone());
+                        output_ty.union(body.ty.clone());
 
                         self.scope.truncate(scope_len);
 
@@ -866,19 +871,19 @@ impl ExprLowerer<'_, '_> {
                         }
                     };
 
-                    let ty = self.ty(ty)?;
-                    let ty = solve::Ty::inter(ty, solve::Ty::neg(input_ty.clone()));
-                    input_ty = solve::Ty::union(input_ty, ty.clone());
+                    let mut ty = self.ty(ty)?;
+                    ty.inter(solve::Ty::neg(input_ty.clone()));
+                    input_ty.union(ty.clone());
 
                     let scope_len = self.scope.len();
 
                     let binding = match binding {
-                        Some(ref binding) => self.binding(&ty, binding)?,
+                        Some(ref binding) => self.binding(ty, binding)?,
                         None => hir::Binding::Wild { span },
                     };
 
                     let body = self.expr(&arm.body)?;
-                    output_ty = solve::Ty::union(output_ty, body.ty.clone());
+                    output_ty.union(body.ty.clone());
 
                     self.scope.truncate(scope_len);
 
@@ -893,7 +898,7 @@ impl ExprLowerer<'_, '_> {
             }
         }
 
-        self.subty(&target.ty, &input_ty, target.span);
+        self.subty(target.ty.clone(), input_ty, target.span);
 
         let body = hir::MatchBody { arms, default };
 
@@ -935,14 +940,14 @@ impl ExprLowerer<'_, '_> {
         let value = match ast.value {
             Some(ref value) => {
                 let value = self.expr(value)?;
-                self.subty(&value.ty, &ty, value.span);
+                self.subty(value.ty.clone(), ty, value.span);
                 Some(Box::new(value))
             }
             None => None,
         };
 
         let kind = hir::ExprKind::Break(value);
-        let ty = solve::Ty::Bot;
+        let ty = solve::Ty::never();
         let span = ast.span;
 
         Ok(hir::Expr { kind, ty, span })
@@ -953,21 +958,21 @@ impl ExprLowerer<'_, '_> {
 
         if let Some(ref ty) = ast.ty {
             let ty = self.ty(ty)?;
-            self.subty(&value.ty, &ty, value.span);
+            self.subty(value.ty.clone(), ty, value.span);
         }
 
-        let binding = self.binding(&value.ty, &ast.binding)?;
+        let binding = self.binding(value.ty.clone(), &ast.binding)?;
 
-        Ok(hir::Expr {
-            kind: hir::ExprKind::Let(binding, Box::new(value)),
-            ty: solve::Ty::NONE,
-            span: ast.span,
-        })
+        let kind = hir::ExprKind::Let(binding, Box::new(value));
+        let ty = solve::Ty::none();
+        let span = ast.span;
+
+        Ok(hir::Expr { kind, ty, span })
     }
 
     fn block_expr(&mut self, ast: &ast::BlockExpr) -> Result<hir::Expr, ()> {
         let mut exprs = Vec::new();
-        let mut ty = solve::Ty::NONE;
+        let mut ty = solve::Ty::none();
 
         let scope_len = self.scope.len();
 
@@ -979,10 +984,9 @@ impl ExprLowerer<'_, '_> {
 
         self.scope.truncate(scope_len);
 
-        Ok(hir::Expr {
-            kind: hir::ExprKind::Block(exprs),
-            ty,
-            span: ast.span,
-        })
+        let kind = hir::ExprKind::Block(exprs);
+        let span = ast.span;
+
+        Ok(hir::Expr { kind, ty, span })
     }
 }

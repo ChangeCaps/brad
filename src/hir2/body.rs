@@ -1,6 +1,10 @@
 use std::ops::{Index, IndexMut};
 
-use crate::{attribute::Attributes, diagnostic::Span, solve::Ty};
+use crate::{
+    attribute::Attributes,
+    diagnostic::Span,
+    solve::{Ty, Var},
+};
 
 use super::{Binding, Expr, Local, LocalId, Locals};
 
@@ -9,7 +13,7 @@ pub struct Body {
     pub attrs: Attributes,
     pub is_extern: bool,
     pub name: String,
-    pub generics: Vec<Ty>,
+    pub generics: Vec<Var>,
     pub locals: Locals,
     pub input: Vec<Argument>,
     pub output: Ty,

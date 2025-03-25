@@ -16,7 +16,7 @@ impl Expr {
     pub fn none(span: Span) -> Self {
         Self {
             kind: ExprKind::ZeroSize(Tag::NONE),
-            ty: Ty::NONE,
+            ty: Ty::none(),
             span,
         }
     }

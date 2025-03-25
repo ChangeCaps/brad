@@ -1,40 +1,43 @@
-use std::collections::HashMap;
+mod ty;
+
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    fmt,
+    hash::BuildHasherDefault,
+    mem,
+};
+
+pub use ty::*;
 
 use crate::diagnostic::{Diagnostic, Reporter, Span};
 
-pub use dnf::*;
-pub use ty::*;
+type SeaHashSet<T> = HashSet<T, BuildHasherDefault<seahash::SeaHasher>>;
+type SeaHashMap<K, V> = HashMap<K, V, BuildHasherDefault<seahash::SeaHasher>>;
 
-mod dnf;
-mod format;
-mod simplify;
-mod ty;
-
-#[derive(Clone, Debug)]
-pub struct Options {
-    pub simplify_normal_forms: bool,
-}
-
-impl Default for Options {
-    fn default() -> Self {
-        Self {
-            simplify_normal_forms: true,
-        }
-    }
-}
+#[derive(Clone, Debug, Default)]
+pub struct Options {}
 
 #[derive(Debug)]
 pub struct Solver {
     options: Options,
     bounds: HashMap<Var, Bounds>,
-    applicables: HashMap<Tag, (Ty, Vec<Ty>)>,
-    cache: HashMap<(Ty, Ty), bool>,
-    diagnostics: Vec<Diagnostic>,
+    cache: SeaHashMap<(Ty, Ty), bool>,
+    applicables: HashMap<Tag, (Ty, Vec<Var>)>,
+    errors: Vec<Diagnostic>,
 }
 
-impl Default for Solver {
+#[derive(Clone, Debug)]
+pub struct Bounds {
+    pub lower: Ty,
+    pub upper: Ty,
+}
+
+impl Default for Bounds {
     fn default() -> Self {
-        Self::new(Default::default())
+        Self {
+            lower: Ty::never(),
+            upper: Ty::always(),
+        }
     }
 }
 
@@ -43,14 +46,16 @@ pub struct Var {
     index: usize,
 }
 
-/// Constraints for a type variable.
-#[derive(Clone, Debug)]
-pub struct Bounds {
-    /// Lower bounds.
-    pub lbs: Vec<Ty>,
+impl fmt::Display for Var {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "'{}", self.index)
+    }
+}
 
-    /// Upper bounds.
-    pub ubs: Vec<Ty>,
+impl Default for Solver {
+    fn default() -> Self {
+        Self::new(Options::default())
+    }
 }
 
 impl Solver {
@@ -58,45 +63,264 @@ impl Solver {
         Self {
             options,
             bounds: HashMap::new(),
+            cache: HashMap::default(),
             applicables: HashMap::new(),
-            cache: HashMap::new(),
-            diagnostics: Vec::new(),
+            errors: Vec::new(),
         }
     }
 
     pub fn fresh_var(&mut self) -> Var {
-        let index = self.bounds.len();
-        let var = Var { index };
+        let var = Var {
+            index: self.bounds.len(),
+        };
 
-        self.bounds.insert(
-            var,
-            Bounds {
-                lbs: Vec::new(),
-                ubs: Vec::new(),
-            },
-        );
+        self.bounds.insert(var, Bounds::default());
 
         var
     }
 
-    /// Add a type body and arguments of an applicable type.
-    pub fn add_applicable(&mut self, tag: Tag, body: Ty, args: Vec<Ty>) {
+    pub fn add_applicable(&mut self, tag: Tag, body: Ty, args: Vec<Var>) {
         self.applicables.insert(tag, (body, args));
     }
 
-    /// Get the arguments of an applicable type.
-    pub fn applicable_args(&self, tag: Tag) -> Option<&Vec<Ty>> {
-        self.applicables.get(&tag).map(|(_, args)| args)
+    pub fn instantiate(&mut self, mut ty: Ty) -> Ty {
+        let mut subst = HashMap::new();
+        self.instantiate_impl(&mut ty, &mut subst);
+        ty
     }
 
-    pub fn bounds(&mut self, var: Var) -> &mut Bounds {
-        self.bounds.get_mut(&var).unwrap()
+    fn instantiate_impl(&mut self, Ty(ty): &mut Ty, subst: &mut HashMap<Var, Var>) {
+        for conj in ty.iter_mut() {
+            conj.pos.vars = self.instantiate_vars(mem::take(&mut conj.pos.vars), subst);
+            conj.neg.vars = self.instantiate_vars(mem::take(&mut conj.neg.vars), subst);
+        }
+    }
+
+    fn instantiate_vars(
+        &mut self,
+        vars: BTreeSet<Var>,
+        subst: &mut HashMap<Var, Var>,
+    ) -> BTreeSet<Var> {
+        vars.into_iter()
+            .map(|var| self.instantiate_var(var, subst))
+            .collect()
+    }
+
+    fn instantiate_var(&mut self, var: Var, subst: &mut HashMap<Var, Var>) -> Var {
+        if let Some(&var) = subst.get(&var) {
+            return var;
+        }
+
+        let fresh = self.fresh_var();
+        subst.insert(var, fresh);
+
+        let mut bounds = self.bounds[&var].clone();
+        self.instantiate_impl(&mut bounds.lower, subst);
+        self.instantiate_impl(&mut bounds.upper, subst);
+
+        self.bounds.insert(fresh, bounds);
+
+        fresh
+    }
+
+    fn expand(&self, app: App) -> Ty {
+        let (mut body, args) = self.applicables[&app.tag].clone();
+
+        assert_eq!(args.len(), app.args.len());
+
+        let subst = args.into_iter().zip(app.args).collect();
+        Self::expand_impl(&mut body, &subst);
+
+        body
+    }
+
+    fn expand_impl(ty: &mut Ty, subst: &HashMap<Var, Ty>) {
+        let mut added = Vec::new();
+
+        for conj in ty.0.iter_mut() {
+            for (var, ty) in subst {
+                if conj.pos.vars.remove(var) {
+                    let mut ty = ty.clone();
+
+                    ty.inter(Ty(vec![Conj {
+                        pos: conj.pos.clone(),
+                        neg: conj.neg.clone(),
+                    }]));
+
+                    added.push(ty);
+                }
+            }
+
+            for (var, ty) in subst {
+                if conj.neg.vars.remove(var) {
+                    let mut ty = ty.clone();
+
+                    ty.inter(Ty(vec![Conj {
+                        pos: conj.pos.clone(),
+                        neg: conj.neg.clone(),
+                    }]));
+
+                    added.push(ty);
+                }
+            }
+        }
+
+        for added in added {
+            ty.union(added);
+        }
+    }
+
+    pub fn subty(&mut self, mut lhs: Ty, mut rhs: Ty, span: Span) {
+        lhs.simplify();
+        rhs.simplify();
+
+        let key = (lhs, rhs);
+
+        if self.cache.contains_key(&key) {
+            return;
+        }
+
+        self.cache.insert(key.clone(), false);
+
+        let (lhs, rhs) = key.clone();
+
+        if let Err(diagnostic) = self.constrain(lhs, rhs, span) {
+            self.errors.push(diagnostic);
+        }
+
+        self.cache.insert(key, true);
+    }
+
+    fn constrain(&mut self, mut lhs: Ty, rhs: Ty, span: Span) -> Result<(), Diagnostic> {
+        lhs.inter(rhs.neg());
+
+        for conj in lhs.0 {
+            let mut lhs = conj.pos;
+            let mut rhs = conj.neg;
+
+            if let Some(var) = lhs.vars.pop_first() {
+                let mut bound = Ty::term_neg(rhs).neg();
+                bound.union(Ty::term_pos(lhs).neg());
+
+                let bounds = self.bounds.get_mut(&var).unwrap();
+                bounds.upper.inter(bound.clone());
+
+                let lower = bounds.lower.clone();
+                self.subty(lower, bound, span);
+
+                continue;
+            }
+
+            if let Some(var) = rhs.vars.pop_first() {
+                let mut bound = Ty::term_pos(lhs);
+                bound.inter(Ty::term_neg(rhs));
+
+                let bounds = self.bounds.get_mut(&var).unwrap();
+                bounds.lower.union(bound.clone());
+
+                let upper = bounds.upper.clone();
+                self.subty(bound, upper, span);
+
+                continue;
+            }
+
+            if let Some(app) = lhs.apps.pop_first() {
+                let mut rhs = Ty::term_neg(rhs).neg();
+                rhs.union(Ty::term_pos(lhs).neg());
+
+                let body = self.expand(app);
+                self.subty(body, rhs, span);
+
+                continue;
+            }
+
+            if let Some(app) = rhs.apps.pop_first() {
+                let mut lhs = Ty::term_pos(lhs);
+                lhs.inter(Ty::term_neg(rhs));
+
+                let body = self.expand(app);
+                self.subty(lhs, body, span);
+
+                continue;
+            }
+
+            if rhs.tags.iter().any(|tag| lhs.tags.contains(tag)) {
+                continue;
+            }
+
+            match (&lhs.base, &rhs.base) {
+                (Some(Base::Record(lfields)), Some(Base::Record(rfields))) => {
+                    for (field, ty) in rfields {
+                        let Some(lhs_ty) = lfields.get(field) else {
+                            let diagnostic = Diagnostic::error("type::error")
+                                .message(format!(
+                                    "unsatisfiable constraint {} <: {}",
+                                    lhs.display(true),
+                                    rhs.display(false),
+                                ))
+                                .label(span, "originating from here");
+
+                            return Err(diagnostic);
+                        };
+
+                        self.subty(lhs_ty.clone(), ty.clone(), span);
+                    }
+                }
+
+                (Some(Base::Tuple(litems)), Some(Base::Tuple(ritems))) => {
+                    if litems.len() != ritems.len() {
+                        let diagnostic = Diagnostic::error("type::error")
+                            .message(format!(
+                                "unsatisfiable constraint {} <: {}",
+                                lhs.display(true),
+                                rhs.display(false),
+                            ))
+                            .label(span, "originating from here");
+
+                        return Err(diagnostic);
+                    }
+
+                    for (lty, rty) in litems.iter().zip(ritems.iter()) {
+                        self.subty(lty.clone(), rty.clone(), span);
+                    }
+                }
+
+                (Some(Base::Array(lhs)), Some(Base::Array(rhs))) => {
+                    self.subty(lhs.clone(), rhs.clone(), span);
+                }
+
+                (Some(Base::Func(li, lo)), Some(Base::Func(ri, ro))) => {
+                    self.subty(ri.clone(), li.clone(), span);
+                    self.subty(lo.clone(), ro.clone(), span);
+                }
+
+                (Some(Base::Ref(lhs)), Some(Base::Ref(rhs))) => {
+                    // references aren't covariant
+                    self.subty(lhs.clone(), rhs.clone(), span);
+                    self.subty(rhs.clone(), lhs.clone(), span);
+                }
+
+                (_, _) => {
+                    let diagnostic = Diagnostic::error("type::error")
+                        .message(format!(
+                            "unsatisfiable constraint {} <: {}",
+                            lhs.display(true),
+                            rhs.display(false),
+                        ))
+                        .label(span, "originating from here");
+
+                    return Err(diagnostic);
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn finish(&mut self, reporter: &mut dyn Reporter) -> Result<(), ()> {
-        if !self.diagnostics.is_empty() {
-            for diagnostic in self.diagnostics.drain(..) {
-                reporter.emit(diagnostic);
+        if !self.errors.is_empty() {
+            for error in self.errors.iter() {
+                reporter.emit(error.clone());
             }
 
             return Err(());
@@ -105,370 +329,7 @@ impl Solver {
         Ok(())
     }
 
-    pub fn instance(&mut self, map: &HashMap<Ty, Ty>, ty: &Ty) -> Ty {
-        self.inst(&mut HashMap::new(), map, ty)
-    }
-
-    fn inst(&mut self, vars: &mut HashMap<Var, Var>, map: &HashMap<Ty, Ty>, ty: &Ty) -> Ty {
-        ty.clone().map(|ty| {
-            if let Some(ty) = map.get(&ty) {
-                return ty.clone();
-            }
-
-            if let Ty::Var(var) = ty {
-                if let Some(&var) = vars.get(&var) {
-                    return Ty::Var(var);
-                }
-
-                let new_var = self.fresh_var();
-                vars.insert(var, new_var);
-
-                let var = self.bounds(var).clone();
-
-                let lbs = var.lbs.iter().map(|ty| self.inst(vars, map, ty)).collect();
-                let ubs = var.ubs.iter().map(|ty| self.inst(vars, map, ty)).collect();
-
-                let var = self.bounds(new_var);
-
-                var.lbs = lbs;
-                var.ubs = ubs;
-
-                Ty::Var(new_var)
-            } else {
-                ty
-            }
-        })
-    }
-
-    pub fn subty(&mut self, lhs: &Ty, rhs: &Ty, span: Span) {
-        let key = (lhs.clone(), rhs.clone());
-
-        if self.cache.contains_key(&key) {
-            return;
-        }
-
-        self.cache.insert(key.clone(), false);
-
-        if let Err(err) = self.constrain(lhs, rhs, span) {
-            self.diagnostics.push(err);
-            self.cache.remove(&key);
-        }
-
-        self.cache.insert(key.clone(), true);
-    }
-
-    fn expand(&self, app: &App) -> Ty {
-        let (body, args) = self.applicables.get(&app.tag).unwrap();
-
-        if args.len() != app.args.len() {
-            panic!(
-                "expected {} arguments, found {}",
-                args.len(),
-                app.args.len()
-            );
-        }
-
-        let mut map = HashMap::new();
-
-        for (arg, ty) in args.iter().zip(app.args.iter()) {
-            map.insert(arg.clone(), ty.clone());
-        }
-
-        body.subst(&map)
-    }
-
-    fn constrain(&mut self, lhs: &Ty, rhs: &Ty, span: Span) -> Result<(), Diagnostic> {
-        let lhs = self.simplify_dnf(self.dnf(lhs));
-        let rhs = self.simplify_cnf(self.cnf(rhs));
-
-        // (a & ~b) | (c & ~d) | .. <: (~e | f) & (~g | h) & ..
-        //
-        // (a & ~b) <: (~e | f) & (~g | h) & ..
-        // (c & ~d) <: (~e | f) & (~g | h) & ..
-        // ..
-        //
-        // a & ~b <: ~e | f
-        // a & ~b <: ~g | h
-        // c & ~d <: ~e | f
-        // c & ~d <: ~g | h
-        // ..
-        //
-        // a | e <: b & f
-        // a | g <: b & h
-        // c | e <: d & f
-        // c | g <: d & h
-        // ..
-
-        for l in lhs.0.clone() {
-            'out: for r in rhs.0.clone() {
-                let Conjunct {
-                    mut lnf,
-                    mut vars,
-                    mut rnf,
-                    mut nvars,
-                } = self.inter_conjunct(l.clone(), r.clone().neg());
-
-                // lnf & vars <: rnf & nvars
-
-                if let Some(&var) = vars.iter().next() {
-                    vars.remove(&var);
-
-                    let dis = Conjunct {
-                        lnf,
-                        vars,
-                        rnf,
-                        nvars,
-                    }
-                    .neg()
-                    .to_ty();
-
-                    let bounds = self.bounds(var);
-                    bounds.ubs.push(dis.clone());
-
-                    let bounds = self.bounds(var);
-
-                    for lb in bounds.lbs.clone() {
-                        self.subty(&lb, &dis, span);
-                    }
-
-                    continue;
-                }
-
-                if let Some(&var) = nvars.iter().next() {
-                    nvars.remove(&var);
-
-                    let dis = Conjunct {
-                        lnf,
-                        vars,
-                        rnf,
-                        nvars,
-                    }
-                    .to_ty();
-
-                    let bounds = self.bounds(var);
-                    bounds.lbs.push(dis.clone());
-
-                    let var = self.bounds(var);
-
-                    for ub in var.ubs.clone() {
-                        self.subty(&dis, &ub, span);
-                    }
-
-                    continue;
-                }
-
-                if lnf.is_bot() || rnf.is_top() {
-                    continue;
-                }
-
-                if lnf.is_top() || rnf.is_bot() {
-                    let diagnostic = Diagnostic::error("type::error")
-                        .message(format!(
-                            "type constraint `{} <: {}` is unsatisfiable",
-                            self.format_ty(&lnf.to_ty()),
-                            self.format_ty(&rnf.to_ty()),
-                        ))
-                        .note(format!(
-                            "required for `{} <: {}` to hold",
-                            self.format_ty(&l.to_ty()),
-                            self.format_ty(&r.to_ty()),
-                        ))
-                        .note(format!(
-                            "required for `{} <: {}` to hold",
-                            self.format_ty(&lhs.to_ty()),
-                            self.format_ty(&rhs.to_ty()),
-                        ))
-                        .label(span, "originated here");
-
-                    return Err(diagnostic);
-                }
-
-                let Lnf::Base {
-                    tags: ref lt,
-                    apps: ref mut la,
-                    base: ref lb,
-                } = lnf
-                else {
-                    unreachable!("expected base, found {:?}", lnf);
-                };
-
-                let Rnf::Base {
-                    tags: ref rt,
-                    apps: ref mut ra,
-                    base: ref rb,
-                } = rnf
-                else {
-                    unreachable!("expected base, found {:?}", rnf);
-                };
-
-                if let Some(app) = la.first().cloned() {
-                    la.remove(&app);
-
-                    // this should not need to be here, but for whatever reason it does
-                    // frankly, it makes me want to puke
-                    //  - @hjalte 2025-03-16
-                    if lnf.is_bot() {
-                        lnf = Lnf::Top;
-                    }
-
-                    let rhs = Ty::union(Ty::neg(lnf.to_ty()), rnf.to_ty());
-                    let lhs = self.expand(&app);
-
-                    self.subty(&lhs, &rhs, span);
-
-                    continue;
-                }
-
-                if let Some(app) = ra.first().cloned() {
-                    ra.remove(&app);
-
-                    // this should not need to be here, but for whatever reason it does
-                    // frankly, it makes me want to puke
-                    //  - @hjalte 2025-03-16
-                    if rnf.is_top() {
-                        rnf = Rnf::Bot;
-                    }
-
-                    let lhs = Ty::inter(lnf.to_ty(), Ty::neg(rnf.to_ty()));
-                    let rhs = self.expand(&app);
-
-                    self.subty(&lhs, &rhs, span);
-
-                    continue;
-                }
-
-                for rn in rt {
-                    if lt.contains(rn) {
-                        continue 'out;
-                    }
-                }
-
-                match (lb, rb) {
-                    (LnfBase::Func(li, lo), RnfBase::Func(ri, ro)) => {
-                        self.subty(ri, li, span);
-                        self.subty(lo, ro, span);
-
-                        continue;
-                    }
-
-                    (LnfBase::Record(lf), RnfBase::Field(rf, rt)) => match lf.get(rf) {
-                        Some(lt) => {
-                            self.subty(lt, rt, span);
-                            continue;
-                        }
-
-                        None => {
-                            let fields = lf.keys().map(|f| format!("`{}`", f)).collect::<Vec<_>>();
-
-                            let diagnostic = Diagnostic::error("type::error")
-                                .message(format!("expected field `{}` in record", rf))
-                                .note(format!("available fields are: {}", fields.join(", ")))
-                                .note(format!(
-                                    "required for `{} <: {}` to hold",
-                                    self.format_ty(&lnf.to_ty()),
-                                    self.format_ty(&rnf.to_ty()),
-                                ))
-                                .note(format!(
-                                    "required for `{} <: {}` to hold",
-                                    self.format_ty(&lhs.to_ty()),
-                                    self.format_ty(&rhs.to_ty()),
-                                ))
-                                .label(span, "originated here");
-
-                            return Err(diagnostic);
-                        }
-                    },
-
-                    (LnfBase::Tuple(lt), RnfBase::Tuple(rt)) if lt.len() == rt.len() => {
-                        for (l, r) in lt.iter().zip(rt.iter()) {
-                            self.subty(l, r, span);
-                        }
-
-                        continue;
-                    }
-
-                    (LnfBase::Tuple(lt), RnfBase::Tuple(rt)) => {
-                        let diagnostic = Diagnostic::error("type::error")
-                            .message(format!(
-                                "expected tuple of length `{}`, found tuple of length `{}`",
-                                lt.len(),
-                                rt.len()
-                            ))
-                            .note(format!(
-                                "required for `{} <: {}` to hold",
-                                self.format_ty(&lnf.to_ty()),
-                                self.format_ty(&rnf.to_ty()),
-                            ))
-                            .note(format!(
-                                "required for `{} <: {}` to hold",
-                                self.format_ty(&lhs.to_ty()),
-                                self.format_ty(&rhs.to_ty()),
-                            ))
-                            .label(span, "originated here");
-
-                        return Err(diagnostic);
-                    }
-
-                    (LnfBase::Array(lt), RnfBase::Array(rt)) => {
-                        self.subty(lt, rt, span);
-                        continue;
-                    }
-
-                    (LnfBase::Ref(lt), RnfBase::Ref(rt)) => {
-                        self.subty(lt, rt, span);
-                        self.subty(rt, lt, span);
-                        continue;
-                    }
-
-                    (_, RnfBase::Ref(rt)) => {
-                        self.subty(&lnf.to_ty(), rt, span);
-                        continue;
-                    }
-
-                    (lb, rb) => {
-                        let lkind = match lb {
-                            LnfBase::None => self.format_ty(&lnf.to_ty()),
-                            LnfBase::Record(_) => String::from("record"),
-                            LnfBase::Tuple(_) => String::from("tuple"),
-                            LnfBase::Func(_, _) => String::from("function"),
-                            LnfBase::Array(_) => String::from("array"),
-                            LnfBase::Ref(_) => String::from("reference"),
-                        };
-
-                        let rkind = match rb {
-                            RnfBase::None => self.format_ty(&rnf.to_ty()),
-                            RnfBase::Field(_, _) => String::from("record"),
-                            RnfBase::Func(_, _) => String::from("function"),
-                            RnfBase::Tuple(_) => String::from("tuple"),
-                            RnfBase::Array(_) => String::from("array"),
-                            RnfBase::Ref(_) => String::from("reference"),
-                        };
-
-                        let diagnostic = Diagnostic::error("type::error")
-                            .message(format!("`{}` does not subtype `{}`", lkind, rkind))
-                            .note(format!(
-                                "required for `{} <: {}` to hold",
-                                self.format_ty(&lnf.to_ty()),
-                                self.format_ty(&rnf.to_ty()),
-                            ))
-                            .note(format!(
-                                "required for `{} <: {}` to hold",
-                                self.format_ty(&l.to_ty()),
-                                self.format_ty(&r.to_ty()),
-                            ))
-                            .note(format!(
-                                "required for `{} <: {}` to hold",
-                                self.format_ty(&lhs.to_ty()),
-                                self.format_ty(&rhs.to_ty()),
-                            ))
-                            .label(span, "originated here");
-
-                        return Err(diagnostic);
-                    }
-                }
-            }
-        }
-
-        Ok(())
+    pub fn format_ty(&self, ty: &Ty) -> String {
+        todo!()
     }
 }

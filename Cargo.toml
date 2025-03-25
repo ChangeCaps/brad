@@ -10,6 +10,7 @@ default = ["llvm-sys-191"]
 colored = "3.0"
 clap = { version = "4.5.31", features = ["derive"] }
 rand = "0.9.0"
+seahash = "4.1.0"
 
 [dependencies.llvm-sys-191]
 package = "llvm-sys"

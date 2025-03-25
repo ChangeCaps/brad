@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::{ast, diagnostic::Diagnostic, hir2 as hir, solve};
 
 use super::{Generics, Lowerer};
@@ -22,21 +24,21 @@ impl Lowerer<'_> {
                     return Err(());
                 }
 
-                solve::Ty::Var(self.program.solver.fresh_var())
+                solve::Ty::var(self.program.solver.fresh_var())
             }
 
-            ast::Ty::Int(_) => solve::Ty::INT,
-            ast::Ty::Float(_) => solve::Ty::FLOAT,
-            ast::Ty::Str(_) => solve::Ty::STR,
-            ast::Ty::True(_) => solve::Ty::TRUE,
-            ast::Ty::False(_) => solve::Ty::FALSE,
-            ast::Ty::None(_) => solve::Ty::NONE,
-            ast::Ty::Never(_) => solve::Ty::Bot,
+            ast::Ty::Int(_) => solve::Ty::int(),
+            ast::Ty::Float(_) => solve::Ty::float(),
+            ast::Ty::Str(_) => solve::Ty::str(),
+            ast::Ty::True(_) => solve::Ty::true_(),
+            ast::Ty::False(_) => solve::Ty::false_(),
+            ast::Ty::None(_) => solve::Ty::none(),
+            ast::Ty::Never(_) => solve::Ty::never(),
 
             ast::Ty::Generic(generic) => match generics {
                 Generics::Explicit(generics) => {
                     match generics.iter().find(|(name, _)| name == &generic.name) {
-                        Some((_, ty)) => ty.clone(),
+                        Some((_, ty)) => solve::Ty::var(ty.clone()),
                         None => {
                             let diagnostic = Diagnostic::error("unbound::generic")
                                 .message(format!("unbound generic `{}`", generic.name))
@@ -51,11 +53,11 @@ impl Lowerer<'_> {
 
                 Generics::Implicit(generics) => {
                     match generics.iter().find(|(name, _)| name == &generic.name) {
-                        Some((_, ty)) => ty.clone(),
+                        Some((_, ty)) => solve::Ty::var(ty.clone()),
                         None => {
-                            let ty = solve::Ty::Var(self.program.solver.fresh_var());
-                            generics.push((generic.name, ty.clone()));
-                            ty
+                            let var = self.program.solver.fresh_var();
+                            generics.push((generic.name, var));
+                            solve::Ty::var(var)
                         }
                     }
                 }
@@ -85,7 +87,7 @@ impl Lowerer<'_> {
 
                 let Some(ref spec) = path.spec else {
                     let args = (0..arg_count)
-                        .map(|_| solve::Ty::Var(self.program.solver.fresh_var()))
+                        .map(|_| solve::Ty::var(self.program.solver.fresh_var()))
                         .collect::<Vec<_>>();
 
                     return Ok(solve::Ty::app(tag, args));
@@ -121,8 +123,7 @@ impl Lowerer<'_> {
                     .collect::<Result<Vec<_>, _>>()?;
 
                 let first = tys.remove(0);
-
-                tys.into_iter().fold(first, solve::Ty::union)
+                tys.into_iter().fold(first, solve::Ty::union_with)
             }
 
             ast::Ty::Ref { ty, .. } => {
@@ -144,9 +145,9 @@ impl Lowerer<'_> {
                 let tys = tys
                     .iter()
                     .map(|ty| self.lower_ty(module, generics, allow_wild, ty))
-                    .collect::<Result<_, _>>()?;
+                    .collect::<Result<Vec<_>, _>>()?;
 
-                solve::Ty::Tuple(tys)
+                solve::Ty::tuple(tys)
             }
 
             ast::Ty::Record { fields, .. } => {
@@ -157,9 +158,9 @@ impl Lowerer<'_> {
 
                         Ok((field.name, ty))
                     })
-                    .collect::<Result<_, _>>()?;
+                    .collect::<Result<BTreeMap<_, _>, _>>()?;
 
-                solve::Ty::Record(fields)
+                solve::Ty::record(fields)
             }
         })
     }
