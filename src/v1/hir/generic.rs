@@ -23,7 +23,7 @@ pub struct Param {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Generic {
-    index: usize,
+    pub(crate) index: usize,
 }
 
 impl Generic {

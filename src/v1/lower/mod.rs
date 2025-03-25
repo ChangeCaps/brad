@@ -30,6 +30,12 @@ impl Lowerer {
     pub fn add_module(&mut self, path: &[&'static str], ast: ast::Module) {
         let mut current = self.root;
 
+        // Check if ast::Module.attrs.attributes has an attr with the name `not_v1`
+        // exclude those
+        if ast.attrs.attributes.iter().any(|x| x.name == "not_v1") {
+            return;
+        }
+
         for segment in path {
             match self.program[current].modules.entry(segment) {
                 Entry::Occupied(entry) => current = *entry.get(),
@@ -269,6 +275,8 @@ impl Lowerer {
                     lower_ty(&self.program, &mut generics, m, ty)?
                 };
 
+                println!("[{:?}] Type with name: {} lowered with generics {:?}", named_id, decl.name, generics);
+
                 self.program[named_id].ty = Some(ty);
                 self.program[named_id].generics = generics;
             }
@@ -351,6 +359,11 @@ impl Lowerer {
                 let ast::Decl::Func(decl) = decl else {
                     continue;
                 };
+
+                // Skip incompatible functions
+                if decl.attrs.attributes.iter().any(|x| x.name == "not_v1") {
+                    continue;
+                }
 
                 let item = self.program.modules.get_item(m, &decl.name);
                 let body_id = match item {

@@ -876,14 +876,19 @@ impl<'a> Builder<'a> {
         local
     }
 
-    fn unwrap_type(&self, ty: mir::Ty) -> mir::Ty {
-        match ty {
-            mir::Ty::Named(id, ref generics) => self.mir.types[id].ty.clone().specialize(generics),
-            ty => ty,
+    fn unwrap_type(&self, mut ty: mir::Ty) -> mir::Ty {
+        while let mir::Ty::Named(id, ref generics) = ty {
+            ty = self.mir.types[id].ty.clone().specialize(generics);
         }
+
+        ty
     }
 
     fn build_ty(&mut self, hir: hir::Ty) -> mir::Ty {
+        self.build_ty_inner(hir, None)
+    }
+
+    fn build_ty_inner(&mut self, hir: hir::Ty, generics: Option<Vec<mir::Ty>>) -> mir::Ty {
         match hir {
             hir::Ty::Int => mir::Ty::Int,
             hir::Ty::Float => mir::Ty::Float,
@@ -894,15 +899,19 @@ impl<'a> Builder<'a> {
             hir::Ty::Never => mir::Ty::Never,
 
             hir::Ty::Generic(generic) => {
-                let index = self
-                    .body
-                    .generics
-                    .params
-                    .iter()
-                    .position(|param| param.generic == generic)
-                    .unwrap();
+                if let Some(generics) = generics {
+                    generics[generic.index].clone()
+                } else {
+                    let index = self
+                        .body
+                        .generics
+                        .params
+                        .iter()
+                        .position(|param| param.generic == generic)
+                        .unwrap();
 
-                mir::Ty::Generic(index as u16)
+                    mir::Ty::Generic(index as u16)
+                }
             }
 
             hir::Ty::Named(id, tys) => {
@@ -918,7 +927,7 @@ impl<'a> Builder<'a> {
                     name: named.name.clone(),
                     generics: named.generics.params.len() as u16,
                     ty: match named.ty {
-                        Some(ref ty) => self.build_ty(ty.clone()),
+                        Some(ref ty) => self.build_ty_inner(ty.clone(), Some(tys.clone())),
                         None => mir::Ty::None,
                     },
                 };

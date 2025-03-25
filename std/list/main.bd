@@ -1,3 +1,5 @@
+#![not_v1]
+
 import std::list
 
 type std::list<'a> = none | 'a * list<'a>
