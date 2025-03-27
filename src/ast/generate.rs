@@ -144,16 +144,18 @@ impl Default for GeneratorOptions {
     }
 }
 
+#[derive(Debug)]
 pub struct Generator {
     opts: GeneratorOptions,
     rng: rand::rngs::ThreadRng,
-    interner: Interner,
+    pub interner: Interner,
 
     /// Types (Basic types, ADT's, aliases to ADT's, new types)
     tys: Types,
     bodies: Vec<(&'static str, ast::Func)>,
 }
 
+#[derive(Debug)]
 struct GeneratorCtx {
     name: &'static str,
     depth: usize,
@@ -163,6 +165,7 @@ struct GeneratorCtx {
     computed_locals: BTreeMap<&'static str, ast::Ty>,
 }
 
+#[derive(Debug)]
 struct Types {
     tys: Vec<ast::Ty>,
     adts: Vec<ast::Ty>,

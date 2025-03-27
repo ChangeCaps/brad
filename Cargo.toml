@@ -16,7 +16,6 @@ path = "src/main.rs"
 colored = "3.0"
 clap = { version = "4.5.31", features = ["derive"] }
 rand = "0.9.0"
-arbitrary = "1.4.1"
 llvm-sys-191 = { package = "llvm-sys", version = "191.0.0" }
 
 [workspace]
