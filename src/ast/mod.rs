@@ -6,6 +6,7 @@ mod generic;
 mod path;
 mod ty;
 
+use arbitrary::{Arbitrary, Unstructured};
 pub use decl::*;
 pub use expr::*;
 pub use formatter::*;
@@ -20,4 +21,12 @@ use crate::attribute::Attributes;
 pub struct Module {
     pub attrs: Attributes,
     pub decls: Vec<Decl>,
+}
+
+impl<'a> Arbitrary<'a> for Module {
+    fn arbitrary(_: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+        let options = GeneratorOptions::default();
+        let mut generator = Generator::new(options);
+        Ok(generator.generate())
+    }
 }

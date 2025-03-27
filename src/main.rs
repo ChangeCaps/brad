@@ -1,13 +1,13 @@
 #![allow(dead_code)]
-mod ast;
+pub mod ast;
 mod attribute;
 mod cli;
 mod compiler;
-mod diagnostic;
+pub mod diagnostic;
 mod hir2;
 mod lower2;
 mod lua;
-mod parse;
+pub mod parse;
 mod solve;
 mod v1;
 
