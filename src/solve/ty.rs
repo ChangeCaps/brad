@@ -113,16 +113,26 @@ impl Ty {
         self
     }
 
+    /// Heuristically simplify the type.
+    ///
+    /// This function will try to remove redundant conjuncts.
     pub fn simplify(&mut self) {
-        println!("old_len: {}", self.0.len());
-
-        self.0.retain(|conj| conj.pos != conj.neg);
         self.0.sort_unstable();
 
-        for i in 0..self.0.len() {}
+        let mut i = 0;
+        while i + 1 < self.0.len() {
+            if self.0[i].is_subty(&self.0[i + 1]) {
+                self.0.remove(i);
+                continue;
+            }
 
-        println!("new_len: {}", self.0.len());
-        println!("ty:      {}", self);
+            if self.0[i + 1].is_subty(&self.0[i]) {
+                self.0.remove(i + 1);
+                continue;
+            }
+
+            i += 1;
+        }
     }
 
     /// Negate the type.
@@ -232,16 +242,9 @@ impl Conj {
     }
 
     pub fn is_subty(&self, other: &Self) -> bool {
-        //  a & ~b   <: c & ~d
-        //  a & ~b   <: c
-        //  a        <: c |  b
-        //
-        //  a & ~b   <:     ~d
-        //  a        <: b | ~d
-        //  a &  d   <: b
-        //
-        //  int         <: ~float
-        //  int & float <: bot
+        if self == other {
+            return true;
+        }
 
         self.pos.is_subty_pos(&other.pos) && other.neg.is_subty_neg(&self.neg)
     }
@@ -388,17 +391,26 @@ impl Term {
     }
 
     pub fn is_subty_pos(&self, other: &Self) -> bool {
+        // a       <: a
+        // a & b   <: a
+        // a & [b] <: a
+
         other.vars.is_subset(&self.vars)
             && other.tags.is_subset(&self.tags)
             && other.apps.is_subset(&self.apps)
+            && other.base.is_none()
             && self.base.is_none()
     }
 
     pub fn is_subty_neg(&self, other: &Self) -> bool {
+        // a <: a
+        // a <: a | b
+        // a <: a | b | [c]
+
         self.vars.is_subset(&other.vars)
             && self.tags.is_subset(&other.tags)
             && self.apps.is_subset(&other.apps)
-            && other.base.is_none()
+            && self.base.is_none()
     }
 
     pub fn inter(&mut self, other: Self) {

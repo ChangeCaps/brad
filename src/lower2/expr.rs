@@ -861,7 +861,7 @@ impl ExprLowerer<'_, '_> {
                             let diagnostic = Diagnostic::error("invalid::match::ty")
                                 .message(format!(
                                     "invalid type `{}` in match pattern",
-                                    self.program.solver.format_ty(&ty),
+                                    self.program.solver.format_ty(ty),
                                 ))
                                 .span(span);
 

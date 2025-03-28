@@ -1,3 +1,5 @@
+mod format;
+mod simplify;
 mod ty;
 
 use std::{
@@ -327,9 +329,5 @@ impl Solver {
         }
 
         Ok(())
-    }
-
-    pub fn format_ty(&self, ty: &Ty) -> String {
-        todo!()
     }
 }
