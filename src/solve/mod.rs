@@ -3,10 +3,9 @@ mod simplify;
 mod ty;
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt,
     hash::BuildHasherDefault,
-    mem,
 };
 
 pub use ty::*;
@@ -23,7 +22,7 @@ pub struct Options {}
 pub struct Solver {
     options: Options,
     bounds: HashMap<Var, Bounds>,
-    cache: SeaHashMap<(Ty, Ty), bool>,
+    cache: SeaHashMap<(Ty, Ty), Option<bool>>,
     applicables: HashMap<Tag, (Ty, Vec<Var>)>,
     errors: Vec<Diagnostic>,
 }
@@ -88,24 +87,65 @@ impl Solver {
     pub fn instantiate(&mut self, mut ty: Ty) -> Ty {
         let mut subst = HashMap::new();
         self.instantiate_impl(&mut ty, &mut subst);
+
         ty
     }
 
     fn instantiate_impl(&mut self, Ty(ty): &mut Ty, subst: &mut HashMap<Var, Var>) {
         for conj in ty.iter_mut() {
-            conj.pos.vars = self.instantiate_vars(mem::take(&mut conj.pos.vars), subst);
-            conj.neg.vars = self.instantiate_vars(mem::take(&mut conj.neg.vars), subst);
+            conj.pos = self.instantiate_term(conj.pos.clone(), subst);
+            conj.neg = self.instantiate_term(conj.neg.clone(), subst);
         }
     }
 
-    fn instantiate_vars(
-        &mut self,
-        vars: BTreeSet<Var>,
-        subst: &mut HashMap<Var, Var>,
-    ) -> BTreeSet<Var> {
-        vars.into_iter()
-            .map(|var| self.instantiate_var(var, subst))
-            .collect()
+    fn instantiate_term(&mut self, term: Term, subst: &mut HashMap<Var, Var>) -> Term {
+        let mut new_term = Term::extreme();
+
+        for vars in term.vars {
+            new_term.vars.insert(self.instantiate_var(vars, subst));
+        }
+
+        for mut app in term.apps {
+            for arg in app.args.iter_mut() {
+                self.instantiate_impl(arg, subst);
+            }
+
+            new_term.apps.insert(app);
+        }
+
+        new_term.tags = term.tags;
+        new_term.base = term.base;
+
+        if let Some(ref mut base) = new_term.base {
+            match base {
+                Base::Record(fields) => {
+                    for ty in fields.values_mut() {
+                        self.instantiate_impl(ty, subst);
+                    }
+                }
+
+                Base::Tuple(items) => {
+                    for item in items {
+                        self.instantiate_impl(item, subst);
+                    }
+                }
+
+                Base::Array(ty) => {
+                    self.instantiate_impl(ty, subst);
+                }
+
+                Base::Func(i, o) => {
+                    self.instantiate_impl(i, subst);
+                    self.instantiate_impl(o, subst);
+                }
+
+                Base::Ref(ty) => {
+                    self.instantiate_impl(ty, subst);
+                }
+            }
+        }
+
+        new_term
     }
 
     fn instantiate_var(&mut self, var: Var, subst: &mut HashMap<Var, Var>) -> Var {
@@ -178,11 +218,11 @@ impl Solver {
 
         let key = (lhs, rhs);
 
-        if self.cache.contains_key(&key) {
+        if self.cache.get(&key).is_some_and(|&r| r != Some(false)) {
             return;
         }
 
-        self.cache.insert(key.clone(), false);
+        self.cache.insert(key.clone(), None);
 
         let (lhs, rhs) = key.clone();
 
@@ -190,7 +230,7 @@ impl Solver {
             self.errors.push(diagnostic);
         }
 
-        self.cache.insert(key, true);
+        self.cache.insert(key, Some(true));
     }
 
     fn constrain(&mut self, mut lhs: Ty, rhs: Ty, span: Span) -> Result<(), Diagnostic> {

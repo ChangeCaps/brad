@@ -40,7 +40,7 @@ impl Lowerer<'_> {
 
             scope: Vec::new(),
             loop_ty: None,
-            output_ty,
+            output_ty: output_ty.clone(),
         };
 
         // lower the arguments
@@ -98,8 +98,7 @@ impl Lowerer<'_> {
             Some(ref body) => {
                 let body = lowerer.expr(body)?;
 
-                let output = self.program[body_id].output.clone();
-                (self.program.solver).subty(body.ty.clone(), output, body.span);
+                (self.program.solver).subty(body.ty.clone(), output_ty, body.span);
 
                 Some(body)
             }
@@ -468,7 +467,7 @@ impl ExprLowerer<'_, '_> {
             let body = &self.program.bodies[body_id];
             let ty = body.ty();
 
-            let mut map = HashMap::new();
+            //let mut map = HashMap::new();
 
             match path.spec {
                 Some(ref spec) => {
@@ -482,17 +481,17 @@ impl ExprLowerer<'_, '_> {
                         return Err(());
                     }
 
-                    for (param, ty) in body.generics.clone().into_iter().zip(spec.tys.iter()) {
-                        let ty = self.ty(ty)?;
-                        map.insert(param, ty);
-                    }
+                    //for (param, ty) in body.generics.clone().into_iter().zip(spec.tys.iter()) {
+                    //    let ty = self.ty(ty)?;
+                    //    map.insert(param, ty);
+                    //}
                 }
 
                 None => {
-                    for param in body.generics.clone() {
-                        let ty = self.fresh_var();
-                        map.insert(param, ty);
-                    }
+                    //for param in body.generics.clone() {
+                    //    let ty = self.fresh_var();
+                    //    map.insert(param, ty);
+                    //}
                 }
             }
 
@@ -503,7 +502,7 @@ impl ExprLowerer<'_, '_> {
             // importantly, if the body however is recursive, then we CANNOT
             // instantiate, as this would break the soundness of type inference
             let ty = match self.recurses(body_id) {
-                false => ty,
+                false => self.program.solver.instantiate(ty),
                 true => ty,
             };
 
@@ -872,7 +871,7 @@ impl ExprLowerer<'_, '_> {
                     };
 
                     let mut ty = self.ty(ty)?;
-                    ty.inter(solve::Ty::neg(input_ty.clone()));
+                    ty.inter(input_ty.clone().neg());
                     input_ty.union(ty.clone());
 
                     let scope_len = self.scope.len();

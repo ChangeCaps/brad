@@ -58,6 +58,10 @@ impl Ty {
         Self::term_pos(Term::app(tag, args))
     }
 
+    pub fn base(base: Base) -> Self {
+        Self::term_pos(Term::base(base))
+    }
+
     pub fn record(fields: impl Into<BTreeMap<&'static str, Ty>>) -> Self {
         Self::term_pos(Term::record(fields))
     }
@@ -80,11 +84,11 @@ impl Ty {
 
     pub fn union(&mut self, Self(other): Self) {
         self.0.extend(other);
+        self.simplify();
     }
 
     pub fn union_with(mut self, other: Self) -> Self {
         self.union(other);
-        self.simplify();
         self
     }
 
@@ -118,21 +122,7 @@ impl Ty {
     /// This function will try to remove redundant conjuncts.
     pub fn simplify(&mut self) {
         self.0.sort_unstable();
-
-        let mut i = 0;
-        while i + 1 < self.0.len() {
-            if self.0[i].is_subty(&self.0[i + 1]) {
-                self.0.remove(i);
-                continue;
-            }
-
-            if self.0[i + 1].is_subty(&self.0[i]) {
-                self.0.remove(i + 1);
-                continue;
-            }
-
-            i += 1;
-        }
+        self.0.dedup();
     }
 
     /// Negate the type.
@@ -211,6 +201,12 @@ impl fmt::Display for Ty {
     }
 }
 
+impl From<Conj> for Ty {
+    fn from(conj: Conj) -> Self {
+        Self(vec![conj])
+    }
+}
+
 /// A conjunction in the disjunctive normal form of a [`Ty`].
 ///
 /// ```text
@@ -239,14 +235,6 @@ impl Conj {
 
     pub fn is_top(&self) -> bool {
         self.pos.is_extreme() && self.neg.is_extreme()
-    }
-
-    pub fn is_subty(&self, other: &Self) -> bool {
-        if self == other {
-            return true;
-        }
-
-        self.pos.is_subty_pos(&other.pos) && other.neg.is_subty_neg(&self.neg)
     }
 
     /// ```text
@@ -388,29 +376,6 @@ impl Term {
             apps: BTreeSet::new(),
             base: Some(Base::Ref(elem)),
         }
-    }
-
-    pub fn is_subty_pos(&self, other: &Self) -> bool {
-        // a       <: a
-        // a & b   <: a
-        // a & [b] <: a
-
-        other.vars.is_subset(&self.vars)
-            && other.tags.is_subset(&self.tags)
-            && other.apps.is_subset(&self.apps)
-            && other.base.is_none()
-            && self.base.is_none()
-    }
-
-    pub fn is_subty_neg(&self, other: &Self) -> bool {
-        // a <: a
-        // a <: a | b
-        // a <: a | b | [c]
-
-        self.vars.is_subset(&other.vars)
-            && self.tags.is_subset(&other.tags)
-            && self.apps.is_subset(&other.apps)
-            && self.base.is_none()
     }
 
     pub fn inter(&mut self, other: Self) {
@@ -717,8 +682,6 @@ mod tests {
         assert!(pos(int()).is_subty(&pos(top())));
         assert!(pos(int()).is_subty(&pos(int())));
         assert!((pos(int()) & pos(float())).is_subty(&pos(int())));
-        assert!(pos(int()).is_subty(&(pos(int()) & neg(float()))));
-        assert!(pos(int()).is_subty(&neg(float())));
         assert!(!pos(int()).is_subty(&neg(int())));
     }
 }
