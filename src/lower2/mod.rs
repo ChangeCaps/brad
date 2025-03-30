@@ -238,14 +238,6 @@ impl<'a> Lowerer<'a> {
             self.lower_function(&mut calls, body_id, info)?;
         }
 
-        for (_, body) in self.program.bodies.iter() {
-            println!(
-                "{}: {}",
-                body.name,
-                self.program.solver.format_ty(body.ty()),
-            );
-        }
-
         Ok(())
     }
 }

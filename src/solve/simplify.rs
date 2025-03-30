@@ -41,12 +41,8 @@ impl Solver {
             }
         }
 
-        if !conj.pos.apps.is_empty() {
-            conj.pos.apps.retain(|app| !conj.neg.apps.remove(app));
-
-            if conj.pos.apps.is_empty() {
-                return false;
-            }
+        if conj.pos.apps.iter().any(|app| conj.neg.apps.contains(app)) {
+            return false;
         }
 
         if !conj.neg.is_extreme() && self.is_term_subty(conj.pos.clone(), conj.neg.clone()) {
@@ -251,7 +247,7 @@ impl Solver {
                 self.is_subty(lhs, rhs) && self.is_subty(rhs, lhs)
             }
 
-            (_, _) => return false,
+            (_, _) => false,
         }
     }
 }

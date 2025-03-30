@@ -179,7 +179,6 @@ impl Solver {
 
     fn format_conj(&self, conj: &Conj, names: &HashMap<Var, String>, p: Prec) -> String {
         match (conj.pos.is_extreme(), conj.neg.is_extreme()) {
-            // top
             (true, true) => String::from("⊤"),
             (false, true) => self.format_term(&conj.pos, names, p, true),
             (true, false) => self.format_term(&conj.neg, names, p, false),
@@ -340,6 +339,91 @@ impl Solver {
         subst
     }
 
+    fn map_variables(Ty(mut conjs): Ty, map: &SeaHashMap<Var, Var>) -> Ty {
+        for conj in &mut conjs {
+            conj.pos.vars = conj
+                .pos
+                .vars
+                .iter()
+                .map(|var| map.get(var).copied().unwrap_or(*var))
+                .collect();
+
+            conj.neg.vars = conj
+                .neg
+                .vars
+                .iter()
+                .map(|var| map.get(var).copied().unwrap_or(*var))
+                .collect();
+
+            conj.pos.apps = conj
+                .pos
+                .apps
+                .clone()
+                .into_iter()
+                .map(|mut app| {
+                    app.args
+                        .iter_mut()
+                        .for_each(|arg| *arg = Self::map_variables(arg.clone(), map));
+
+                    app
+                })
+                .collect();
+
+            conj.neg.apps = conj
+                .neg
+                .apps
+                .clone()
+                .into_iter()
+                .map(|mut app| {
+                    app.args
+                        .iter_mut()
+                        .for_each(|arg| *arg = Self::map_variables(arg.clone(), map));
+
+                    app
+                })
+                .collect();
+
+            if let Some(ref mut base) = conj.pos.base {
+                Self::map_variables_base(base, map);
+            }
+
+            if let Some(ref mut base) = conj.neg.base {
+                Self::map_variables_base(base, map);
+            }
+        }
+
+        Ty(conjs)
+    }
+
+    fn map_variables_base(base: &mut Base, map: &SeaHashMap<Var, Var>) {
+        match base {
+            Base::Record(fields) => {
+                for ty in fields.values_mut() {
+                    *ty = Self::map_variables(ty.clone(), map);
+                }
+            }
+
+            Base::Tuple(items) => {
+                for ty in items {
+                    *ty = Self::map_variables(ty.clone(), map);
+                }
+            }
+
+            Base::Array(ty) => {
+                *ty = Self::map_variables(ty.clone(), map);
+            }
+
+            Base::Func(input, output) => {
+                *input = Self::map_variables(input.clone(), map);
+                *output = Self::map_variables(output.clone(), map);
+            }
+
+            Base::Ref(ty) => {
+                *ty = Self::map_variables(ty.clone(), map);
+            }
+        }
+    }
+
     fn inline_bounds(
         &mut self,
         Ty(ty): Ty,
@@ -406,6 +490,11 @@ impl Solver {
         match polarity {
             Polarity::Pos => {
                 let bound = bounds.lower.clone();
+
+                if self.is_subty(&bound, &Ty::never()) {
+                    return Ty::var(var);
+                }
+
                 let bound = self.simplify(bound);
                 let bound = self.inline_bounds(bound, infos, polarity);
 
@@ -417,6 +506,11 @@ impl Solver {
 
             Polarity::Neg => {
                 let bound = bounds.upper.clone();
+
+                if self.is_subty(&Ty::always(), &bound) {
+                    return Ty::var(var);
+                }
+
                 let bound = self.simplify(bound);
                 let bound = self.inline_bounds(bound, infos, polarity);
 
