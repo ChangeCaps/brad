@@ -179,6 +179,7 @@ impl ExprLowerer<'_, '_> {
         self.program.solver.subty(lhs, rhs, span);
     }
 
+    // check whether `body_id` is mutually recursive with the current body
     fn recurses(&self, body_id: hir::BodyId) -> bool {
         let mut visited = HashSet::new();
         let mut queue = self.calls.get(&body_id).cloned().unwrap_or_default();
