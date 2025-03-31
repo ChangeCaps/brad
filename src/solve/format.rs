@@ -556,6 +556,7 @@ impl Solver {
         }
     }
 
+    /// Find all variables in a type.
     pub fn find_variables(&self, ty: &Ty) -> SeaHashSet<Var> {
         let mut vars = SeaHashSet::default();
         self.find_variables_impl(ty, &mut vars);

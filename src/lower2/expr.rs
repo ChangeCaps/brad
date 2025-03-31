@@ -462,6 +462,11 @@ impl ExprLowerer<'_, '_> {
                 let info = self.funcs.remove(&body_id).unwrap();
 
                 self.lowerer.lower_function(self.calls, body_id, info)?;
+
+                if !self.recurses(body_id) {
+                    let mut ty = self.program[body_id].ty();
+                    (self.program.solver).simplify_deep(&mut ty);
+                }
             }
 
             // get the actual body and type
@@ -855,6 +860,8 @@ impl ExprLowerer<'_, '_> {
                         | ast::Ty::List { .. }
                         | ast::Ty::Tuple { .. }
                         | ast::Ty::Union { .. }
+                        | ast::Ty::Inter { .. }
+                        | ast::Ty::Neg { .. }
                         | ast::Ty::Record { .. } => {
                             let ty = self.ty(ty)?;
 

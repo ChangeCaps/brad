@@ -30,7 +30,7 @@ fn func(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
 }
 
 fn union(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
-    let first = tuple(input)?;
+    let first = inter(input)?;
 
     if !is_union(input) {
         return Ok(first);
@@ -43,7 +43,7 @@ fn union(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
         consume_newlines(input);
         input.consume();
 
-        let term = tuple(input)?;
+        let term = inter(input)?;
         span = span.join(term.span());
         tys.push(term);
     }
@@ -59,6 +59,38 @@ fn is_union(input: &Tokens) -> bool {
     }
 
     input.nth_is(offset, Token::Pipe)
+}
+
+fn inter(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
+    let first = tuple(input)?;
+
+    if !is_inter(input) {
+        return Ok(first);
+    }
+
+    let mut span = first.span();
+    let mut tys = vec![first];
+
+    while is_inter(input) {
+        consume_newlines(input);
+        input.consume();
+
+        let term = tuple(input)?;
+        span = span.join(term.span());
+        tys.push(term);
+    }
+
+    Ok(ast::Ty::Inter { tys, span })
+}
+
+fn is_inter(input: &Tokens) -> bool {
+    let mut offset = 0;
+
+    while input.nth_is(offset, Token::Newline) {
+        offset += 1;
+    }
+
+    input.nth_is(offset, Token::Amp)
 }
 
 fn tuple(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
@@ -129,6 +161,18 @@ fn term(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
         Token::Quote => {
             let generic = generic(input)?;
             Ok(ast::Ty::Generic(generic))
+        }
+
+        Token::Tilde => {
+            let (_, span) = input.consume();
+            let ty = term(input)?;
+
+            let span = span.join(ty.span());
+
+            Ok(ast::Ty::Neg {
+                ty: Box::new(ty),
+                span,
+            })
         }
 
         Token::Ref => {

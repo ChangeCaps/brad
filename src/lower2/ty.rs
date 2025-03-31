@@ -38,7 +38,7 @@ impl Lowerer<'_> {
             ast::Ty::Generic(generic) => match generics {
                 Generics::Explicit(generics) => {
                     match generics.iter().find(|(name, _)| name == &generic.name) {
-                        Some((_, ty)) => solve::Ty::var(ty.clone()),
+                        Some((_, ty)) => solve::Ty::var(*ty),
                         None => {
                             let diagnostic = Diagnostic::error("unbound::generic")
                                 .message(format!("unbound generic `{}`", generic.name))
@@ -53,7 +53,7 @@ impl Lowerer<'_> {
 
                 Generics::Implicit(generics) => {
                     match generics.iter().find(|(name, _)| name == &generic.name) {
-                        Some((_, ty)) => solve::Ty::var(ty.clone()),
+                        Some((_, ty)) => solve::Ty::var(*ty),
                         None => {
                             let var = self.program.solver.fresh_var();
                             generics.push((generic.name, var));
@@ -125,6 +125,18 @@ impl Lowerer<'_> {
                 let first = tys.remove(0);
                 tys.into_iter().fold(first, solve::Ty::union_with)
             }
+
+            ast::Ty::Inter { tys, .. } => {
+                let mut tys = tys
+                    .iter()
+                    .map(|ty| self.lower_ty(module, generics, allow_wild, ty))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let first = tys.remove(0);
+                tys.into_iter().fold(first, solve::Ty::inter_with)
+            }
+
+            ast::Ty::Neg { ty, .. } => self.lower_ty(module, generics, allow_wild, ty)?.neg(),
 
             ast::Ty::Ref { ty, .. } => {
                 solve::Ty::ref_(self.lower_ty(module, generics, allow_wild, ty)?)

@@ -543,6 +543,14 @@ fn lower_ty_inner(
             hir::Ty::Union(tys)
         }
 
+        ast::Ty::Inter { .. } => {
+            todo!("intersection types")
+        }
+
+        ast::Ty::Neg {  .. } => {
+            todo!("negated types")
+        }
+
         ast::Ty::Record { fields, .. } => {
             let fields = fields
                 .iter()

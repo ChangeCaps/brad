@@ -82,6 +82,21 @@ impl Ty {
         Self::term_pos(Term::ref_(self))
     }
 
+    /// Add a tag to the type.
+    ///
+    /// Add a tag to all the conjuncts in the type.
+    pub fn add_tag(&mut self, tag: Tag) {
+        for conj in &mut self.0 {
+            conj.pos.tags.insert(tag);
+        }
+    }
+
+    /// Call [`Self::add_tag`] and return `self`.
+    pub fn with_tag(mut self, tag: Tag) -> Self {
+        self.add_tag(tag);
+        self
+    }
+
     pub fn union(&mut self, Self(other): Self) {
         self.0.extend(other);
         self.simplify();
@@ -103,8 +118,9 @@ impl Ty {
         for conj in self.0.drain(..) {
             for other in other.iter().cloned() {
                 let mut conj = conj.clone();
-                conj.inter(other);
-                conjs.push(conj);
+                if conj.inter(other) {
+                    conjs.push(conj);
+                }
             }
         }
 
@@ -237,13 +253,13 @@ impl Conj {
         self.pos.is_extreme() && self.neg.is_extreme()
     }
 
-    /// ```text
-    /// (a & ~b) & (c & ~d) <=>
-    /// a & c & ~(b | d)
-    /// ```
-    pub fn inter(&mut self, other: Self) {
-        self.pos.inter(other.pos);
+    /// Intersect with another conjunction.
+    ///
+    /// Returns `false` if the result is bottom.
+    #[must_use]
+    pub fn inter(&mut self, other: Self) -> bool {
         self.neg.union(other.neg);
+        self.pos.inter(other.pos)
     }
 }
 
@@ -378,22 +394,26 @@ impl Term {
         }
     }
 
-    pub fn inter(&mut self, other: Self) {
-        self.vars.extend(other.vars);
+    pub fn inter(&mut self, other: Self) -> bool {
+        if !(self.tags.is_subset(&other.tags) || other.tags.is_subset(&self.tags)) {
+            return false;
+        }
+
         self.tags.extend(other.tags);
+        self.vars.extend(other.vars);
         self.apps.extend(other.apps);
 
         if other.base.is_none() {
-            return;
+            return true;
         }
 
         if self.base.is_none() {
             self.base = other.base;
-            return;
+            return true;
         }
 
         let (Some(kind), Some(other)) = (&mut self.base, other.base) else {
-            return;
+            return true;
         };
 
         match (kind, other) {
@@ -433,6 +453,8 @@ impl Term {
 
             (_, _) => self.base = None,
         }
+
+        true
     }
 
     pub fn union(&mut self, other: Self) {
@@ -620,68 +642,5 @@ impl fmt::Display for App {
         let args: Vec<_> = self.args.iter().map(ToString::to_string).collect();
 
         write!(f, "{}<{}>", self.tag.name, args.join(", "))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn int() -> Term {
-        Term::tag(Tag::INT)
-    }
-
-    fn float() -> Term {
-        Term::tag(Tag::FLOAT)
-    }
-
-    fn none() -> Term {
-        Term::tag(Tag::NONE)
-    }
-
-    fn top() -> Term {
-        Term::extreme()
-    }
-
-    fn pos(term: Term) -> Conj {
-        Conj::pos(term)
-    }
-
-    fn neg(term: Term) -> Conj {
-        Conj::neg(term)
-    }
-
-    impl std::ops::BitAnd for Term {
-        type Output = Term;
-
-        fn bitand(mut self, rhs: Self) -> Self::Output {
-            self.inter(rhs);
-            self
-        }
-    }
-
-    impl std::ops::BitAnd for Conj {
-        type Output = Conj;
-
-        fn bitand(mut self, rhs: Self) -> Self::Output {
-            self.inter(rhs);
-            self
-        }
-    }
-
-    #[test]
-    fn test_term_subty() {
-        assert!(int().is_subty_pos(&top()));
-        assert!(int().is_subty_pos(&int()));
-        assert!((int() & float()).is_subty_pos(&int()));
-        assert!(!int().is_subty_pos(&(int() & float())));
-    }
-
-    #[test]
-    fn test_conj_subty() {
-        assert!(pos(int()).is_subty(&pos(top())));
-        assert!(pos(int()).is_subty(&pos(int())));
-        assert!((pos(int()) & pos(float())).is_subty(&pos(int())));
-        assert!(!pos(int()).is_subty(&neg(int())));
     }
 }

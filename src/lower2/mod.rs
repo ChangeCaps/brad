@@ -127,7 +127,7 @@ impl<'a> Lowerer<'a> {
 
                     let body = self.lower_ty(info.module, &mut generics, false, ty)?;
 
-                    let ty = solve::Ty::inter_with(solve::Ty::tag(tag), body.clone());
+                    let ty = body.clone().with_tag(tag);
 
                     if let Some(body_id) = info.body {
                         let mut locals = hir::Locals::new();
@@ -236,6 +236,9 @@ impl<'a> Lowerer<'a> {
             let info = self.funcs.remove(&body_id).unwrap();
 
             self.lower_function(&mut calls, body_id, info)?;
+
+            let mut ty = self.program[body_id].ty();
+            self.program.solver.simplify_deep(&mut ty);
         }
 
         Ok(())

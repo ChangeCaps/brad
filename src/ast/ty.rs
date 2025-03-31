@@ -50,6 +50,16 @@ pub enum Ty {
         span: Span,
     },
 
+    Inter {
+        tys: Vec<Ty>,
+        span: Span,
+    },
+
+    Neg {
+        ty: Box<Ty>,
+        span: Span,
+    },
+
     Record {
         fields: Vec<Field>,
         span: Span,
@@ -81,6 +91,8 @@ impl Ty {
             Ty::List { span, .. } => *span,
             Ty::Tuple { span, .. } => *span,
             Ty::Union { span, .. } => *span,
+            Ty::Inter { span, .. } => *span,
+            Ty::Neg { span, .. } => *span,
             Ty::Record { span, .. } => *span,
         }
     }

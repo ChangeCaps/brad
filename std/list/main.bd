@@ -11,6 +11,12 @@ fn prepend<'a> (x: 'a) (xs: list<'a>) -> list<'a> {
     list (x, xs)
 }
 
+fn append<'a> (x: 'a) (xs: list<'a>) -> list<'a> {
+    match xs
+    | none      => prepend x empty
+    | _ as h, t => prepend h (append x t)
+}
+
 fn head<'a> (xs: list<'a>) -> 'a | none {
     match xs
     | none   => none

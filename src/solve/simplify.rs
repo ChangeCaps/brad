@@ -1,6 +1,17 @@
 use super::{Base, Conj, Solver, Term, Ty};
 
 impl Solver {
+    pub fn simplify_deep(&mut self, ty: &mut Ty) {
+        for var in self.find_variables(ty) {
+            let mut bounds = self.bounds[&var].clone();
+
+            bounds.lower = self.simplify(bounds.lower);
+            bounds.upper = self.simplify(bounds.upper);
+
+            self.bounds.insert(var, bounds);
+        }
+    }
+
     pub fn simplify(&mut self, mut ty: Ty) -> Ty {
         ty.0.retain_mut(|conj| self.simplify_conj(conj));
 
@@ -32,22 +43,6 @@ impl Solver {
     fn simplify_conj(&mut self, conj: &mut Conj) -> bool {
         conj.pos = self.simplify_term(conj.pos.clone());
         conj.neg = self.simplify_term(conj.neg.clone());
-
-        if !conj.pos.tags.is_empty() {
-            conj.pos.tags.retain(|tag| !conj.neg.tags.remove(tag));
-
-            if conj.pos.tags.is_empty() {
-                return false;
-            }
-        }
-
-        if conj.pos.apps.iter().any(|app| conj.neg.apps.contains(app)) {
-            return false;
-        }
-
-        if !conj.neg.is_extreme() && self.is_term_subty(conj.pos.clone(), conj.neg.clone()) {
-            return false;
-        }
 
         true
     }
