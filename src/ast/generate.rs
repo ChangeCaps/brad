@@ -5,10 +5,12 @@ use clap::Args;
 use rand::distr::weighted::WeightedIndex;
 use rand::distr::Distribution;
 use rand::prelude::IndexedRandom;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use std::collections::BTreeMap;
 use std::mem::discriminant;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Mutex};
+
+pub static INTERNER: LazyLock<Mutex<Interner>> = LazyLock::new(Default::default);
 
 #[allow(non_upper_case_globals)]
 const span: Span = Span::new(SourceId(0), 0, 0);
@@ -117,6 +119,8 @@ pub struct GeneratorOptions {
     pub max_complexity: usize,
     #[clap(long, default_value = "100")]
     pub max_bruteforce_attempts: usize,
+    #[clap(long)]
+    pub seed: Option<u64>,
 }
 
 impl Default for GeneratorOptions {
@@ -140,6 +144,7 @@ impl Default for GeneratorOptions {
             max_depth: 1,
             max_complexity: 30,
             max_bruteforce_attempts: 100,
+            seed: None,
         }
     }
 }
@@ -147,8 +152,7 @@ impl Default for GeneratorOptions {
 #[derive(Debug)]
 pub struct Generator {
     opts: GeneratorOptions,
-    rng: rand::rngs::ThreadRng,
-    pub interner: Interner,
+    rng: rand::rngs::StdRng,
 
     /// Types (Basic types, ADT's, aliases to ADT's, new types)
     tys: Types,
@@ -175,10 +179,15 @@ struct Types {
 
 impl Generator {
     pub fn new(opts: GeneratorOptions) -> Self {
+        let rng = if let Some(seed) = opts.seed {
+            rand::rngs::StdRng::seed_from_u64(seed)
+        } else {
+            rand::rngs::StdRng::from_os_rng()
+        };
+
         Self {
             opts,
-            rng: rand::rng(),
-            interner: Interner::new(),
+            rng,
             tys: Types::new(),
             bodies: Vec::new(),
         }
@@ -208,7 +217,8 @@ impl Generator {
         // Generate a set of custom types.
         for _ in 0..self.rng.random_range(0..=self.opts.max_tys_rounds) {
             // Generate a random union type.
-            let mut tys: Vec<_> = (2..=self.opts.max_union_size).map(|_| self.ty()).collect();
+            let n = self.rng.random_range(2..=self.opts.max_union_size);
+            let mut tys: Vec<_> = (0..=n).map(|_| self.ty()).collect();
             tys.sort();
             tys.dedup();
 
@@ -218,7 +228,8 @@ impl Generator {
             }
 
             // Generate a random tuple
-            let tys: Vec<_> = (2..=self.opts.max_tuple_size).map(|_| self.ty()).collect();
+            let n = self.rng.random_range(2..=self.opts.max_tuple_size);
+            let tys: Vec<_> = (0..=n).map(|_| self.ty()).collect();
 
             assert!(tys.len() >= 2);
 
@@ -281,7 +292,7 @@ impl Generator {
             let name = if i != 0 {
                 self.name(None)
             } else {
-                self.interner.intern("main")
+                INTERNER.lock().unwrap().intern("main")
             };
 
             // Do not create duplicate function names.
@@ -374,7 +385,7 @@ impl Generator {
                 continue;
             }
 
-            return self.interner.intern(name.as_str());
+            return INTERNER.lock().unwrap().intern(name.as_str());
         }
 
         unreachable!()
@@ -843,7 +854,7 @@ impl Types {
     }
 
     /// Return any random type
-    fn random_any(&self, rng: &mut rand::rngs::ThreadRng) -> ast::Ty {
+    fn random_any(&self, rng: &mut impl Rng) -> ast::Ty {
         let weights = [
             self.tys.len(),
             self.adts.len(),
@@ -877,7 +888,7 @@ impl Types {
     }
 
     /// Return a random *tagged* type.
-    fn random_tagged(&self, rng: &mut rand::rngs::ThreadRng) -> ast::Ty {
+    fn random_tagged(&self, rng: &mut impl Rng) -> ast::Ty {
         let weights = [self.tys.len(), self.named_tys.len()];
 
         let index = WeightedIndex::new(weights).unwrap().sample(rng);

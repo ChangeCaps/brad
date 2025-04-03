@@ -1,6 +1,6 @@
-use crate::{ast, diagnostic::Diagnostic};
-
 use super::{binding, consume_newlines, ident, path, ty, Delim, Token, Tokens};
+use crate::ast::Spanned;
+use crate::{ast, diagnostic::Diagnostic};
 
 pub fn expr(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let (token, _) = input.peek();

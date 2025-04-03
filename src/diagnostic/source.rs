@@ -8,6 +8,12 @@ pub struct Source {
 #[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct SourceId(pub u32);
 
+impl Default for SourceId {
+    fn default() -> Self {
+        SourceId(u32::MIN)
+    }
+}
+
 pub struct Sources {
     sources: Vec<Source>,
 }

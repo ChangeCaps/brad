@@ -1,10 +1,10 @@
+use super::{generic, path, Delim, Token, Tokens};
+use crate::ast::Spanned;
 use crate::{
     ast,
     diagnostic::Diagnostic,
     parse::{consume_newlines, ident},
 };
-
-use super::{generic, path, Delim, Token, Tokens};
 
 pub fn ty(input: &mut Tokens) -> Result<ast::Ty, Diagnostic> {
     func(input)
