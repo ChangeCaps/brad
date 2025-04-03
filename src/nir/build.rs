@@ -1,7 +1,8 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use super::{
-    body::{Body, Name},
+    annotation::VarAnnotation,
+    body::{Body, Local},
     ty::Tid,
 };
 
@@ -15,58 +16,70 @@ impl BodyBuilder {
         Self { body: Body::new() }
     }
 
-    pub fn next_name(&mut self, tid: Tid) -> Name {
+    pub fn next_name(&mut self, tid: Tid) -> Local {
         let id = self.body.locals.len();
         self.body.locals.push(tid);
-        Name(id as u32)
+        Local(id as u32)
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Var {
-    ethereal: bool,
-    name: Name,
+    name: Local,
     place: Option<Rc<RefCell<Place>>>,
+    annotations: BTreeSet<VarAnnotation>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Place {
-    name: Name,
-    rename: bool,
+    name: Option<Local>,
+    tid: Tid,
     shared: bool,
     access: Access,
     parent: Option<Rc<RefCell<Place>>>,
 }
 
 impl Place {
-    pub fn get_name(&mut self) -> Name {
-        let rename = if self.rename {
+    pub fn get_name(&mut self) -> Local {
+        let rename = if self.name.is_none() {
             true
         } else if let Some(parent) = &mut self.parent {
-            parent.borrow().rename
+            parent.borrow().name.is_none()
         } else {
             false
         };
 
-        if rename {
+        let name = if rename {
             // do rename (read into local and give local)
             todo!()
+        } else {
+            Local(0)
+        };
+
+        if self.shared {
+            self.name = None;
+        } else {
+            self.name = Some(name.clone());
         }
 
-        self.rename = self.shared;
-
-        self.name.clone()
+        name
     }
 
     pub fn rename(&mut self) {
-        self.rename = true;
+        self.name = None;
     }
 
     pub fn access(self_rc: Rc<RefCell<Place>>, access: Access) -> Rc<RefCell<Place>> {
-        Rc::new(RefCell::new(Self {
-            name: Name(0),
-            rename: true,
-            shared: self_rc.borrow().shared,
+        let self_br = self_rc.borrow();
+        Rc::new(RefCell::new(Place {
+            name: None,
+            tid: match self_br.access {
+                Access::Field(tid, _)
+                | Access::Element(tid, _)
+                | Access::Index(tid, _)
+                | Access::Deref(tid) => tid.clone(),
+            },
+            shared: self_br.shared,
             access,
             parent: Some(self_rc.clone()),
         }))
@@ -76,13 +89,13 @@ impl Place {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Access {
     /// record field
-    Field { name: &'static str },
+    Field(Tid, &'static str),
     /// tuple index
-    Element { index: u32 },
+    Element(Tid, u32),
     /// array indexing
-    Index { index: Var },
-    /// ref dereferenc
-    Deref {},
+    Index(Tid, Var),
+    /// ref dereference
+    Deref(Tid),
 }
 
 impl Access {}

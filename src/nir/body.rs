@@ -2,8 +2,11 @@ use std::ops::Index;
 
 use super::ty::Tid;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Name(pub u32);
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Local(pub u32);
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Bid(pub u32);
 
 #[derive(Clone, Debug)]
 pub struct Body {
@@ -16,10 +19,10 @@ impl Body {
     }
 }
 
-impl Index<Name> for Body {
+impl Index<Local> for Body {
     type Output = Tid;
 
-    fn index(&self, Name(index): Name) -> &Self::Output {
+    fn index(&self, Local(index): Local) -> &Self::Output {
         &self.locals[index as usize]
     }
 }
