@@ -1,0 +1,82 @@
+import std::list
+import std::array
+
+type std::list<'a> = none | 'a * list<'a>
+
+fn empty<'a> -> list<'a> {
+    list none
+}
+
+fn prepend<'a> (x: 'a) (xs: list<'a>) -> list<'a> {
+    list (x, xs)
+}
+
+fn head<'a> (xs: list<'a>) -> 'a | none {
+    match xs
+    | none   => none
+    | _ as h, _ => h
+}
+
+fn tail<'a> (xs: list<'a>) -> list<'a> | none {
+    match xs
+    | none     => none
+    | _ as _, t => t
+}
+
+fn concat<'a> (xs: list<'a>) (ys: list<'a>) -> list<'a> {
+    match xs
+    | none      => ys
+    | _ as h, t => prepend h (concat t ys)
+}
+
+fn extend<'a> (ys: list<'a>) (xs: list<'a>) -> list<'a> {
+    concat ys xs
+}
+
+fn iter<'a> (xs: list<'a>) -> std::iter<'a> {
+    std::iter \_. {
+        match xs
+        | none      => none
+        | _ as h, t => h, iter t
+    }
+}
+
+fn collect<'a> (xs: std::iter<'a>) -> list<'a> {
+    match std::iter::next xs
+    | none => empty
+    | _ as h, t => prepend h (collect t)
+}
+
+fn map<'a, 'b> (f: 'a -> 'b) (xs: list<'a>) -> list<'b> {
+    match xs
+    | none      => empty
+    | _ as h, t => prepend (f h) (map f t)
+}
+
+fn filter<'a> (p: 'a -> true | false) (xs: list<'a>) -> list<'a> {
+    match xs
+    | none      => empty
+    | _ as h, t => {
+      match p h
+      | true  => prepend h (filter p t)
+      | false => filter p t
+    }
+}
+
+fn count<'a> (xs: list<'a>) -> int {
+    match xs
+    | none      => 0
+    | _ as _, t => 1 + count t
+}
+ 
+fn foldl<'a, 'b> (f: 'b -> 'a -> 'b) (z: 'b) (xs: list<'a>) -> 'b {
+    match xs
+    | none      => z
+    | _ as h, t => foldl f (f z h) t
+}
+
+fn foldr<'a, 'b> (f: 'a -> 'b -> 'b) (z: 'b) (xs: list<'a>) -> 'b {
+    match xs
+    | none      => z
+    | _ as h, t => f h (foldr f z t)
+}

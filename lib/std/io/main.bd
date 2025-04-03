@@ -1,0 +1,14 @@
+import std::string
+
+type error = std::error<none>
+
+type error::file-not-found = error
+type error::file-not-open  = error
+type error::end-of-file    = error
+
+#[link = "brad_print"]
+extern fn print (a: str) -> none
+
+fn println (a: str) -> none {
+  a |> string::append "\n" |> print
+}

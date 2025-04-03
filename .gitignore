@@ -1,9 +1,10 @@
 /target
 Cargo.lock
-/my-test
 /obj
 /a.out
 /run.log
+/out.lua
+/playground.bd
 
 .venv
 __pycache__/
@@ -12,3 +13,4 @@ __pycache__/
 .idea/
 .direnv/
 .cache/
+.logs/

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Interner {
     strings: HashSet<&'static str>,
 }
@@ -21,5 +21,13 @@ impl Interner {
         let interned = Box::leak(boxed);
         self.strings.insert(interned);
         interned
+    }
+
+    pub unsafe fn clear(&mut self) {
+        for &s in &self.strings {
+            let _ = Box::from_raw(s as *const str as *mut str);
+        }
+
+        self.strings.clear();
     }
 }

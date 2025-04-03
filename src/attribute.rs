@@ -1,16 +1,39 @@
+use crate::ast::Spanned;
 use crate::diagnostic::Span;
 use std::borrow::Cow;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Attributes {
     pub attributes: Vec<Attribute>,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for Attributes {
+    fn span(&self) -> Span {
+        self.attributes
+            .iter()
+            .fold(Span::default(), |acc, attr| acc.join(attr.span()))
+    }
+
+    fn reset_spans(&mut self) {
+        self.attributes.iter_mut().for_each(Spanned::reset_spans);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Attribute {
     pub name: Cow<'static, str>,
     pub value: Option<Cow<'static, str>>,
     pub span: Option<Span>,
+}
+
+impl Spanned for Attribute {
+    fn span(&self) -> Span {
+        self.span.unwrap_or_default()
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Some(Span::default());
+    }
 }
 
 impl Attributes {

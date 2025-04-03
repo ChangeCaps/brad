@@ -1,6 +1,6 @@
-use crate::{ast, diagnostic::Diagnostic};
-
 use super::{binding, consume_newlines, ident, path, ty, Delim, Token, Tokens};
+use crate::ast::Spanned;
+use crate::{ast, diagnostic::Diagnostic};
 
 pub fn expr(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let (token, _) = input.peek();
@@ -105,7 +105,7 @@ fn match_arm(input: &mut Tokens) -> Result<ast::MatchArm, Diagnostic> {
 
     Ok(ast::MatchArm {
         pattern,
-        expr,
+        body: expr,
         span,
     })
 }
@@ -136,6 +136,7 @@ fn is_expr(input: &mut Tokens) -> bool {
         | Token::True
         | Token::False
         | Token::None
+        | Token::Backslash
         | Token::Open(_)
         | Token::Ident(_)
         | Token::Integer(_)
@@ -327,7 +328,7 @@ fn unary(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
 
         Ok(ast::Expr::Ref(ast::RefExpr {
             span: expr.span(),
-            expr: Box::new(expr),
+            target: Box::new(expr),
         }))
     } else if let Some(op) = unary_op(input) {
         let expr = unary(input, can_call)?;
@@ -335,7 +336,7 @@ fn unary(input: &mut Tokens, can_call: bool) -> Result<ast::Expr, Diagnostic> {
 
         Ok(ast::Expr::Unary(ast::UnaryExpr {
             op,
-            expr: Box::new(expr),
+            target: Box::new(expr),
             span,
         }))
     } else {
@@ -485,6 +486,8 @@ fn term(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
             Ok(ast::Expr::Path(path))
         }
 
+        Token::Backslash => lambda(input),
+
         Token::Open(Delim::Paren) => {
             input.expect(Token::Open(Delim::Paren))?;
 
@@ -513,6 +516,33 @@ fn term(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
             Err(diagnostic)
         }
     }
+}
+
+fn lambda(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
+    let start = input.expect(Token::Backslash)?;
+
+    let mut args = Vec::new();
+
+    while !input.is(Token::Dot) {
+        let binding = binding(input)?;
+        args.push(binding);
+    }
+
+    input.expect(Token::Dot)?;
+
+    if args.is_empty() {
+        let diagnostic = Diagnostic::error("expected::lambda")
+            .message("expected at least one argument in lambda")
+            .label(start, "here");
+
+        return Err(diagnostic);
+    }
+
+    let body = Box::new(expr(input)?);
+
+    let span = start.join(body.span());
+
+    Ok(ast::Expr::Lambda(ast::LambdaExpr { args, body, span }))
 }
 
 fn list(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {

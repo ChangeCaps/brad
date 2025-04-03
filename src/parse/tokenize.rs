@@ -64,7 +64,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn is_ident_continue(c: char) -> bool {
-        c.is_alphanumeric() || c == '_' || c == '-'
+        c.is_alphanumeric() || c == '_' || c == '-' || c == '\''
     }
 
     fn ident(&mut self) -> Result<(Token, Span), Diagnostic> {

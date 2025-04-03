@@ -1,18 +1,33 @@
-use crate::ast::{Binding, Decl, Expr, Func, Generics, Module, Pattern, Ty};
+use crate::ast::{Binding, CallExpr, Decl, Expr, Func, Generics, Module, Pattern, TupleExpr, Ty};
+use crate::attribute::Attributes;
+use clap::Args;
 use std::{io, io::Write};
 
 const INDENT_SIZE: usize = 4;
 
 pub struct Formatter<W: Write> {
     indent: usize,
+    call_depth: usize,
     writer: W,
+    opts: FormatterOptions,
 }
 
 type Result = io::Result<()>;
 
+#[derive(Args, Default, Clone)]
+pub struct FormatterOptions {
+    #[arg(short, long, default_value = "false")]
+    exclude_types: bool,
+}
+
 impl<W: Write> Formatter<W> {
-    pub fn new(writer: W) -> Self {
-        Formatter { indent: 0, writer }
+    pub fn new(writer: W, opts: FormatterOptions) -> Self {
+        Formatter {
+            indent: 0,
+            call_depth: 0,
+            writer,
+            opts,
+        }
     }
 
     fn indent(&mut self, f: impl FnOnce(&mut Self) -> Result) -> Result {
@@ -26,7 +41,16 @@ impl<W: Write> Formatter<W> {
         write!(self.writer, "\n{}", " ".repeat(INDENT_SIZE * self.indent))
     }
 
+    fn inside_call(&mut self, f: impl FnOnce(&mut Self) -> Result) -> Result {
+        self.call_depth += 1;
+        let result = f(self);
+        self.call_depth -= 1;
+        result
+    }
+
     pub fn format_module(&mut self, module: &Module) -> Result {
+        self.format_attributes(&module.attrs, true)?;
+
         for decl in &module.decls {
             self.format_decl(decl)?;
         }
@@ -38,6 +62,8 @@ impl<W: Write> Formatter<W> {
         match decl {
             Decl::Func(func_decl) => {
                 writeln!(self.writer)?;
+
+                self.format_attributes(&func_decl.attrs, false)?;
 
                 if func_decl.is_extern {
                     write!(self.writer, "extern ")?;
@@ -51,30 +77,42 @@ impl<W: Write> Formatter<W> {
                 }
 
                 for arg in &func_decl.args {
-                    match &arg.ty {
-                        Some(ty) => {
+                    match (&arg.ty, self.opts.exclude_types) {
+                        (Some(ty), false) => {
                             write!(self.writer, " (")?;
                             self.format_binding(&arg.binding)?;
                             write!(self.writer, ": ")?;
                             self.format_ty(ty)?;
-                            write!(self.writer, ")")?
+                            write!(self.writer, ")")?;
                         }
-                        None => self.format_binding(&arg.binding)?,
+                        _ => {
+                            write!(self.writer, " ")?;
+
+                            if let Binding::Bind { mutable: true, .. } = &arg.binding {
+                                write!(self.writer, "(")?;
+                                self.format_binding(&arg.binding)?;
+                                write!(self.writer, ")")?
+                            } else {
+                                self.format_binding(&arg.binding)?;
+                            }
+                        }
                     };
                 }
 
-                if let Some(ty) = &func_decl.output {
-                    write!(self.writer, " -> ")?;
-                    self.format_ty(ty)?;
-                };
+                if !self.opts.exclude_types {
+                    if let Some(ty) = &func_decl.output {
+                        write!(self.writer, " -> ")?;
+                        self.format_ty(ty)?;
+                    };
+                }
 
-                match func_decl {
-                    Func {
-                        body: Some(body),
-                        is_extern: false,
-                        ..
-                    } => self.format_expr(body)?,
-                    _ => {}
+                if let Func {
+                    body: Some(body),
+                    is_extern: false,
+                    ..
+                } = func_decl
+                {
+                    self.format_expr(body)?
                 };
 
                 writeln!(self.writer)
@@ -91,7 +129,7 @@ impl<W: Write> Formatter<W> {
                     self.format_ty(ty)?;
                 }
 
-                Ok(())
+                writeln!(self.writer)
             }
             Decl::Alias(alias_decl) => {
                 write!(self.writer, "alias {}", alias_decl.name)?;
@@ -115,7 +153,7 @@ impl<W: Write> Formatter<W> {
                 write!(self.writer, "[")?;
                 for (i, expr) in list_expr.items.iter().enumerate() {
                     if i > 0 {
-                        write!(self.writer, ", ")?;
+                        write!(self.writer, "; ")?;
                     }
                     self.format_expr(expr)?;
                 }
@@ -132,15 +170,20 @@ impl<W: Write> Formatter<W> {
                 }
                 write!(self.writer, "}}")
             }
-            Expr::Tuple(tuple_expr) => {
-                write!(self.writer, "(")?;
-                for (i, expr) in tuple_expr.items.iter().enumerate() {
+            Expr::Tuple(TupleExpr { items, .. }) => {
+                if !items.is_empty() {
+                    write!(self.writer, "(")?;
+                }
+                for (i, expr) in items.iter().enumerate() {
                     if i > 0 {
                         write!(self.writer, ", ")?;
                     }
                     self.format_expr(expr)?;
                 }
-                write!(self.writer, ")")
+                if !items.is_empty() {
+                    write!(self.writer, ")")?;
+                }
+                Ok(())
             }
             Expr::Path(path) => write!(self.writer, "{}", path),
             Expr::Index(index_expr) => {
@@ -155,21 +198,31 @@ impl<W: Write> Formatter<W> {
             }
             Expr::Unary(unary_expr) => {
                 write!(self.writer, "{}", unary_expr.op)?;
-                self.format_expr(&unary_expr.expr)
+                self.format_expr(&unary_expr.target)
             }
             Expr::Binary(binary_expr) => {
                 self.format_expr(&binary_expr.lhs)?;
                 write!(self.writer, " {} ", binary_expr.op)?;
                 self.format_expr(&binary_expr.rhs)
             }
-            Expr::Call(call_expr) => {
-                write!(self.writer, "(")?;
-                self.format_expr(&call_expr.target)?;
+            Expr::Call(CallExpr { target, input, .. }) => {
+                if self.call_depth > 0 {
+                    write!(self.writer, "(")?;
+                }
 
-                write!(self.writer, " (")?;
-                self.format_expr(&call_expr.input)?;
-                write!(self.writer, "))")
+                self.format_expr(target)?;
+
+                write!(self.writer, " ")?;
+
+                self.inside_call(|f| f.format_expr(input))?;
+
+                if self.call_depth > 0 {
+                    write!(self.writer, ")")?;
+                }
+
+                Ok(())
             }
+            Expr::Lambda(_) => todo!(),
             Expr::Assign(assign_expr) => {
                 self.format_expr(&assign_expr.target)?;
                 write!(self.writer, " = ")?;
@@ -177,7 +230,7 @@ impl<W: Write> Formatter<W> {
             }
             Expr::Ref(ref_expr) => {
                 write!(self.writer, "ref ")?;
-                self.format_expr(&ref_expr.expr)
+                self.format_expr(&ref_expr.target)
             }
             Expr::Match(match_expr) => {
                 write!(self.writer, "match ")?;
@@ -187,7 +240,7 @@ impl<W: Write> Formatter<W> {
                     write!(self.writer, "| ")?;
                     self.format_pattern(&arm.pattern)?;
                     write!(self.writer, " => ")?;
-                    self.format_expr(&arm.expr)?;
+                    self.format_expr(&arm.body)?;
                 }
                 Ok(())
             }
@@ -207,6 +260,14 @@ impl<W: Write> Formatter<W> {
             Expr::Let(let_expr) => {
                 write!(self.writer, "let ")?;
                 self.format_binding(&let_expr.binding)?;
+
+                if !self.opts.exclude_types {
+                    if let Some(ty) = &let_expr.ty {
+                        write!(self.writer, ": ")?;
+                        self.format_ty(ty)?;
+                    }
+                }
+
                 write!(self.writer, " = ")?;
                 self.format_expr(&let_expr.value)
             }
@@ -228,6 +289,25 @@ impl<W: Write> Formatter<W> {
                 write!(self.writer, "}}")
             }
         }
+    }
+
+    pub fn format_attributes(&mut self, attrs: &Attributes, top_level: bool) -> Result {
+        for attr in &attrs.attributes {
+            write!(
+                self.writer,
+                "#{}[{}",
+                if top_level { "!" } else { "" },
+                attr.name
+            )?;
+
+            if let Some(value) = &attr.value {
+                write!(self.writer, " = {}", value)?;
+            }
+
+            writeln!(self.writer, "]")?;
+        }
+
+        Ok(())
     }
 
     pub fn format_binding(&mut self, binding: &Binding) -> Result {
@@ -279,22 +359,38 @@ impl<W: Write> Formatter<W> {
                 write!(self.writer, "]")
             }
             Ty::Tuple { tys, .. } => {
+                if tys.len() > 1 {
+                    write!(self.writer, "(")?;
+                }
+
                 for (i, ty) in tys.iter().enumerate() {
                     if i > 0 {
                         write!(self.writer, " * ")?;
                     }
                     self.format_ty(ty)?;
                 }
+                if tys.len() > 1 {
+                    write!(self.writer, ")")?;
+                }
 
                 Ok(())
             }
             Ty::Union { tys, .. } => {
+                if tys.len() > 1 {
+                    write!(self.writer, "(")?;
+                }
+
                 for (i, ty) in tys.iter().enumerate() {
                     if i > 0 {
                         write!(self.writer, " | ")?;
                     }
                     self.format_ty(ty)?;
                 }
+
+                if tys.len() > 1 {
+                    write!(self.writer, ")")?;
+                }
+
                 Ok(())
             }
             Ty::Record { fields, .. } => {
@@ -314,7 +410,7 @@ impl<W: Write> Formatter<W> {
     fn format_generics(&mut self, generics: &Generics) -> Result {
         write!(self.writer, "<")?;
 
-        for (i, generic) in generics.generics.iter().enumerate() {
+        for (i, generic) in generics.params.iter().enumerate() {
             if i > 0 {
                 write!(self.writer, ", ")?;
             }
@@ -332,7 +428,7 @@ impl<W: Write> Formatter<W> {
                 self.format_ty(ty)?;
 
                 if let Some(binding) = binding {
-                    write!(self.writer, " ")?;
+                    write!(self.writer, " as ")?;
                     self.format_binding(binding)?;
                 }
 

@@ -1,13 +1,18 @@
+use crate::v1::interpret::Interpreter;
 use crate::{
     ast,
-    diagnostic::{Diagnostic, Source, SourceId, Sources},
-    hir,
-    interpret::Interpreter,
-    lower::Lowerer,
-    mir,
+    diagnostic::{Diagnostic, Report, Reporter, Source, SourceId, Sources},
+    hir2, lower2, lua,
     parse::{self, Interner, Tokens},
+    v1::hir,
+    v1::lower,
+    v1::mir,
 };
-use std::{fs, io, path::Path};
+use std::{
+    fs,
+    io::{self, Write},
+    path::Path,
+};
 
 pub struct Compiler<'a> {
     interner: Interner,
@@ -97,6 +102,27 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
+    pub fn tokenize2(&mut self, reporter: &mut dyn Reporter) -> Result<(), ()> {
+        let mut is_error = false;
+
+        for file in &mut self.files {
+            let source = &self.sources[file.source];
+
+            match Tokens::tokenize(&mut self.interner, file.source, &source.content) {
+                Ok(tokens) => file.tokens = Some(tokens),
+                Err(diagnostic) => {
+                    reporter.emit(diagnostic);
+                    is_error = true;
+                }
+            }
+        }
+
+        match is_error {
+            true => Err(()),
+            false => Ok(()),
+        }
+    }
+
     pub fn parse(&mut self) -> Result<(), Diagnostic> {
         for file in &mut self.files {
             let tokens = &mut file.tokens.take().unwrap();
@@ -107,8 +133,39 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    pub fn lower(&mut self) -> Result<hir::Program, Diagnostic> {
-        let mut lowerer = Lowerer::new();
+    pub fn parse2(&mut self, reporter: &mut dyn Reporter) -> Result<(), ()> {
+        let mut is_error = false;
+
+        for file in &mut self.files {
+            let tokens = &mut file.tokens.take().unwrap();
+
+            match parse::module(tokens) {
+                Ok(ast) => file.ast = Some(ast),
+                Err(diagnostic) => {
+                    reporter.emit(diagnostic);
+                    is_error = true;
+                }
+            }
+        }
+
+        match is_error {
+            true => Err(()),
+            false => Ok(()),
+        }
+    }
+
+    pub fn lower(&mut self) -> Result<hir::Program, Report> {
+        let mut lowerer = lower::Lowerer::new();
+
+        for file in &mut self.files {
+            lowerer.add_module(&file.path, file.ast.take().unwrap());
+        }
+
+        lowerer.finish().map_err(Into::into)
+    }
+
+    pub fn lower2(&mut self, reporter: &mut dyn Reporter) -> Result<hir2::Program, ()> {
+        let mut lowerer = lower2::Lowerer::new(reporter, &mut self.interner);
 
         for file in &mut self.files {
             lowerer.add_module(&file.path, file.ast.take().unwrap());
@@ -117,11 +174,21 @@ impl<'a> Compiler<'a> {
         lowerer.finish()
     }
 
+    pub fn lua(
+        &mut self,
+        reporter: &mut dyn Reporter,
+        writer: &mut impl Write,
+    ) -> Result<String, ()> {
+        let hir = self.lower2(reporter)?;
+        lua::codegen(writer, &hir).unwrap();
+        Ok(String::new())
+    }
+
     pub fn mir(&self, hir: hir::Program) -> Result<mir::Program, Diagnostic> {
         mir::build(&hir)
     }
 
-    pub fn interpret(&mut self, entrypoint: &str) -> Result<(), Diagnostic> {
+    pub fn interpret(&mut self, entrypoint: &str) -> Result<(), Report> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;
@@ -133,7 +200,7 @@ impl<'a> Compiler<'a> {
         Ok(())
     }
 
-    pub fn compile(&mut self, entrypoint: &str) -> Result<String, Diagnostic> {
+    pub fn compile(&mut self, entrypoint: &str) -> Result<String, Report> {
         self.tokenize()?;
         self.parse()?;
         let hir = self.lower()?;
@@ -145,11 +212,11 @@ impl<'a> Compiler<'a> {
         //let mut formatter = lir::Formatter::new(std::io::stdout());
         //formatter.format(&lir).unwrap();
 
-        Ok(crate::llvm_codegen::codegen(sir))
+        Ok(crate::v1::llvm_codegen::codegen(sir))
     }
 
-    pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Diagnostic> {
-        crate::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
+    pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Report> {
+        crate::v1::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
         Ok(())
     }
 }

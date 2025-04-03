@@ -1,4 +1,4 @@
-RUNTIME_DIR=runtime
+RUNTIME_DIR=rt/c
 OBJ_DIR=obj
 STD_C_SRC=$(wildcard $(RUNTIME_DIR)/std_*.c)
 STD_OBJ_NAMES=$(patsubst $(RUNTIME_DIR)/%.c,%.o,$(STD_C_SRC))
@@ -45,6 +45,6 @@ $(RUNTIME_OBJ_PATH): $(OTHER_C_SRC)
 	$(CC) $(CFLAGS) -c $(OTHER_C_SRC) -o $(RUNTIME_OBJ_PATH)
 # Cleanup build artifacts
 clean:
-	rm -rf $(OBJ_DIR)
+	rm -rf $(OBJ_DIR) .logs
 test:
 	@bash tools/run-brad-tests.sh

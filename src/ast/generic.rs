@@ -1,7 +1,7 @@
+use super::Ty;
+use crate::ast::spanned::Spanned;
 use crate::diagnostic::Span;
 use std::slice;
-
-use super::Ty;
 
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Generic {
@@ -9,16 +9,48 @@ pub struct Generic {
     pub span: Span,
 }
 
+impl Spanned for Generic {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+    }
+}
+
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Generics {
-    pub generics: Vec<Generic>,
+    pub params: Vec<Generic>,
     pub span: Span,
+}
+
+impl Spanned for Generics {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.params.iter_mut().for_each(Spanned::reset_spans);
+    }
 }
 
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Spec {
     pub tys: Vec<Ty>,
     pub span: Span,
+}
+
+impl Spanned for Spec {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.tys.iter_mut().for_each(Spanned::reset_spans);
+    }
 }
 
 impl<'a> IntoIterator for &'a Spec {

@@ -1,0 +1,15 @@
+import std::iter
+
+type std::iter<'a> = none -> 'a * iter<'a> | none
+
+fn empty<'a> -> iter<'a> => iter \_. none
+
+fn next<'a> (xs: iter<'a>) -> 'a * iter<'a> | none => xs none
+
+fn map<'a, 'b> (f: 'a -> 'b) (xs: iter<'a>) -> iter<'b> {
+  iter \_. {
+    match next xs
+    | none => none
+    | _ as h, t => f h, map f t
+  }
+}
