@@ -20,7 +20,7 @@ RUNTIME_OBJ_PATH=$(OUT_DIR)/$(RUNTIME_OBJ)
 
 # Compiler
 CC=clang
-CFLAGS+= -Wall -Wextra -std=c11 -I$(RUNTIME_DIR)
+CFLAGS+= -Wall -Wextra -std=c23 -I$(RUNTIME_DIR) -D_GNU_SOURCE
 
 .PHONY: all debug release clean run
 
@@ -42,9 +42,14 @@ $(OUT_DIR)/std_%.o: $(RUNTIME_DIR)/std_%.c
 # Compile remaining runtime C files into runtime.o
 $(RUNTIME_OBJ_PATH): $(OTHER_C_SRC)
 	@mkdir -p $(OUT_DIR)
-	$(CC) $(CFLAGS) -c $(OTHER_C_SRC) -o $(RUNTIME_OBJ_PATH)
+	$(CC) $(CFLAGS) -r $(OTHER_C_SRC) -o $(RUNTIME_OBJ_PATH)
 # Cleanup build artifacts
 clean:
 	rm -rf $(OBJ_DIR) .logs
 test:
 	@bash tools/run-brad-tests.sh
+
+# Compile tools/brad_async_cli.c with runtime.o + iouring
+async-cli:
+	@mkdir -p $(OUT_DIR)
+	$(CC) $(CFLAGS) tools/brad_async_example.c -o $(OUT_DIR)/brad_async_example $(RUNTIME_OBJ_PATH) -lpthread -luring -lm

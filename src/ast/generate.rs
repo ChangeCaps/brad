@@ -244,14 +244,18 @@ impl Generator {
                 });
             }
 
+            let n = self.rng.random_range(1..=self.opts.max_record_size);
+
             // Generate a random record
-            let fields = (0..self.opts.max_record_size)
+            let fields = (0..=n)
                 .map(|_| ast::Field {
                     name: self.name(None),
                     ty: self.ty(),
                     span,
                 })
                 .collect::<Vec<_>>();
+
+            assert!(fields.len() > 0, "Record must have at least one field");
 
             self.tys.adts.push(ast::Ty::Record { fields, span });
 
@@ -348,13 +352,17 @@ impl Generator {
 
     /// Generate a random (interned) name.
     fn name(&mut self, ctx: Option<&GeneratorCtx>) -> &'static str {
-        let len = self.rng.random_range(1..=10);
-        let mut name = String::with_capacity(len);
-
         let charset_first = b"abcdefghijklmnopqrstuvwxyz";
         let charset_full = b"abcdefghijklmnopqrstuvwxyz1234567890_--''";
 
+        let mut lower_bound = 2;
+
         for _ in 0..self.opts.max_bruteforce_attempts {
+            let len = self.rng.random_range(lower_bound..=lower_bound * 2);
+            let mut name = String::with_capacity(len);
+
+            lower_bound *= 2;
+
             name.push(*charset_first.choose(&mut self.rng).unwrap() as char);
 
             for _ in 0..len - 1 {

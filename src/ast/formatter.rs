@@ -112,6 +112,7 @@ impl<W: Write> Formatter<W> {
                     ..
                 } = func_decl
                 {
+                    write!(self.writer, " ")?;
                     self.format_expr(body)?
                 };
 
@@ -201,9 +202,20 @@ impl<W: Write> Formatter<W> {
                 self.format_expr(&unary_expr.target)
             }
             Expr::Binary(binary_expr) => {
+                if self.call_depth > 0 {
+                    write!(self.writer, "(")?;
+                }
+                self.call_depth += 1;
                 self.format_expr(&binary_expr.lhs)?;
                 write!(self.writer, " {} ", binary_expr.op)?;
-                self.format_expr(&binary_expr.rhs)
+                self.format_expr(&binary_expr.rhs)?;
+                self.call_depth -= 1;
+
+                if self.call_depth > 0 {
+                    write!(self.writer, ")")?;
+                }
+
+                Ok(())
             }
             Expr::Call(CallExpr { target, input, .. }) => {
                 if self.call_depth > 0 {
@@ -272,7 +284,7 @@ impl<W: Write> Formatter<W> {
                 self.format_expr(&let_expr.value)
             }
             Expr::Block(block_expr) => {
-                write!(self.writer, " {{")?;
+                write!(self.writer, "{{")?;
                 self.indent(|f| {
                     for expr in &block_expr.exprs {
                         f.write_indent()?;

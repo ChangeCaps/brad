@@ -1,3 +1,4 @@
+
 use std::io::{self, Write};
 
 use crate::hir2 as hir;
@@ -215,7 +216,6 @@ impl<W: Write> Codegen<'_, W> {
                     }
 
                     hir::UnaryOp::Not => format!("make_bool(not has_tag({}, 'true'))", target),
-
                     hir::UnaryOp::Deref => todo!(),
                 }
             }
