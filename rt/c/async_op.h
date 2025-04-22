@@ -1,5 +1,6 @@
 #pragma once
 #include <linux/time_types.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -48,3 +49,52 @@ struct brad_async_op_multiple {
     struct brad_async_op** ops;
     size_t count;
 };
+
+// Builder helpers, no-allocations.
+inline void brad_async_prep_nop(
+    struct brad_async_op* op
+) {
+    op->op = BRAD_ASYNC_OP_NOP;
+}
+
+
+inline void brad_async_prep_msg_el(
+    struct brad_async_op_msg_el* op,
+    void* el_data
+) {
+    op->base.op = BRAD_ASYNC_OP_MSG_EL;
+    op->el_data = el_data;
+}
+
+inline void brad_async_prep_sleep(
+    struct brad_async_op_sleep* op,
+    const struct __kernel_timespec ts
+) {
+    op->base.op = BRAD_ASYNC_OP_SLEEP;
+    op->ts = ts;
+}
+
+inline void brad_async_prep_cancel(
+    struct brad_async_op_cancel* op,
+    struct brad_async_op* target
+) {
+    op->base.op = BRAD_ASYNC_OP_CANCEL;
+    op->op = target;
+}
+
+inline void brad_async_prep_multiple(
+    struct brad_async_op_multiple* op,
+    struct brad_async_op** ops,
+    const bool chain
+) {
+    op->base.op = chain ? BRAD_ASYNC_OP_CHAIN : BRAD_ASYNC_OP_BATCH;
+    op->ops = ops;
+    op->count = 0;
+}
+
+inline void brad_async_prep_multiple_add(
+    struct brad_async_op_multiple* op,
+    struct brad_async_op* async_op
+) {
+    op->ops[op->count++] = async_op;
+}

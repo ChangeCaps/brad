@@ -20,24 +20,19 @@ int main(
     };
 
     struct brad_async_op_msg_el* op1 = calloc(1, sizeof(struct brad_async_op_msg_el));
-    op1->base.op = BRAD_ASYNC_OP_MSG_EL;
-    op1->el_data = el.data;
+    brad_async_prep_msg_el(op1, el.data);
 
     struct brad_async_op_sleep* op2 = calloc(1, sizeof(struct brad_async_op_sleep));
-    op2->base.op = BRAD_ASYNC_OP_SLEEP;
-    op2->ts.tv_sec = 3;
-    op2->ts.tv_nsec = 0;
+    brad_async_prep_sleep(op2, (struct __kernel_timespec){.tv_sec = 4, .tv_nsec = 0});
 
-    struct brad_async_op_sleep* op0 = calloc(1, sizeof(struct brad_async_op));
-    op0->base.op = BRAD_ASYNC_OP_NOP;
+    struct brad_async_op* op0 = calloc(1, sizeof(struct brad_async_op));
+    brad_async_prep_nop(op0);
 
     struct brad_async_op_multiple* op3 = calloc(1, sizeof(struct brad_async_op_multiple));
-    op3->base.op = BRAD_ASYNC_OP_CHAIN;
-    op3->count = 2;
-    op3->ops = calloc(op3->count, sizeof(struct brad_async_op*));
-    // op3->ops[0] = (struct brad_async_op*)op0;
-    op3->ops[0] = (struct brad_async_op*)op2;
-    op3->ops[1] = (struct brad_async_op*)op1;
+    brad_async_prep_multiple(op3, calloc(3, sizeof(struct brad_async_op*)), true);
+    brad_async_prep_multiple_add(op3, op0);
+    brad_async_prep_multiple_add(op3, (struct brad_async_op*)op2);
+    brad_async_prep_multiple_add(op3, (struct brad_async_op*)op1);
 
     el.fns->submit(el.data, (struct brad_async_op*)op3);
 
