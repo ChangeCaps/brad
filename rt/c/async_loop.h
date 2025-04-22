@@ -6,20 +6,22 @@
 
 struct brad_async_event_loop_fns {
     // Constructor
-    struct brad_async_event_loop (*new)();
+    void* (*new)();
+
     // Destructor
-    void (*drop)(struct brad_async_event_loop*);
+    void (*drop)(void*);
 
-    // Submit an async operation
-    void (*submit)(struct brad_async_event_loop*, struct brad_async_op*);
+    // Submit an async operation (pointer-unique)
+    void (*submit)(void*, struct brad_async_op*);
 
-    // Wait/poll
-    void (*enter)(struct brad_async_event_loop*);
+    // Block until an operation is completed.
+    struct brad_async_op* (*enter)(void*);
+    // Mark operation as *read* which will allow for some cleanup.
+    void (*leave)(void*, struct brad_async_op*);
 };
 
 struct brad_async_event_loop {
     struct brad_async_event_loop_fns* fns;
-    int32_t fd;
     void* data;
 };
 

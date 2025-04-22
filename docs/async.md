@@ -41,6 +41,13 @@ Based on familiar async primitives:
 mutex implementation that can register itself in all the io_uring threads its needed in
 when it knows the poster will post it via io_uring as well.
 
+
+Notes on SQPOLL 
+
+- Choose a core for the SQPOLL thread, every additional io_uring will share this with wq_fd
+- This core will be excluded from high-cpu intensive tasks if possible.
+- How do we dynamically choose the `sq_thread_idle`, or do we select something that fits our preemptive sched?
+
 ## Memory design
 
 ```
