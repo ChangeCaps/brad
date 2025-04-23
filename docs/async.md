@@ -29,7 +29,7 @@ Based on familiar async primitives:
     * `Scheduler` -> `Loop` -> `Wake` -> `Scheduler` -> ...
 - Scheduler coordinates multiple event loops and traditional threads.
 
-    ## Sync primitives
+## Sync primitives
 
 - Locks
     * Needs knowledge of shared memory (no locks on non-shared data)
@@ -41,8 +41,7 @@ Based on familiar async primitives:
 mutex implementation that can register itself in all the io_uring threads its needed in
 when it knows the poster will post it via io_uring as well.
 
-
-Notes on SQPOLL 
+Notes on SQPOLL
 
 - Choose a core for the SQPOLL thread, every additional io_uring will share this with wq_fd
 - This core will be excluded from high-cpu intensive tasks if possible.
@@ -143,6 +142,14 @@ First run scheduled it in the event loop? submit
 
 Second poll then ready after waker calls it, how does the future check if its done?
 
+## C-API
+
+A future is some state + a poll function + a cleanup function
+
+A op is a future with 2 state fields, `state` and `waker_ref` (task).
+
+To issue an op you provide its params to an allocator interface which based on the params will construct the operator
+heap instance which is passed (together with the params descriptor) to the event loop, the parameters will be deallocated.
 
 ## Sources
 
