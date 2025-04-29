@@ -7,3 +7,6 @@ extern fn prepend (prefix: str) (s: str) -> str
 
 #[link = "brad_str_chars"]
 extern fn chars (s: str) -> [str]
+
+#[link = "brad_str_split"]
+extern fn split (sep: str) (s: str) -> [str]

@@ -303,6 +303,25 @@ local function brad_str_chars(str)
   return make_array(table.unpack(chars))
 end
 
+local function brad_str_split(sep, str)
+  local result = {}
+  local pattern = '(.-)' .. sep.value .. '()'
+
+  local last_end = 1
+  for part, pos in str.value:gmatch(pattern) do
+    if part ~= '' then
+      result[#result + 1] = make_str(part)
+    end
+    last_end = pos
+  end
+
+  if last_end <= #str.value then
+    result[#result + 1] = make_str(str.value:sub(last_end))
+  end
+
+  return make_array(table.unpack(result))
+end
+
 local function brad_os_exit(code)
   os.exit(code.value)
   return make_tag('none')
