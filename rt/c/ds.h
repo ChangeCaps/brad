@@ -49,6 +49,12 @@ inline void* bds_vec_get_last(const struct bds_vec_t* vec, size_t elem_sz);
 
 inline void bds_vec_clear(struct bds_vec_t* vec);
 
+inline void bds_vec_copy(struct bds_vec_t* dst, const struct bds_vec_t* src, size_t elem_sz);
+
+inline void bds_vec_reserve(struct bds_vec_t* vec, size_t additional, size_t elem_sz);
+
+inline void bds_vec_shrink(struct bds_vec_t* vec, size_t capacity, size_t elem_sz);
+
 #define vec_drop(vec) bds_vec_drop((struct bds_vec_t*)(vec))
 #define vec_push(vec, value)                                                                       \
     bds_vec_push((struct bds_vec_t*)(vec), (void*)(value), sizeof((vec)->data[0]))
@@ -61,3 +67,9 @@ inline void bds_vec_clear(struct bds_vec_t* vec);
     bds_vec_set((struct bds_vec_t*)(vec), (index), (void*)(value), sizeof((vec)->data[0]))
 #define vec_get_last(vec) bds_vec_get_last((struct bds_vec_t*)(vec), sizeof((vec)->data[0]))
 #define vec_clear(vec)    bds_vec_clear((struct bds_vec_t*)(vec))
+#define vec_copy(dst, src)                                                                         \
+    bds_vec_copy((struct bds_vec_t*)(dst), (struct bds_vec_t*)(src), sizeof((dst)->data[0]))
+#define vec_reserve(vec, additional)                                                               \
+    bds_vec_reserve((struct bds_vec_t*)(vec), (additional), sizeof((vec)->data[0]))
+#define vec_shrink(vec, capacity)                                                                  \
+    bds_vec_shrink((struct bds_vec_t*)(vec), (capacity), sizeof((vec)->data[0]))

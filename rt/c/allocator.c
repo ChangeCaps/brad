@@ -1,6 +1,7 @@
 #include "allocator.h"
 
 #include "debug.h"
+#include "misc.h"
 
 #include <locale.h>
 #include <stdint.h>
@@ -78,7 +79,7 @@ void* brad_allocator_malloc_realloc(
         return NULL;
     }
 
-    memcpy(aligned_ptr, new_ptr, old_sz);
+    memcpy(aligned_ptr, new_ptr, min(old_sz, new_sz));
     free(new_ptr);
 
     return aligned_ptr;
