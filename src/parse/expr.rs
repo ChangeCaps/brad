@@ -538,7 +538,7 @@ fn lambda(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
         return Err(diagnostic);
     }
 
-    let body = Box::new(expr(input)?);
+    let body = Box::new(tuple(input)?);
 
     let span = start.join(body.span());
 

@@ -205,6 +205,15 @@ impl Ty {
     }
 }
 
+impl IntoIterator for Ty {
+    type Item = Conj;
+    type IntoIter = std::vec::IntoIter<Conj>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 impl fmt::Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.0.is_empty() {
@@ -395,10 +404,6 @@ impl Term {
     }
 
     pub fn inter(&mut self, other: Self) -> bool {
-        if !(self.tags.is_subset(&other.tags) || other.tags.is_subset(&self.tags)) {
-            return false;
-        }
-
         self.tags.extend(other.tags);
         self.vars.extend(other.vars);
         self.apps.extend(other.apps);

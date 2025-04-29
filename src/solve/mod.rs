@@ -233,84 +233,74 @@ impl Solver {
         self.cache.insert(key, Some(true));
     }
 
-    fn constrain(&mut self, mut lhs: Ty, rhs: Ty, span: Span) -> Result<(), Diagnostic> {
-        lhs.inter(rhs.neg());
+    fn constrain(&mut self, lhs: Ty, rhs: Ty, span: Span) -> Result<(), Diagnostic> {
+        for conj in lhs.inter_with(rhs.neg()) {
+            self.constrain_term(conj.pos, conj.neg, span)?;
+        }
 
-        for conj in lhs.0 {
-            let mut lhs = conj.pos;
-            let mut rhs = conj.neg;
+        Ok(())
+    }
 
-            if let Some(var) = lhs.vars.pop_first() {
-                let mut bound = Ty::term_neg(rhs).neg();
-                bound.union(Ty::term_pos(lhs).neg());
+    fn constrain_term(
+        &mut self,
+        mut lhs: Term,
+        mut rhs: Term,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        if let Some(var) = lhs.vars.pop_first() {
+            let mut bound = Ty::term_neg(rhs).neg();
+            bound.union(Ty::term_pos(lhs).neg());
 
-                let bounds = self.bounds.get_mut(&var).unwrap();
-                bounds.upper.inter(bound.clone());
+            let bounds = self.bounds.get_mut(&var).unwrap();
+            bounds.upper.inter(bound.clone());
 
-                let lower = bounds.lower.clone();
-                self.subty(lower, bound, span);
+            let lower = bounds.lower.clone();
+            self.subty(lower, bound, span);
 
-                continue;
-            }
+            return Ok(());
+        }
 
-            if let Some(var) = rhs.vars.pop_first() {
-                let mut bound = Ty::term_pos(lhs);
-                bound.inter(Ty::term_neg(rhs));
+        if let Some(var) = rhs.vars.pop_first() {
+            let mut bound = Ty::term_pos(lhs);
+            bound.inter(Ty::term_neg(rhs));
 
-                let bounds = self.bounds.get_mut(&var).unwrap();
-                bounds.lower.union(bound.clone());
+            let bounds = self.bounds.get_mut(&var).unwrap();
+            bounds.lower.union(bound.clone());
 
-                let upper = bounds.upper.clone();
-                self.subty(bound, upper, span);
+            let upper = bounds.upper.clone();
+            self.subty(bound, upper, span);
 
-                continue;
-            }
+            return Ok(());
+        }
 
-            if let Some(app) = lhs.apps.pop_first() {
-                let mut rhs = Ty::term_neg(rhs).neg();
-                rhs.union(Ty::term_pos(lhs).neg());
+        if let Some(app) = lhs.apps.pop_first() {
+            let mut rhs = Ty::term_neg(rhs).neg();
+            rhs.union(Ty::term_pos(lhs).neg());
 
-                let body = self.expand(app);
-                self.subty(body, rhs, span);
+            let body = self.expand(app);
+            self.subty(body, rhs, span);
 
-                continue;
-            }
+            return Ok(());
+        }
 
-            if let Some(app) = rhs.apps.pop_first() {
-                let mut lhs = Ty::term_pos(lhs);
-                lhs.inter(Ty::term_neg(rhs));
+        if let Some(app) = rhs.apps.pop_first() {
+            let mut lhs = Ty::term_pos(lhs);
+            lhs.inter(Ty::term_neg(rhs));
 
-                let body = self.expand(app);
-                self.subty(lhs, body, span);
+            let body = self.expand(app);
+            self.subty(lhs, body, span);
 
-                continue;
-            }
+            return Ok(());
+        }
 
-            if rhs.tags.iter().any(|tag| lhs.tags.contains(tag)) {
-                continue;
-            }
+        if rhs.tags.iter().any(|tag| lhs.tags.contains(tag)) {
+            return Ok(());
+        }
 
-            match (&lhs.base, &rhs.base) {
-                (Some(Base::Record(lfields)), Some(Base::Record(rfields))) => {
-                    for (field, ty) in rfields {
-                        let Some(lhs_ty) = lfields.get(field) else {
-                            let diagnostic = Diagnostic::error("type::error")
-                                .message(format!(
-                                    "unsatisfiable constraint {} <: {}",
-                                    lhs.display(true),
-                                    rhs.display(false),
-                                ))
-                                .label(span, "originating from here");
-
-                            return Err(diagnostic);
-                        };
-
-                        self.subty(lhs_ty.clone(), ty.clone(), span);
-                    }
-                }
-
-                (Some(Base::Tuple(litems)), Some(Base::Tuple(ritems))) => {
-                    if litems.len() != ritems.len() {
+        match (&lhs.base, &rhs.base) {
+            (Some(Base::Record(lfields)), Some(Base::Record(rfields))) => {
+                for (field, ty) in rfields {
+                    let Some(lhs_ty) = lfields.get(field) else {
                         let diagnostic = Diagnostic::error("type::error")
                             .message(format!(
                                 "unsatisfiable constraint {} <: {}",
@@ -320,29 +310,14 @@ impl Solver {
                             .label(span, "originating from here");
 
                         return Err(diagnostic);
-                    }
+                    };
 
-                    for (lty, rty) in litems.iter().zip(ritems.iter()) {
-                        self.subty(lty.clone(), rty.clone(), span);
-                    }
+                    self.subty(lhs_ty.clone(), ty.clone(), span);
                 }
+            }
 
-                (Some(Base::Array(lhs)), Some(Base::Array(rhs))) => {
-                    self.subty(lhs.clone(), rhs.clone(), span);
-                }
-
-                (Some(Base::Func(li, lo)), Some(Base::Func(ri, ro))) => {
-                    self.subty(ri.clone(), li.clone(), span);
-                    self.subty(lo.clone(), ro.clone(), span);
-                }
-
-                (Some(Base::Ref(lhs)), Some(Base::Ref(rhs))) => {
-                    // references aren't covariant
-                    self.subty(lhs.clone(), rhs.clone(), span);
-                    self.subty(rhs.clone(), lhs.clone(), span);
-                }
-
-                (_, _) => {
+            (Some(Base::Tuple(litems)), Some(Base::Tuple(ritems))) => {
+                if litems.len() != ritems.len() {
                     let diagnostic = Diagnostic::error("type::error")
                         .message(format!(
                             "unsatisfiable constraint {} <: {}",
@@ -353,6 +328,37 @@ impl Solver {
 
                     return Err(diagnostic);
                 }
+
+                for (lty, rty) in litems.iter().zip(ritems.iter()) {
+                    self.subty(lty.clone(), rty.clone(), span);
+                }
+            }
+
+            (Some(Base::Array(lhs)), Some(Base::Array(rhs))) => {
+                self.subty(lhs.clone(), rhs.clone(), span);
+            }
+
+            (Some(Base::Func(li, lo)), Some(Base::Func(ri, ro))) => {
+                self.subty(ri.clone(), li.clone(), span);
+                self.subty(lo.clone(), ro.clone(), span);
+            }
+
+            (Some(Base::Ref(lhs)), Some(Base::Ref(rhs))) => {
+                // references aren't covariant
+                self.subty(lhs.clone(), rhs.clone(), span);
+                self.subty(rhs.clone(), lhs.clone(), span);
+            }
+
+            (_, _) => {
+                let diagnostic = Diagnostic::error("type::error")
+                    .message(format!(
+                        "unsatisfiable constraint {} <: {}",
+                        lhs.display(true),
+                        rhs.display(false),
+                    ))
+                    .label(span, "originating from here");
+
+                return Err(diagnostic);
             }
         }
 
