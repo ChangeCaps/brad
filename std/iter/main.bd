@@ -2,14 +2,42 @@ import std::iter
 
 type std::iter<'a> = none -> 'a * iter<'a> | none
 
+/// Create an empty iterator.
 fn empty<'a> -> iter<'a> => iter \_. none
 
+/// Create an iterator with a single element.
+fn one<'a> (x: 'a) -> iter<'a> => iter \_. x, empty
+
+/// Chain two iterators together.
+fn chain<'a> (ys: iter<'a>) (xs: iter<'a>) -> iter<'a> {
+  iter \_. {
+    match next xs
+    | none => next ys
+    | _ as h, t => h, chain ys t
+  }
+}
+
+/// Get the first element of an iterator and the rest of the iterator.
 fn next<'a> (xs: iter<'a>) -> 'a * iter<'a> | none => xs none
 
+/// Map a function over an iterator, producing a new iterator.
 fn map<'a, 'b> (f: 'a -> 'b) (xs: iter<'a>) -> iter<'b> {
   iter \_. {
     match next xs
     | none => none
     | _ as h, t => f h, map f t
+  }
+}
+
+/// Filter elements of an iterator based on a predicate function.
+fn filter<'a> (f: 'a -> true | false) (xs: iter<'a>) -> iter<'a> {
+  iter \_. {
+    match next xs
+    | none => none
+    | _ as h, t => {
+      match f h
+      | true => h, filter f t
+      | false => next (filter f t)
+    }
   }
 }
