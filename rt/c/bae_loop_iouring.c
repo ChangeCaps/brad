@@ -56,7 +56,7 @@ void* new() {
     // ctx->params.sq_thread_idle = 10; // Allow kernel 10 milliseconds of idle time. Optimially we
     // want to control this value dynamically.
 
-    int ret = io_uring_queue_init_params(16, &ctx->ring, &ctx->params);
+    const int ret = io_uring_queue_init_params(16, &ctx->ring, &ctx->params);
 
     DEBUG_MESSAGE("Initializing io_uring loop, ret: %d\n", ret);
 
@@ -71,11 +71,6 @@ void drop(
     free(ctx);
     DEBUG_MESSAGE_SINGLE("Exiting io_uring loop\n");
 }
-
-static struct __kernel_timespec ts_max = {
-    .tv_sec = UINT64_MAX,
-    .tv_nsec = UINT64_MAX,
-};
 
 void prepare_ctx_with_op(
     struct LoopContext* ctx,
@@ -183,7 +178,7 @@ void submitv(
         flags |= IOSQE_IO_LINK;
     }
 
-    for (int i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i++) {
         prepare_ctx_with_op(ctx, params[i], ops[i], flags);
     }
 

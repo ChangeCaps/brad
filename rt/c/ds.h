@@ -24,30 +24,30 @@ __bds_vec_def(bds_vec_t, void);
     __bds_csf(struct name, struct bds_vec_t, cap);                                                 \
     __bds_csf(struct name, struct bds_vec_t, data);
 
-inline void bds_vec_drop(const struct bds_vec_t* vec);
+void bds_vec_drop(const struct bds_vec_t* vec);
 
-inline void bds_vec_push(struct bds_vec_t* vec, const void* value, size_t elem_sz);
+void bds_vec_push(struct bds_vec_t* vec, const void* value, size_t elem_sz);
 
-inline void bds_vec_pop(struct bds_vec_t* vec, void** value, size_t elem_sz);
+void bds_vec_pop(struct bds_vec_t* vec, void** value, size_t elem_sz);
 
-inline void* bds_vec_get(const struct bds_vec_t* vec, size_t index, size_t elem_sz);
+void* bds_vec_get(const struct bds_vec_t* vec, size_t index, size_t elem_sz);
 
-inline void bds_vec_set(
+void bds_vec_set(
     const struct bds_vec_t* vec,
     size_t index,
     const void* value,
     size_t elem_sz
 );
 
-inline void* bds_vec_get_last(const struct bds_vec_t* vec, size_t elem_sz);
+void* bds_vec_get_last(const struct bds_vec_t* vec, size_t elem_sz);
 
-inline void bds_vec_clear(struct bds_vec_t* vec);
+void bds_vec_clear(struct bds_vec_t* vec);
 
-inline void bds_vec_copy(struct bds_vec_t* dst, const struct bds_vec_t* src, size_t elem_sz);
+void bds_vec_copy(struct bds_vec_t* dst, const struct bds_vec_t* src, size_t elem_sz);
 
-inline void bds_vec_reserve(struct bds_vec_t* vec, size_t additional, size_t elem_sz);
+void bds_vec_reserve(struct bds_vec_t* vec, size_t additional, size_t elem_sz);
 
-inline void bds_vec_shrink(struct bds_vec_t* vec, size_t capacity, size_t elem_sz);
+void bds_vec_shrink(struct bds_vec_t* vec, size_t capacity, size_t elem_sz);
 
 #define vec_drop(vec) bds_vec_drop((struct bds_vec_t*)(vec))
 #define vec_push(vec, value)                                                                       \
