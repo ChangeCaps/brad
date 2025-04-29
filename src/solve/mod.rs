@@ -6,6 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
     hash::BuildHasherDefault,
+    mem,
 };
 
 pub use ty::*;
@@ -177,38 +178,23 @@ impl Solver {
     }
 
     fn expand_impl(ty: &mut Ty, subst: &HashMap<Var, Ty>) {
-        let mut added = Vec::new();
+        for mut conj in mem::take(&mut ty.0) {
+            let mut terms = Vec::new();
 
-        for conj in ty.0.iter_mut() {
             for (var, ty) in subst {
                 if conj.pos.vars.remove(var) {
-                    let mut ty = ty.clone();
-
-                    ty.inter(Ty(vec![Conj {
-                        pos: conj.pos.clone(),
-                        neg: conj.neg.clone(),
-                    }]));
-
-                    added.push(ty);
+                    terms.push(ty.clone());
                 }
             }
 
             for (var, ty) in subst {
                 if conj.neg.vars.remove(var) {
-                    let mut ty = ty.clone();
-
-                    ty.inter(Ty(vec![Conj {
-                        pos: conj.pos.clone(),
-                        neg: conj.neg.clone(),
-                    }]));
-
-                    added.push(ty);
+                    terms.push(ty.clone().neg());
                 }
             }
-        }
 
-        for added in added {
-            ty.union(added);
+            let conj = terms.into_iter().fold(Ty::from(conj), Ty::inter_with);
+            ty.union(conj);
         }
     }
 

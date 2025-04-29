@@ -1,14 +1,9 @@
-import std::array
-import std::iter
-import std::list
-import std::debug
+type foo<'a> = 'a
 
 fn main {
-  [0; 1; 2; 3]
-  |> array::iter
-  |> iter::map \x. x * 2
-  |> iter::filter \x. x > 2
-  |> iter::chain (iter::one 42)
-  |> list::collect
-  |> debug::print
+  bar + 2
+}
+
+fn bar -> foo<int> {
+  foo 0
 }
