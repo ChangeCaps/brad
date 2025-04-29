@@ -2,18 +2,17 @@
 
 #include <stddef.h>
 
-struct bds_vec_t {
-    size_t len;
-    size_t cap;
-    void* data;
-};
-
-#define bds_vec_def(name, T)                                                                       \
+#define _bds_vec_def(name, T)                                                                      \
     struct name {                                                                                  \
         size_t len;                                                                                \
         size_t cap;                                                                                \
         T* data;                                                                                   \
-    };                                                                                             \
+    };
+
+_bds_vec_def(bds_vec_t, void);
+
+#define bds_vec_def(name, T)                                                                       \
+    _bds_vec_def(name, T);                                                                         \
     static_assert(                                                                                 \
         offsetof(struct name, len) == offsetof(struct bds_vec_t, len),                             \
         "bds_vec_t and " #name " must have the same offset for len"                                \
