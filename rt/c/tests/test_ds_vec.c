@@ -14,10 +14,13 @@ int main(
     void
 ) {
     struct vec_int_t vec = {0};
+    int v0 = 0;
+    int v1 = 1;
+    int v2 = 2;
 
-    vec_push(&vec, 1);
-    vec_push(&vec, 2);
-    vec_push(&vec, 3);
+    vec_push(&vec, &v0);
+    vec_push(&vec, &v1);
+    vec_push(&vec, &v2);
 
     assert(vec.len == 3);
 

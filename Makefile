@@ -62,6 +62,7 @@ test: $(TEST_EXES)
 	@for exe in $(TEST_EXES); do \
 	  echo; echo ">> $$exe"; \
 	  timeout 5 $$exe || exit 1; \
+	  echo ">> $$exe done"; \
 	done
 
 # Alias `run` to `test`
