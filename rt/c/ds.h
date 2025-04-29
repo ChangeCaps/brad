@@ -2,33 +2,27 @@
 
 #include <stddef.h>
 
-#define _bds_vec_def(name, T)                                                                      \
+// Check struct fields.
+#define __bds_csf(a, b, field)                                                                     \
+    static_assert(                                                                                 \
+        offsetof(a, field) == offsetof(b, field),                                                  \
+        "Types " #a " and " #b " must have the same offset for " #field                            \
+    )
+
+#define __bds_vec_def(name, T)                                                                     \
     struct name {                                                                                  \
         size_t len;                                                                                \
         size_t cap;                                                                                \
         T* data;                                                                                   \
     };
 
-_bds_vec_def(bds_vec_t, void);
+__bds_vec_def(bds_vec_t, void);
 
 #define bds_vec_def(name, T)                                                                       \
-    _bds_vec_def(name, T);                                                                         \
-    static_assert(                                                                                 \
-        offsetof(struct name, len) == offsetof(struct bds_vec_t, len),                             \
-        "bds_vec_t and " #name " must have the same offset for len"                                \
-    );                                                                                             \
-    static_assert(                                                                                 \
-        offsetof(struct name, cap) == offsetof(struct bds_vec_t, cap),                             \
-        "bds_vec_t and " #name " must have the same offset for cap"                                \
-    );                                                                                             \
-    static_assert(                                                                                 \
-        offsetof(struct name, data) == offsetof(struct bds_vec_t, data),                           \
-        "bds_vec_t and " #name " must have the same offset for data"                               \
-    );                                                                                             \
-    static_assert(                                                                                 \
-        sizeof(struct name) == sizeof(struct bds_vec_t),                                           \
-        "bds_vec_t and " #name " must have the same size"                                          \
-    );
+    __bds_vec_def(name, T);                                                                        \
+    __bds_csf(struct name, struct bds_vec_t, len);                                                 \
+    __bds_csf(struct name, struct bds_vec_t, cap);                                                 \
+    __bds_csf(struct name, struct bds_vec_t, data);
 
 inline void bds_vec_drop(const struct bds_vec_t* vec);
 
