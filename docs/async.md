@@ -9,6 +9,8 @@ High level features:
 
 Based on familiar async primitives:
 
+BAE: Brad Async Engine
+
 ### Event loop + Future
 
 - A future is a minimal unit associated with an event loop
@@ -149,7 +151,8 @@ A future is some state + a poll function + a cleanup function
 A op is a future with 2 state fields, `state` and `waker_ref` (task).
 
 To issue an op you provide its params to an allocator interface which based on the params will construct the operator
-heap instance which is passed (together with the params descriptor) to the event loop, the parameters will be deallocated.
+heap instance which is passed (together with the params descriptor) to the event loop, the parameters will be
+deallocated.
 
 ## Sources
 

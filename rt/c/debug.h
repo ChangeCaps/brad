@@ -4,8 +4,14 @@
 
 #ifdef DEBUG
 #define DEBUG_MESSAGE_SINGLE(fmt) fprintf(stderr, fmt)
-#define DEBUG_MESSAGE(fmt, ...) fprintf(stderr, fmt, __VA_ARGS__)
+#define DEBUG_MESSAGE(fmt, ...)   fprintf(stderr, fmt, __VA_ARGS__)
 #else
 #define DEBUG_MESSAGE_SINGLE(fmt)
 #define DEBUG_MESSAGE(fmt, ...)
+#endif
+
+#ifdef DEBUG
+#define INLINE static inline
+#else
+#define INLINE inline
 #endif

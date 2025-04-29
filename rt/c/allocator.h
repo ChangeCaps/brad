@@ -1,77 +1,83 @@
 #pragma once
 
-#include <stddef.h>
+#include "debug.h"
+#include <string.h>
 
-// Base allocator
-
-struct brad_allocator_fns {
+/**
+ * Allocator interface for general purpose memory management.
+ */
+struct brad_allocator_ops {
     void* (*new)();
     void (*drop)(void*);
+    // size, alignment
+    void* (*alloc)(void*, size_t, size_t);
+    // ptr, old_sz, new_sz, alignment
+    void* (*realloc)(void*, void*, size_t, size_t, size_t);
+    // ptr
     void (*free)(void*, void*);
-    void* (*alloc)(void*, size_t, size_t); // size, count, alignment
 };
 
 struct brad_allocator {
-    struct brad_allocator_fns* fns;
+    struct brad_allocator_ops* ops;
     void* data;
 };
 
-inline struct brad_allocator brad_allocator_new(
-    struct brad_allocator_fns* fns
+INLINE struct brad_allocator brad_allocator_new(
+    struct brad_allocator_ops* ops
 ) {
-    return (struct brad_allocator){.fns = fns, .data = fns->new()};
+    return (struct brad_allocator){.ops = ops, .data = ops->new()};
 }
 
-// General allocator (with realloc support)
-
-struct brad_general_allocator_fns {
-    struct brad_allocator_fns base;
-    void* (*realloc)(void*, void*, size_t, size_t);
-};
-
-struct brad_general_allocator {
-    struct brad_general_allocator_fns* fns;
-    void* data;
-};
-
-inline struct brad_general_allocator brad_general_allocator_new(
-    struct brad_general_allocator_fns* fns
-) {
-    return (struct brad_general_allocator){.fns = fns, .data = fns->base.new()};
-}
-
-// Convenience functions
-
-inline void brad_allocator_drop(
+INLINE void brad_allocator_drop(
     const struct brad_allocator allocator
 ) {
-    allocator.fns->drop(allocator.data);
+    allocator.ops->drop(allocator.data);
 }
 
-inline void brad_allocator_free(
+INLINE void brad_allocator_free(
     const struct brad_allocator allocator,
     void* ptr
 ) {
-    allocator.fns->free(allocator.data, ptr);
+    allocator.ops->free(allocator.data, ptr);
 }
 
-inline void* brad_allocator_alloc(
+INLINE void* brad_allocator_alloc(
     const struct brad_allocator allocator,
     const size_t size,
-    const size_t count,
     const size_t alignment
 ) {
-    return allocator.fns->alloc(allocator.data, size * count, alignment);
+    return allocator.ops->alloc(allocator.data, size, alignment);
 }
 
-inline void* brad_general_allocator_realloc(
-    const struct brad_general_allocator allocator,
-    void* ptr,
+INLINE void* brad_allocator_calloc(
+    const struct brad_allocator allocator,
+    const size_t nmemb,
     const size_t size,
-    const size_t count,
     const size_t alignment
 ) {
-    return allocator.fns->realloc(allocator.data, ptr, size * count, alignment);
+    void* ptr = allocator.ops->alloc(allocator.data, nmemb * size, alignment);
+
+    if (ptr != NULL) {
+        memset(ptr, 0, nmemb * size);
+    }
+
+    return ptr;
 }
 
-extern struct brad_general_allocator_fns brad_malloc_allocator;
+INLINE void* brad_allocator_realloc(
+    const struct brad_allocator allocator,
+    void* ptr,
+    const size_t old_sz,
+    const size_t new_sz,
+    const size_t alignment
+) {
+    return allocator.ops->realloc(allocator.data, ptr, old_sz, new_sz, alignment);
+}
+
+extern struct brad_allocator_ops brad_malloc_allocator;
+
+// Global allocator.
+static struct brad_allocator brad_global_allocator = {
+    .ops = &brad_malloc_allocator,
+    .data = NULL,
+};
