@@ -29,8 +29,8 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh -19 all        
-          apt-get install libpolly-19-dev
-          apt-get install libfuzzer-19-dev
+          sudo apt-get install libpolly-19-dev
+          sudo apt-get install libfuzzer-19-dev
           export LLVM_SYS_191_PREFIX=$(llvm-config-19 --prefix)
           echo "LLVM_SYS_191_PREFIX=${LLVM_SYS_191_PREFIX}" >> $GITHUB_ENV
 
