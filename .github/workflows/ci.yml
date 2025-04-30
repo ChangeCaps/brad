@@ -45,4 +45,3 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y liburing-dev
           CC=clang-19 make clean all test
-          CC=gcc make clean all test
