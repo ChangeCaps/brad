@@ -31,11 +31,10 @@ jobs:
           sudo ./llvm.sh -19 all        
           sudo apt-get install libpolly-19-dev
           sudo apt-get install libfuzzer-19-dev
-          export LLVM_SYS_191_PREFIX=$(llvm-config-19 --prefix)
-          echo "LLVM_SYS_191_PREFIX=${LLVM_SYS_191_PREFIX}" >> $GITHUB_ENV
 
       - name: Build and test frontend
         run: |
+          export LLVM_SYS_191_PREFIX=$(llvm-config-19 --prefix)
           cargo build --verbose
           cargo test --verbose
           cargo clippy --all-targets --all-features -- -D warnings
