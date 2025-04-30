@@ -23,7 +23,7 @@ STD_OBJS         := $(addprefix $(OUT_DIR)/,$(STD_OBJ_NAMES))
 RUNTIME_OBJ_PATH := $(OUT_DIR)/$(RUNTIME_OBJ)
 
 # Compiler
-CC            := clang
+CC           ?= clang
 CFLAGS       += -Wall -Wextra -std=c23 -I$(SRC_DIR) -D_GNU_SOURCE
 LDFLAGS      := -lm -lpthread -lrt -ldl -luring
 
