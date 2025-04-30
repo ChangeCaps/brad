@@ -23,6 +23,8 @@ impl Interner {
         interned
     }
 
+    /// # Safety
+    /// This function may only be called when the interner is not used anymore.
     pub unsafe fn clear(&mut self) {
         for &s in &self.strings {
             let _ = Box::from_raw(s as *const str as *mut str);

@@ -1,0 +1,48 @@
+name: BRAD CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    env:
+      RUST_BACKTRACE: 1
+      CARGO_TERM_COLOR: always
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+
+      - name: Install LLVM 19
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh -19 all        
+          apt-get install libpolly-19-dev
+          apt-get install libfuzzer-19-dev
+          export LLVM_SYS_191_PREFIX=$(llvm-config-19 --prefix)
+          echo "LLVM_SYS_191_PREFIX=${LLVM_SYS_191_PREFIX}" >> $GITHUB_ENV
+
+      - name: Build and test frontend
+        run: |
+          cargo build --verbose
+          cargo test --verbose
+          cargo clippy --all-targets --all-features -- -D warnings
+          cargo fmt --all -- --check
+
+      - name: Build and test C runtime
+        run: |
+          apt-get update
+          apt-get install -y liburing-dev
+          make clean all test

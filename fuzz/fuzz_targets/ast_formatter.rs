@@ -67,7 +67,11 @@ fuzz_target!(|data: RandomModule| {
     parsed.reset_spans();
 
     // Assert the two ASTs are equal
-    assert_eq!(parsed, data.0, "Parsed AST does not match generated AST from source: {}", &sources[source_id].content);
+    assert_eq!(
+        parsed, data.0,
+        "Parsed AST does not match generated AST from source: {}",
+        &sources[source_id].content
+    );
 
     let mut data2 = Vec::new();
     let cursor = std::io::Cursor::new(&mut data2);

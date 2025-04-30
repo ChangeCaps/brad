@@ -255,7 +255,7 @@ impl Generator {
                 })
                 .collect::<Vec<_>>();
 
-            assert!(fields.len() > 0, "Record must have at least one field");
+            assert!(!fields.is_empty(), "Record must have at least one field");
 
             self.tys.adts.push(ast::Ty::Record { fields, span });
 
