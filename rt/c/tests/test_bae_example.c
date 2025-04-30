@@ -18,7 +18,7 @@ int main(
     int argc,
     char** argv
 ) {
-    const struct brad_allocator allocator = brad_allocator_new((void*)&brad_malloc_allocator);
+    const struct brad_allocator allocator = brad_global_allocator;
     const struct bae_loop el = bae_loop_new(&io_uring_loop_ops);
 
     struct bae_op_params_rw params1;
