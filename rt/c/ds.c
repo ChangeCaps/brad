@@ -2,6 +2,42 @@
 #include "allocator.h"
 #include "misc.h"
 
+#include <assert.h>
+
+void bds_vec_maybe_grow(struct bds_vec_t* vec, size_t cap, size_t elem_sz);
+
+void bds_vec_maybe_grow(
+    struct bds_vec_t* vec,
+    const size_t cap,
+    const size_t elem_sz
+) {
+    // No need to grow
+    if (unlikely(vec->cap >= cap)) {
+        return;
+    }
+
+    void* new_ptr;
+
+    if (vec->data == NULL) {
+        new_ptr = brad_allocator_try_alloc(brad_global_allocator, elem_sz * cap, 0);
+    } else {
+        new_ptr = brad_allocator_realloc(
+            brad_global_allocator,
+            vec->data,
+            elem_sz * vec->cap,
+            elem_sz * cap,
+            0
+        );
+    }
+
+    if (new_ptr == NULL) {
+        abort();
+    }
+
+    vec->cap = cap;
+    vec->data = new_ptr;
+}
+
 void bds_vec_drop(
     const struct bds_vec_t* vec
 ) {
@@ -16,16 +52,9 @@ void bds_vec_push(
     const size_t elem_sz
 ) {
     if (vec->len == vec->cap) {
-        const size_t old_cap = vec->cap;
-        vec->cap = vec->cap == 0 ? 1 : vec->cap * 2;
-        vec->data = brad_allocator_realloc(
-            brad_global_allocator,
-            vec->data,
-            elem_sz * old_cap,
-            elem_sz * vec->cap,
-            0
-        );
+        bds_vec_maybe_grow(vec, vec->cap == 0 ? 1 : vec->cap * 2, elem_sz);
     }
+
     memcpy((char*)vec->data + (elem_sz * vec->len++), value, elem_sz);
 }
 
@@ -97,19 +126,8 @@ void bds_vec_reserve(
     const size_t additional,
     const size_t elem_sz
 ) {
-    const size_t old_cap = vec->cap;
-    const size_t new_cap = old_cap + additional;
-
-    if (old_cap < new_cap) {
-        vec->cap = new_cap;
-        vec->data = brad_allocator_realloc(
-            brad_global_allocator,
-            vec->data,
-            elem_sz * old_cap,
-            elem_sz * vec->cap,
-            0
-        );
-    }
+    const size_t new_cap = vec->len + additional;
+    bds_vec_maybe_grow(vec, new_cap, elem_sz);
 }
 
 void bds_vec_shrink(
@@ -119,6 +137,7 @@ void bds_vec_shrink(
 ) {
     if (vec->cap > capacity) {
         vec->cap = capacity;
+
         vec->data = brad_allocator_realloc(
             brad_global_allocator,
             vec->data,

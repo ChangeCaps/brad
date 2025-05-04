@@ -87,20 +87,20 @@ void prepare_ctx_with_op(
             break;
         }
         case BAE_OP_MSG_EL: {
-            const struct bae_op_params_msg_el* msg_el_params = (struct bae_op_params_msg_el*)params;
+            const struct bae_op_msg_el_params* msg_el_params = (struct bae_op_msg_el_params*)params;
             const struct LoopContext* el_ctx = msg_el_params->el_data;
             io_uring_prep_msg_ring(sqe, el_ctx->ring.ring_fd, 0, 0, 0);
             break;
         }
         case BAE_OP_SLEEP: {
-            const struct bae_op_params_sleep* sleep_params = (struct bae_op_params_sleep*)params;
+            const struct bae_op_sleep_params* sleep_params = (struct bae_op_sleep_params*)params;
             struct bae_op_sleep* sleep_op = (struct bae_op_sleep*)op;
             memcpy(&sleep_op->ts, &sleep_params->ts, sizeof(struct __kernel_timespec));
             io_uring_prep_timeout(sqe, &sleep_op->ts, 0, IORING_TIMEOUT_ETIME_SUCCESS);
             break;
         }
         case BAE_OP_READ: {
-            const struct bae_op_params_rw* read_params = (struct bae_op_params_rw*)params;
+            const struct bae_op_rw_params* read_params = (struct bae_op_rw_params*)params;
             io_uring_prep_read(
                 sqe,
                 read_params->fd,
@@ -111,7 +111,7 @@ void prepare_ctx_with_op(
             break;
         }
         case BAE_OP_WRITE: {
-            const struct bae_op_params_rw* write_params = (struct bae_op_params_rw*)params;
+            const struct bae_op_rw_params* write_params = (struct bae_op_rw_params*)params;
             io_uring_prep_write(
                 sqe,
                 write_params->fd,
@@ -122,7 +122,7 @@ void prepare_ctx_with_op(
             break;
         }
         case BAE_OP_CANCEL: {
-            const struct bae_op_params_cancel* cancel_params = (struct bae_op_params_cancel*)params;
+            const struct bae_op_cancel_params* cancel_params = (struct bae_op_cancel_params*)params;
 
             // Preemptively mark the operation as cancelled.
             atomic_compare_exchange_strong(

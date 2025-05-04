@@ -26,6 +26,7 @@ RUNTIME_OBJ_PATH := $(OUT_DIR)/$(RUNTIME_OBJ)
 CC           ?= clang
 CFLAGS       += -Wall -Wextra -std=c23 -I$(SRC_DIR) -D_GNU_SOURCE
 LDFLAGS      := -lm -lpthread -lrt -ldl -luring
+TFLAGS    := -fsanitize=address,undefined -lubsan
 
 .PHONY: all debug release build clean test run
 
@@ -71,4 +72,4 @@ run: test
 # Compile each test file, linking in your std and runtime objects
 $(TESTS_OUT_DIR)/%: $(TEST_DIR)/%.c $(STD_OBJS) $(RUNTIME_OBJ_PATH)
 	@mkdir -p $(TESTS_OUT_DIR)
-	$(CC) $(CFLAGS) $(LDFLAGS) $< $(STD_OBJS) $(RUNTIME_OBJ_PATH) -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(TFLAGS) $< $(STD_OBJS) $(RUNTIME_OBJ_PATH) -o $@

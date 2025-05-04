@@ -25,6 +25,7 @@ This struct is later extended to contain output fields.
 This structure is allocated based on parameters.
 
 TODO, we have an extra 4 bytes of data to do something with.
+If the atomic state is slow, perhaps a dynamic atomic is better?
 */
 struct bae_op {
     _Atomic enum bae_op_state state;
@@ -51,17 +52,17 @@ struct bae_op_params {
     enum bae_op_t op;
 };
 
-struct bae_op_params_msg_el {
+struct bae_op_msg_el_params {
     struct bae_op_params base;
     void* el_data;
 };
 
-struct bae_op_params_sleep {
+struct bae_op_sleep_params {
     struct bae_op_params base;
     struct __kernel_timespec ts;
 };
 
-struct bae_op_params_rw {
+struct bae_op_rw_params {
     struct bae_op_params base;
     int32_t fd;
     size_t nbytes;
@@ -79,7 +80,7 @@ struct bae_op_params_rw {
     };
 };
 
-struct bae_op_params_cancel {
+struct bae_op_cancel_params {
     struct bae_op_params base;
     struct bae_op* op; // cancellation target, a cancellation can be cancelled as well!
 };
@@ -92,7 +93,7 @@ INLINE void bae_prep_nop(
 }
 
 INLINE void bae_prep_msg_el(
-    struct bae_op_params_msg_el* op,
+    struct bae_op_msg_el_params* op,
     void* el_data
 ) {
     op->base.op = BAE_OP_MSG_EL;
@@ -100,7 +101,7 @@ INLINE void bae_prep_msg_el(
 }
 
 INLINE void bae_prep_sleep(
-    struct bae_op_params_sleep* op,
+    struct bae_op_sleep_params* op,
     const struct __kernel_timespec ts
 ) {
     op->base.op = BAE_OP_SLEEP;
@@ -108,7 +109,7 @@ INLINE void bae_prep_sleep(
 }
 
 INLINE void bae_prep_read(
-    struct bae_op_params_rw* op,
+    struct bae_op_rw_params* op,
     const int32_t fd,
     void* buf,
     const size_t nbytes,
@@ -123,7 +124,7 @@ INLINE void bae_prep_read(
 }
 
 INLINE void bae_prep_write(
-    struct bae_op_params_rw* op,
+    struct bae_op_rw_params* op,
     const int32_t fd,
     void* buf,
     const size_t nbytes,
@@ -138,7 +139,7 @@ INLINE void bae_prep_write(
 }
 
 INLINE void bae_prep_cancel(
-    struct bae_op_params_cancel* op,
+    struct bae_op_cancel_params* op,
     struct bae_op* target
 ) {
     op->base.op = BAE_OP_CANCEL;
@@ -160,23 +161,23 @@ INLINE size_t bae_op_size_from_params(
     }
 }
 
-INLINE struct bae_op* bae_op_from_params(
+INLINE void bae_op_from_params(
     const struct brad_allocator allocator,
-    const struct bae_op_params* params
+    const struct bae_op_params* params,
+    struct bae_op** op
 ) {
-    return brad_allocator_alloc(allocator, bae_op_size_from_params(params), 0);
+    *op = brad_allocator_alloc(allocator, bae_op_size_from_params(params), 0);
 }
 
-INLINE struct bae_op** bae_ops_from_params(
+INLINE void bae_ops_from_params(
     const struct brad_allocator allocator,
     struct bae_op_params** params,
+    struct bae_op** ops,
     const size_t count
 ) {
-    struct bae_op** ops = brad_allocator_alloc(allocator, sizeof(struct bae_op*) * count, 0);
     for (size_t i = 0; i < count; i++) {
-        ops[i] = bae_op_from_params(allocator, params[i]);
+        bae_op_from_params(allocator, params[i], &ops[i]);
     }
-    return ops;
 }
 
 INLINE const char* bae_op_state_to_string(
@@ -214,4 +215,3 @@ INLINE const char* bae_op_t_to_string(
             return "UNKNOWN";
     }
 }
-
