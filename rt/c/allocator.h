@@ -56,7 +56,7 @@ INLINE void* brad_allocator_alloc(
     const size_t size,
     const size_t alignment
 ) {
-    const auto ptr = allocator.ops->alloc(allocator.data, size, alignment);
+    void* ptr = allocator.ops->alloc(allocator.data, size, alignment);
 
     if (ptr == NULL) {
         abort();
