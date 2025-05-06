@@ -445,7 +445,10 @@ impl ExprLowerer<'_, '_> {
                 );
 
                 let kind = hir::ExprKind::Local(id);
-                let ty = local.ty.clone();
+                let ty = match local.is_mutable {
+                    false => local.ty.clone(),
+                    true => solve::Ty::ref_(local.ty.clone()),
+                };
                 let span = path.span;
 
                 return Ok(hir::Expr { kind, ty, span });
@@ -769,7 +772,11 @@ impl ExprLowerer<'_, '_> {
         let target = self.expr(&ast.target)?;
         let value = self.expr(&ast.value)?;
 
-        self.subty(value.ty.clone(), target.ty.clone(), value.span);
+        let ref_value = solve::Ty::ref_(value.ty.clone());
+        let ref_ty = solve::Ty::ref_(self.fresh_var());
+
+        self.subty(ref_value, target.ty.clone(), value.span);
+        self.subty(target.ty.clone(), ref_ty, target.span);
 
         let kind = hir::ExprKind::Assign(Box::new(target), Box::new(value));
         let ty = solve::Ty::none();

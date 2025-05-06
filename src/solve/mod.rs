@@ -92,6 +92,10 @@ impl Solver {
         ty
     }
 
+    pub fn bounds(&self, var: Var) -> &Bounds {
+        &self.bounds[&var]
+    }
+
     fn instantiate_impl(&mut self, Ty(ty): &mut Ty, subst: &mut HashMap<Var, Var>) {
         for conj in ty.iter_mut() {
             conj.pos = self.instantiate_term(conj.pos.clone(), subst);
@@ -166,7 +170,7 @@ impl Solver {
         fresh
     }
 
-    fn expand(&self, app: App) -> Ty {
+    pub fn expand(&self, app: App) -> Ty {
         let (mut body, args) = self.applicables[&app.tag].clone();
 
         assert_eq!(args.len(), app.args.len());
@@ -333,6 +337,10 @@ impl Solver {
                 // references aren't covariant
                 self.subty(lhs.clone(), rhs.clone(), span);
                 self.subty(rhs.clone(), lhs.clone(), span);
+            }
+
+            (Some(Base::Ref(lhs)), _) => {
+                self.constrain(lhs.clone(), Ty::term_neg(rhs).neg(), span)?;
             }
 
             (_, _) => {

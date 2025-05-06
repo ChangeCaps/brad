@@ -178,6 +178,9 @@ impl<'a> Compiler<'a> {
         writer: &mut impl Write,
     ) -> Result<String, ()> {
         let hir = self.lower2(reporter)?;
+
+        crate::mir2::build(&hir);
+
         lua::codegen(writer, &hir).unwrap();
         Ok(String::new())
     }

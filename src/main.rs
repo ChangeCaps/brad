@@ -26,6 +26,7 @@ mod lower;
 mod lower2;
 mod lua;
 mod mir;
+mod mir2;
 mod parse;
 mod sir;
 mod solve;

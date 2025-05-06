@@ -1,9 +1,9 @@
-type foo<'a> = 'a
-
 fn main {
-  bar + 2
+  foo {
+    baz: "hello"
+  }
 }
 
-fn bar -> foo<int> {
-  foo 0
+fn foo<'a> (x: { bar: 'a }) -> 'a {
+  x.bar
 }
