@@ -75,14 +75,14 @@ fn count<'a> (xs: list<'a>) -> int {
     | _ as _, t => 1 + count t
 }
  
-fn foldl<'a, 'b> (f: 'b -> 'a -> 'b) (z: 'b) (xs: list<'a>) -> 'b {
+fn foldl<'a, 'b> (z: 'b) (f: 'b -> 'a -> 'b) (xs: list<'a>) -> 'b {
     match xs
     | none      => z
-    | _ as h, t => foldl f (f z h) t
+    | _ as h, t => foldl (f z h) f  t
 }
 
-fn foldr<'a, 'b> (f: 'a -> 'b -> 'b) (z: 'b) (xs: list<'a>) -> 'b {
+fn foldr<'a, 'b> (z: 'b) (f: 'a -> 'b -> 'b) (xs: list<'a>) -> 'b {
     match xs
     | none      => z
-    | _ as h, t => f h (foldr f z t)
+    | _ as h, t => f h (foldr z f t)
 }

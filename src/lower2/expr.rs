@@ -94,10 +94,12 @@ impl Lowerer<'_> {
             return Err(());
         }
 
+        // if the function has a body, lower it
         self.program[body_id].expr = match info.ast.body {
             Some(ref body) => {
                 let body = lowerer.expr(body)?;
 
+                // constrain the type of the body to be a subtype of the output type
                 (self.program.solver).subty(body.ty.clone(), output_ty, body.span);
 
                 Some(body)
@@ -105,7 +107,25 @@ impl Lowerer<'_> {
             None => None,
         };
 
+        //self.simplify_signature(body_id);
+
         Ok(())
+    }
+
+    fn simplify_signature(&mut self, body_id: hir::BodyId) {
+        for input in &mut self.program.bodies[body_id].input {
+            input.ty = self
+                .program
+                .solver
+                .replace_redundant_variables(input.ty.clone());
+        }
+
+        let output = &mut self.program.bodies[body_id].output;
+
+        *output = self
+            .program
+            .solver
+            .replace_redundant_variables(output.clone());
     }
 }
 
@@ -772,11 +792,7 @@ impl ExprLowerer<'_, '_> {
         let target = self.expr(&ast.target)?;
         let value = self.expr(&ast.value)?;
 
-        let ref_value = solve::Ty::ref_(value.ty.clone());
-        let ref_ty = solve::Ty::ref_(self.fresh_var());
-
-        self.subty(ref_value, target.ty.clone(), value.span);
-        self.subty(target.ty.clone(), ref_ty, target.span);
+        self.subty(value.ty.clone(), target.ty.clone(), ast.span);
 
         let kind = hir::ExprKind::Assign(Box::new(target), Box::new(value));
         let ty = solve::Ty::none();

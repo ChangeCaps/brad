@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     ops::{Index, IndexMut},
 };
 
@@ -12,7 +12,7 @@ pub struct Tid {
 
 #[derive(Clone, Debug)]
 pub struct Ty {
-    pub tags: BTreeSet<Tag>,
+    pub tags: Vec<Tag>,
     pub kind: TyKind,
 }
 
@@ -49,7 +49,7 @@ impl Tcx {
 impl From<TyKind> for Ty {
     fn from(kind: TyKind) -> Self {
         Ty {
-            tags: BTreeSet::new(),
+            tags: Vec::new(),
             kind,
         }
     }

@@ -107,7 +107,7 @@ impl Solver {
         let mut new_term = Term::extreme();
 
         for vars in term.vars {
-            new_term.vars.insert(self.instantiate_var(vars, subst));
+            new_term.vars.push(self.instantiate_var(vars, subst));
         }
 
         for mut app in term.apps {
@@ -115,7 +115,7 @@ impl Solver {
                 self.instantiate_impl(arg, subst);
             }
 
-            new_term.apps.insert(app);
+            new_term.apps.push(app);
         }
 
         new_term.tags = term.tags;
@@ -185,48 +185,53 @@ impl Solver {
         for mut conj in mem::take(&mut ty.0) {
             let mut terms = Vec::new();
 
-            for (var, ty) in subst {
-                if conj.pos.vars.remove(var) {
-                    terms.push(ty.clone());
+            conj.pos.vars.retain(|var| {
+                if subst.contains_key(var) {
+                    terms.push(subst[var].clone());
+                    false
+                } else {
+                    true
                 }
-            }
+            });
 
-            for (var, ty) in subst {
-                if conj.neg.vars.remove(var) {
-                    terms.push(ty.clone().neg());
+            conj.neg.vars.retain(|var| {
+                if subst.contains_key(var) {
+                    terms.push(subst[var].clone().neg());
+                    false
+                } else {
+                    true
                 }
-            }
+            });
 
             let conj = terms.into_iter().fold(Ty::from(conj), Ty::inter_with);
             ty.union(conj);
         }
     }
 
-    pub fn subty(&mut self, mut lhs: Ty, mut rhs: Ty, span: Span) {
+    pub fn subty(&mut self, lhs: Ty, rhs: Ty, span: Span) {
+        if let Err(diagnostic) = self.constrain(lhs, rhs, span) {
+            self.errors.push(diagnostic);
+        }
+    }
+
+    fn constrain(&mut self, mut lhs: Ty, mut rhs: Ty, span: Span) -> Result<(), Diagnostic> {
         lhs.simplify();
         rhs.simplify();
 
         let key = (lhs, rhs);
 
         if self.cache.get(&key).is_some_and(|&r| r != Some(false)) {
-            return;
+            return Ok(());
         }
 
         self.cache.insert(key.clone(), None);
-
         let (lhs, rhs) = key.clone();
 
-        if let Err(diagnostic) = self.constrain(lhs, rhs, span) {
-            self.errors.push(diagnostic);
-        }
-
-        self.cache.insert(key, Some(true));
-    }
-
-    fn constrain(&mut self, lhs: Ty, rhs: Ty, span: Span) -> Result<(), Diagnostic> {
         for conj in lhs.inter_with(rhs.neg()) {
             self.constrain_term(conj.pos, conj.neg, span)?;
         }
+
+        self.cache.insert(key, Some(true));
 
         Ok(())
     }
@@ -237,7 +242,7 @@ impl Solver {
         mut rhs: Term,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        if let Some(var) = lhs.vars.pop_first() {
+        if let Some(var) = lhs.vars.pop() {
             let mut bound = Ty::term_neg(rhs).neg();
             bound.union(Ty::term_pos(lhs).neg());
 
@@ -245,12 +250,12 @@ impl Solver {
             bounds.upper.inter(bound.clone());
 
             let lower = bounds.lower.clone();
-            self.subty(lower, bound, span);
+            self.constrain(lower, bound, span)?;
 
             return Ok(());
         }
 
-        if let Some(var) = rhs.vars.pop_first() {
+        if let Some(var) = rhs.vars.pop() {
             let mut bound = Ty::term_pos(lhs);
             bound.inter(Ty::term_neg(rhs));
 
@@ -258,27 +263,27 @@ impl Solver {
             bounds.lower.union(bound.clone());
 
             let upper = bounds.upper.clone();
-            self.subty(bound, upper, span);
+            self.constrain(bound, upper, span)?;
 
             return Ok(());
         }
 
-        if let Some(app) = lhs.apps.pop_first() {
+        if let Some(app) = lhs.apps.pop() {
             let mut rhs = Ty::term_neg(rhs).neg();
             rhs.union(Ty::term_pos(lhs).neg());
 
             let body = self.expand(app);
-            self.subty(body, rhs, span);
+            self.constrain(body, rhs, span)?;
 
             return Ok(());
         }
 
-        if let Some(app) = rhs.apps.pop_first() {
+        if let Some(app) = rhs.apps.pop() {
             let mut lhs = Ty::term_pos(lhs);
             lhs.inter(Ty::term_neg(rhs));
 
             let body = self.expand(app);
-            self.subty(lhs, body, span);
+            self.constrain(lhs, body, span)?;
 
             return Ok(());
         }
@@ -302,7 +307,7 @@ impl Solver {
                         return Err(diagnostic);
                     };
 
-                    self.subty(lhs_ty.clone(), ty.clone(), span);
+                    self.constrain(lhs_ty.clone(), ty.clone(), span)?;
                 }
             }
 
@@ -320,27 +325,23 @@ impl Solver {
                 }
 
                 for (lty, rty) in litems.iter().zip(ritems.iter()) {
-                    self.subty(lty.clone(), rty.clone(), span);
+                    self.constrain(lty.clone(), rty.clone(), span)?;
                 }
             }
 
             (Some(Base::Array(lhs)), Some(Base::Array(rhs))) => {
-                self.subty(lhs.clone(), rhs.clone(), span);
+                self.constrain(lhs.clone(), rhs.clone(), span)?;
             }
 
             (Some(Base::Func(li, lo)), Some(Base::Func(ri, ro))) => {
-                self.subty(ri.clone(), li.clone(), span);
-                self.subty(lo.clone(), ro.clone(), span);
+                self.constrain(ri.clone(), li.clone(), span)?;
+                self.constrain(lo.clone(), ro.clone(), span)?;
             }
 
             (Some(Base::Ref(lhs)), Some(Base::Ref(rhs))) => {
                 // references aren't covariant
-                self.subty(lhs.clone(), rhs.clone(), span);
-                self.subty(rhs.clone(), lhs.clone(), span);
-            }
-
-            (Some(Base::Ref(lhs)), _) => {
-                self.constrain(lhs.clone(), Ty::term_neg(rhs).neg(), span)?;
+                self.constrain(lhs.clone(), rhs.clone(), span)?;
+                self.constrain(rhs.clone(), lhs.clone(), span)?;
             }
 
             (_, _) => {

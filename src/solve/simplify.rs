@@ -1,4 +1,4 @@
-use super::{Base, Conj, Solver, Term, Ty};
+use super::{Base, Conj, SeaHashMap, Solver, Term, Ty};
 
 impl Solver {
     pub fn simplify_deep(&mut self, ty: &mut Ty) {
@@ -10,6 +10,34 @@ impl Solver {
 
             self.bounds.insert(var, bounds);
         }
+    }
+
+    pub fn replace_redundant_variables(&mut self, mut ty: Ty) -> Ty {
+        let mut vars = self.find_variables(&ty);
+        let mut subst = SeaHashMap::default();
+
+        for sub in vars.clone() {
+            for sup in vars.clone() {
+                if sub == sup || !(vars.contains(&sub) && vars.contains(&sup)) {
+                    continue;
+                }
+
+                let sub_bounds = self.bounds[&sub].clone();
+                let sup_bounds = self.bounds[&sup].clone();
+
+                if self.is_subty(&sub_bounds.lower, &sup_bounds.lower)
+                    && self.is_subty(&sup_bounds.lower, &sub_bounds.lower)
+                    && self.is_subty(&sub_bounds.upper, &sup_bounds.upper)
+                    && self.is_subty(&sup_bounds.upper, &sub_bounds.upper)
+                {
+                    vars.remove(&sub);
+                    subst.insert(sub, sup);
+                }
+            }
+        }
+
+        ty.map_vars(&mut |var| subst.get(&var).cloned().unwrap_or(var));
+        ty
     }
 
     pub fn simplify(&mut self, mut ty: Ty) -> Ty {
@@ -51,14 +79,7 @@ impl Solver {
         let mut new = Term::extreme();
 
         for var in term.vars {
-            let lhs = Ty::var(var);
-            let rhs = Ty::term_pos(new.clone());
-
-            if self.is_subty(&lhs, &rhs) {
-                new = Term::var(var);
-            } else if !self.is_subty(&rhs, &lhs) {
-                new.vars.insert(var);
-            }
+            new.vars.push(var);
         }
 
         for mut app in term.apps {
@@ -66,38 +87,16 @@ impl Solver {
                 *arg = self.simplify(arg.clone());
             }
 
-            let lhs = Ty::app(app.tag, app.args.clone());
-            let rhs = Ty::term_pos(new.clone());
-
-            if self.is_subty(&lhs, &rhs) {
-                new = Term::app(app.tag, app.args);
-            } else if !self.is_subty(&rhs, &lhs) {
-                new.apps.insert(app);
-            }
+            new.apps.push(app);
         }
 
         for tag in term.tags {
-            let lhs = Ty::tag(tag);
-            let rhs = Ty::term_pos(new.clone());
-
-            if self.is_subty(&lhs, &rhs) {
-                new = Term::tag(tag);
-            } else if !self.is_subty(&rhs, &lhs) {
-                new.tags.insert(tag);
-            }
+            new.tags.push(tag);
         }
 
         if let Some(mut base) = term.base {
             self.simplify_base(&mut base);
-
-            let lhs = Ty::base(base.clone());
-            let rhs = Ty::term_pos(new.clone());
-
-            if self.is_subty(&lhs, &rhs) {
-                new = Term::base(base);
-            } else if !self.is_subty(&rhs, &lhs) {
-                new.base = Some(base);
-            }
+            new.base = Some(base);
         }
 
         new
@@ -162,7 +161,7 @@ impl Solver {
     }
 
     fn is_term_subty(&mut self, mut lhs: Term, mut rhs: Term) -> bool {
-        if let Some(var) = lhs.vars.pop_first() {
+        if let Some(var) = lhs.vars.pop() {
             let mut bound = Ty::term_neg(rhs).neg();
             bound.union(Ty::term_pos(lhs).neg());
 
@@ -171,7 +170,7 @@ impl Solver {
             return self.is_subty(&lower, &bound);
         }
 
-        if let Some(var) = rhs.vars.pop_first() {
+        if let Some(var) = rhs.vars.pop() {
             let mut bound = Ty::term_pos(lhs);
             bound.inter(Ty::term_neg(rhs));
 
@@ -180,7 +179,7 @@ impl Solver {
             return self.is_subty(&bound, &upper);
         }
 
-        if let Some(app) = lhs.apps.pop_first() {
+        if let Some(app) = lhs.apps.pop() {
             let mut rhs = Ty::term_neg(rhs).neg();
             rhs.union(Ty::term_pos(lhs).neg());
 
@@ -189,7 +188,7 @@ impl Solver {
             return self.is_subty(&body, &rhs);
         }
 
-        if let Some(app) = rhs.apps.pop_first() {
+        if let Some(app) = rhs.apps.pop() {
             let mut lhs = Ty::term_pos(lhs);
             lhs.inter(Ty::term_neg(rhs));
 

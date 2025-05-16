@@ -565,7 +565,7 @@ impl Solver {
 
     fn find_variables_impl(&self, Ty(conjs): &Ty, vars: &mut SeaHashSet<Var>) {
         for conj in conjs {
-            for &var in conj.pos.vars.union(&conj.neg.vars) {
+            for &var in conj.pos.vars.iter().chain(&conj.neg.vars) {
                 if !vars.insert(var) {
                     continue;
                 }
@@ -576,7 +576,7 @@ impl Solver {
                 self.find_variables_impl(&bounds.upper, vars);
             }
 
-            for app in conj.pos.apps.union(&conj.neg.apps) {
+            for app in conj.pos.apps.iter().chain(&conj.neg.apps) {
                 for arg in &app.args {
                     self.find_variables_impl(arg, vars);
                 }

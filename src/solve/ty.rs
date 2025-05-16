@@ -1,5 +1,5 @@
 use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::{btree_map::Entry, BTreeMap},
     fmt,
 };
 
@@ -87,7 +87,9 @@ impl Ty {
     /// Add a tag to all the conjuncts in the type.
     pub fn add_tag(&mut self, tag: Tag) {
         for conj in &mut self.0 {
-            conj.pos.tags.insert(tag);
+            if !conj.pos.tags.contains(&tag) {
+                conj.pos.tags.push(tag);
+            }
         }
     }
 
@@ -203,6 +205,40 @@ impl Ty {
     pub fn term_neg(term: Term) -> Self {
         Self(vec![Conj::neg(term)])
     }
+
+    pub fn map_vars(&mut self, map: &mut dyn FnMut(Var) -> Var) {
+        for conj in &mut self.0 {
+            for var in &mut conj.pos.vars {
+                *var = map(*var);
+            }
+
+            for var in &mut conj.neg.vars {
+                *var = map(*var);
+            }
+
+            conj.pos.tags.sort_unstable();
+            conj.neg.tags.sort_unstable();
+
+            conj.pos.tags.dedup();
+            conj.neg.tags.dedup();
+
+            for app in &mut conj.pos.apps {
+                app.args.iter_mut().for_each(|arg| arg.map_vars(map));
+            }
+
+            for app in &mut conj.neg.apps {
+                app.args.iter_mut().for_each(|arg| arg.map_vars(map));
+            }
+
+            if let Some(base) = &mut conj.pos.base {
+                base.map_vars(map);
+            }
+
+            if let Some(base) = &mut conj.neg.base {
+                base.map_vars(map);
+            }
+        }
+    }
 }
 
 impl IntoIterator for Ty {
@@ -302,18 +338,18 @@ impl fmt::Display for Conj {
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Term {
-    pub vars: BTreeSet<Var>,
-    pub tags: BTreeSet<Tag>,
-    pub apps: BTreeSet<App>,
+    pub vars: Vec<Var>,
+    pub tags: Vec<Tag>,
+    pub apps: Vec<App>,
     pub base: Option<Base>,
 }
 
 impl Term {
     pub const fn extreme() -> Self {
         Self {
-            vars: BTreeSet::new(),
-            tags: BTreeSet::new(),
-            apps: BTreeSet::new(),
+            vars: Vec::new(),
+            tags: Vec::new(),
+            apps: Vec::new(),
             base: None,
         }
     }
@@ -324,89 +360,97 @@ impl Term {
 
     pub fn var(var: Var) -> Self {
         Self {
-            vars: BTreeSet::from([var]),
-            tags: BTreeSet::new(),
-            apps: BTreeSet::new(),
+            vars: vec![var],
+            tags: Vec::new(),
+            apps: Vec::new(),
             base: None,
         }
     }
 
     pub fn tag(tag: Tag) -> Self {
         Self {
-            vars: BTreeSet::new(),
-            tags: BTreeSet::from([tag]),
-            apps: BTreeSet::new(),
+            vars: Vec::new(),
+            tags: vec![tag],
+            apps: Vec::new(),
             base: None,
         }
     }
 
     pub fn app(tag: Tag, args: impl Into<Vec<Ty>>) -> Self {
         Self {
-            vars: BTreeSet::new(),
-            tags: BTreeSet::new(),
-            apps: BTreeSet::from([App::new(tag, args.into())]),
+            vars: Vec::new(),
+            tags: Vec::new(),
+            apps: vec![App::new(tag, args.into())],
             base: None,
         }
     }
 
-    pub fn base(kind: Base) -> Self {
+    pub const fn base(kind: Base) -> Self {
         Self {
-            vars: BTreeSet::new(),
-            tags: BTreeSet::new(),
-            apps: BTreeSet::new(),
+            vars: Vec::new(),
+            tags: Vec::new(),
+            apps: Vec::new(),
             base: Some(kind),
         }
     }
 
     pub fn record(fields: impl Into<BTreeMap<&'static str, Ty>>) -> Self {
         Self {
-            vars: BTreeSet::new(),
-            tags: BTreeSet::new(),
-            apps: BTreeSet::new(),
+            vars: Vec::new(),
+            tags: Vec::new(),
+            apps: Vec::new(),
             base: Some(Base::Record(fields.into())),
         }
     }
 
     pub fn tuple(elems: impl Into<Vec<Ty>>) -> Self {
         Self {
-            vars: BTreeSet::new(),
-            tags: BTreeSet::new(),
-            apps: BTreeSet::new(),
+            vars: Vec::new(),
+            tags: Vec::new(),
+            apps: Vec::new(),
             base: Some(Base::Tuple(elems.into())),
         }
     }
 
     pub fn array(elem: Ty) -> Self {
         Self {
-            vars: BTreeSet::new(),
-            tags: BTreeSet::new(),
-            apps: BTreeSet::new(),
+            vars: Vec::new(),
+            tags: Vec::new(),
+            apps: Vec::new(),
             base: Some(Base::Array(elem)),
         }
     }
 
     pub fn func(param: Ty, ret: Ty) -> Self {
         Self {
-            vars: BTreeSet::new(),
-            tags: BTreeSet::new(),
-            apps: BTreeSet::new(),
+            vars: Vec::new(),
+            tags: Vec::new(),
+            apps: Vec::new(),
             base: Some(Base::Func(param, ret)),
         }
     }
 
     pub fn ref_(elem: Ty) -> Self {
         Self {
-            vars: BTreeSet::new(),
-            tags: BTreeSet::new(),
-            apps: BTreeSet::new(),
+            vars: Vec::new(),
+            tags: Vec::new(),
+            apps: Vec::new(),
             base: Some(Base::Ref(elem)),
         }
     }
 
     pub fn inter(&mut self, other: Self) -> bool {
-        self.tags.extend(other.tags);
         self.vars.extend(other.vars);
+        self.tags.extend(other.tags);
         self.apps.extend(other.apps);
+
+        self.vars.sort_unstable();
+        self.tags.sort_unstable();
+        self.apps.sort_unstable();
+
+        self.vars.dedup();
+        self.tags.dedup();
+        self.apps.dedup();
 
         if other.base.is_none() {
             return true;
@@ -466,6 +510,14 @@ impl Term {
         self.vars.extend(other.vars);
         self.tags.extend(other.tags);
         self.apps.extend(other.apps);
+
+        self.vars.sort_unstable();
+        self.tags.sort_unstable();
+        self.apps.sort_unstable();
+
+        self.vars.dedup();
+        self.tags.dedup();
+        self.apps.dedup();
 
         if other.base.is_none() {
             return;
@@ -575,6 +627,37 @@ pub enum Base {
     Ref(Ty),
 }
 
+impl Base {
+    pub fn map_vars(&mut self, map: &mut dyn FnMut(Var) -> Var) {
+        match self {
+            Base::Record(fields) => {
+                for ty in fields.values_mut() {
+                    ty.map_vars(map);
+                }
+            }
+
+            Base::Tuple(items) => {
+                for ty in items {
+                    ty.map_vars(map);
+                }
+            }
+
+            Base::Array(ty) => {
+                ty.map_vars(map);
+            }
+
+            Base::Func(input, output) => {
+                input.map_vars(map);
+                output.map_vars(map);
+            }
+
+            Base::Ref(ty) => {
+                ty.map_vars(map);
+            }
+        }
+    }
+}
+
 impl fmt::Display for Base {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -584,7 +667,7 @@ impl fmt::Display for Base {
                     .map(|(field, ty)| format!("{}: {}", field, ty))
                     .collect();
 
-                write!(f, "{{{}}}", fields.join(", "))
+                write!(f, "{{ {} }}", fields.join(", "))
             }
 
             Base::Tuple(items) => {
