@@ -3,6 +3,12 @@ name = "brad"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = [
+    "diagnostic",
+    "solve",
+]
+
 [features]
 default = ["llvm-sys-191"]
 
