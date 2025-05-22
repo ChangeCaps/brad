@@ -1,14 +1,17 @@
-use crate::ast;
-use crate::diagnostic::{SourceId, Span};
-use crate::parse::{Interner, Token};
+use std::{collections::BTreeMap, mem::discriminant, sync::LazyLock};
+
 use clap::Args;
-use rand::distr::weighted::WeightedIndex;
-use rand::distr::Distribution;
-use rand::prelude::IndexedRandom;
-use rand::Rng;
-use std::collections::BTreeMap;
-use std::mem::discriminant;
-use std::sync::LazyLock;
+use diagnostic::{SourceId, Span};
+use rand::{
+    distr::{weighted::WeightedIndex, Distribution},
+    prelude::IndexedRandom,
+    Rng,
+};
+
+use crate::{
+    ast,
+    parse::{Interner, Token},
+};
 
 #[allow(non_upper_case_globals)]
 const span: Span = Span::new(SourceId(0), 0, 0);

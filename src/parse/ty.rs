@@ -1,6 +1,7 @@
+use diagnostic::Diagnostic;
+
 use crate::{
     ast,
-    diagnostic::Diagnostic,
     parse::{consume_newlines, ident},
 };
 

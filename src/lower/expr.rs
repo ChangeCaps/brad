@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 
-use crate::{ast, diagnostic::Diagnostic, hir};
+use diagnostic::Diagnostic;
+
+use crate::{ast, hir};
 
 use super::{lower_ty, resolve_item, Resolved};
 

@@ -29,25 +29,103 @@ impl Type {
         }
     }
 
-    pub fn union(mut self, other: Self) -> Self {
-        self.conjuncts.extend(other.conjuncts);
-        self
+    pub fn fresh_var() -> Self {
+        Self::var(Var::fresh())
     }
 
+    pub fn int() -> Self {
+        Self::tag(Tag::INT)
+    }
+
+    pub fn float() -> Self {
+        Self::tag(Tag::FLOAT)
+    }
+
+    pub fn str() -> Self {
+        Self::tag(Tag::STR)
+    }
+
+    pub fn none() -> Self {
+        Self::tag(Tag::NONE)
+    }
+
+    pub fn true_() -> Self {
+        Self::tag(Tag::TRUE)
+    }
+
+    pub fn false_() -> Self {
+        Self::tag(Tag::FALSE)
+    }
+
+    pub fn boolean() -> Self {
+        Self::union(Self::true_(), Self::false_())
+    }
+
+    pub fn tag(tag: Tag) -> Self {
+        Self::from(Term::from(tag))
+    }
+
+    pub fn var(var: Var) -> Self {
+        Self::from(Term::from(var))
+    }
+
+    pub fn app(app: App) -> Self {
+        Self::from(Term::from(app))
+    }
+
+    pub fn record(fields: Vec<(&'static str, Self)>) -> Self {
+        Self::from(Term::from(Base::Record { fields }))
+    }
+
+    pub fn tuple(fields: Vec<Self>) -> Self {
+        Self::from(Term::from(Base::Tuple { fields }))
+    }
+
+    pub fn function(self, other: Self) -> Self {
+        Self::from(Term::from(Base::Function {
+            input: self,
+            output: other,
+        }))
+    }
+
+    pub fn array(self) -> Self {
+        Self::from(Term::from(Base::Array { element: self }))
+    }
+
+    pub fn union_mut(&mut self, other: Self) {
+        *self = self.take().union(other);
+    }
+
+    pub fn inter_mut(&mut self, other: Self) {
+        *self = self.take().inter(other);
+    }
+
+    pub fn neg_mut(&mut self) {
+        *self = self.take().neg();
+    }
+
+    #[must_use]
+    pub fn union(mut self, other: Self) -> Self {
+        self.conjuncts.extend(other.conjuncts);
+        self.simplify_heuristic()
+    }
+
+    #[must_use]
     pub fn inter(self, other: Self) -> Self {
         let mut conjuncts = Vec::new();
 
         for self_conjunct in self.conjuncts {
             for other_conjunct in &other.conjuncts {
-                let conjunct = self_conjunct.clone().intersection(other_conjunct.clone());
+                let conjunct = self_conjunct.clone().inter(other_conjunct.clone());
                 conjuncts.push(conjunct);
             }
         }
 
-        Self { conjuncts }
+        Self { conjuncts }.simplify_heuristic()
     }
 
     /// Negate the type.
+    #[must_use]
     #[allow(clippy::should_implement_trait)]
     pub fn neg(self) -> Self {
         let mut negative = Self::top();
@@ -114,11 +192,44 @@ impl Type {
             negative = negative.inter(Self { conjuncts });
         }
 
-        negative
+        negative.simplify_heuristic()
     }
 
-    fn take(&mut self) -> Self {
+    pub fn simplify_heuristic(mut self) -> Self {
+        // if we have a conjunct that is ⊤, we can remove all other conjuncts
+        if self.conjuncts.iter().any(Conjunct::is_top) {
+            self.conjuncts.clear();
+            self.conjuncts.push(Conjunct::top());
+            return self;
+        }
+
+        self.conjuncts.sort_unstable();
+        self.conjuncts.dedup();
+
+        self
+    }
+
+    pub(crate) fn take(&mut self) -> Self {
         mem::replace(self, Self::bottom())
+    }
+}
+
+impl From<Conjunct> for Type {
+    fn from(conjunct: Conjunct) -> Self {
+        Self {
+            conjuncts: vec![conjunct],
+        }
+    }
+}
+
+impl From<Term> for Type {
+    fn from(term: Term) -> Self {
+        Self {
+            conjuncts: vec![Conjunct {
+                positive: term,
+                negative: Term::extreme(),
+            }],
+        }
     }
 }
 
@@ -136,7 +247,11 @@ impl Conjunct {
         }
     }
 
-    pub fn intersection(self, other: Self) -> Self {
+    pub fn is_top(&self) -> bool {
+        self.positive.is_extreme() && self.negative.is_extreme()
+    }
+
+    pub fn inter(self, other: Self) -> Self {
         let positive = self.positive.inter_positive(other.positive);
         let negative = self.negative.inter_negative(other.negative);
 
@@ -165,7 +280,7 @@ impl Term {
     }
 
     pub fn is_extreme(&self) -> bool {
-        self.tags.is_empty() && self.base == Base::None
+        self.vars.is_empty() && self.apps.is_empty() && self.tags.is_empty() && self.base.is_none()
     }
 
     pub fn display(&self, polarity: bool) -> impl fmt::Display + '_ {
@@ -177,6 +292,11 @@ impl Term {
         self.vars.extend(other.vars);
         self.apps.extend(other.apps);
 
+        self.vars.sort_unstable();
+        self.apps.sort_unstable();
+        self.vars.dedup();
+        self.apps.dedup();
+
         self.tags.union(&other.tags);
         self.base = self.base.inter(other.base);
 
@@ -187,6 +307,11 @@ impl Term {
     fn inter_negative(mut self, other: Self) -> Self {
         self.vars.extend(other.vars);
         self.apps.extend(other.apps);
+
+        self.vars.sort_unstable();
+        self.apps.sort_unstable();
+        self.vars.dedup();
+        self.apps.dedup();
 
         self.tags.union(&other.tags);
         self.base = self.base.union(other.base);
@@ -254,13 +379,13 @@ impl fmt::Display for Conjunct {
             (true, true) => write!(f, "⊤"),
 
             (false, true) => write!(f, "{}", self.positive.display(true)),
-            (true, false) => write!(f, "{}", self.negative.display(false)),
+            (true, false) => write!(f, "~{}", self.negative.display(false)),
 
             (false, false) => {
                 let pos = self.positive.display(true);
                 let neg = self.negative.display(false);
 
-                write!(f, "{} ⊓ {}", pos, neg)
+                write!(f, "{} ⊓ ~({})", pos, neg)
             }
         }
     }
@@ -302,18 +427,37 @@ impl fmt::Display for TermDisplay<'_> {
             .collect::<Vec<_>>()
             .join(infix);
 
-        write!(f, "{vars}")?;
+        let mut needs_infix = false;
+
+        if !vars.is_empty() {
+            write!(f, "{vars}")?;
+            needs_infix = true;
+        }
 
         if !apps.is_empty() {
-            write!(f, "{infix}{apps}")?;
+            if needs_infix {
+                write!(f, "{infix}")?;
+            }
+
+            write!(f, "{apps}")?;
+            needs_infix = true;
         }
 
         if !tags.is_empty() {
-            write!(f, "{infix}{tags}")?;
+            if needs_infix {
+                write!(f, "{infix}")?;
+            }
+
+            write!(f, "{tags}")?;
+            needs_infix = true;
         }
 
         if !term.base.is_none() {
-            write!(f, "{infix}{}", term.base)?;
+            if needs_infix {
+                write!(f, "{infix}")?;
+            }
+
+            write!(f, "{}", term.base)?;
         }
 
         Ok(())

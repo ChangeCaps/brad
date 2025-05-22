@@ -1,5 +1,6 @@
+use diagnostic::Diagnostic;
+
 use super::{body::Bodies, ty::Types, Bid, Ty};
-use crate::diagnostic::Diagnostic;
 
 #[derive(Clone, Debug, Default)]
 pub struct Program {

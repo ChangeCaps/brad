@@ -1,7 +1,4 @@
-import std::list
-import std::debug
-import std::array
-import std::iter
-
 fn main {
+  match (1, none)
+  | _ as _, _ => 0
 }

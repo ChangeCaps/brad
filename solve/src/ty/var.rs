@@ -6,7 +6,7 @@ use std::{
 use super::Type;
 
 /// A [`Type`] variable.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Var {
     index: u64,
 }
@@ -34,4 +34,13 @@ pub struct Bounds {
 
     /// The upper bound of the type variable.
     pub upper: Type,
+}
+
+impl Default for Bounds {
+    fn default() -> Self {
+        Self {
+            lower: Type::bottom(),
+            upper: Type::top(),
+        }
+    }
 }

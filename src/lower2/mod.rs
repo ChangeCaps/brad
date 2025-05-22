@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{
-    ast, attribute::Attributes, diagnostic::Reporter, hir2 as hir, parse::Interner, solve,
-};
+use diagnostic::Reporter;
+
+use crate::{ast, attribute::Attributes, hir2 as hir, parse::Interner};
 
 mod expr;
 mod import;
@@ -102,7 +102,7 @@ impl<'a> Lowerer<'a> {
         self.lower_aliases()?;
         self.lower_functions()?;
 
-        self.program.solver.finish(self.reporter)?;
+        self.program.tcx.finish(self.reporter)?;
 
         Ok(self.program)
     }
@@ -114,7 +114,7 @@ impl<'a> Lowerer<'a> {
 
             if let Some(ref ast_generics) = info.ast.generics {
                 for generic in &ast_generics.params {
-                    let var = self.program.solver.fresh_var();
+                    let var = solve::Var::fresh();
                     generics.push((generic.name, var));
                     args.push(var);
                 }
@@ -127,7 +127,7 @@ impl<'a> Lowerer<'a> {
 
                     let body = self.lower_ty(info.module, &mut generics, false, ty)?;
 
-                    let ty = body.clone().with_tag(tag);
+                    let ty = body.clone().inter(solve::Type::tag(tag));
 
                     if let Some(body_id) = info.body {
                         let mut locals = hir::Locals::new();
@@ -142,7 +142,7 @@ impl<'a> Lowerer<'a> {
                         let body = hir::Body {
                             attrs: Attributes::new(),
                             is_extern: false,
-                            name: tag.name.to_string(),
+                            name: tag.name().to_string(),
                             generics: args.clone(),
                             locals,
                             input: vec![hir::Argument {
@@ -175,13 +175,13 @@ impl<'a> Lowerer<'a> {
                 }
 
                 None => {
-                    let ty = solve::Ty::tag(tag);
+                    let ty = solve::Type::tag(tag);
 
                     if let Some(body_id) = info.body {
                         let body = hir::Body {
                             attrs: Attributes::new(),
                             is_extern: false,
-                            name: tag.name.to_string(),
+                            name: tag.name().to_string(),
                             generics: args.clone(),
                             locals: hir::Locals::new(),
                             input: Vec::new(),
@@ -197,11 +197,11 @@ impl<'a> Lowerer<'a> {
                         self.program[body_id] = body;
                     }
 
-                    solve::Ty::tag(tag)
+                    solve::Type::tag(tag)
                 }
             };
 
-            self.program.solver.add_applicable(tag, ty_body, args);
+            self.program.tcx.add_applicable(tag, ty_body, args);
         }
 
         Ok(())
@@ -214,7 +214,7 @@ impl<'a> Lowerer<'a> {
 
             if let Some(ref ast_generics) = info.ast.generics {
                 for generic in &ast_generics.params {
-                    let ty = self.program.solver.fresh_var();
+                    let ty = solve::Var::fresh();
                     generics.push((generic.name, ty));
                     args.push(ty);
                 }
@@ -223,7 +223,7 @@ impl<'a> Lowerer<'a> {
             let mut generics = Generics::Explicit(&generics);
             let body = self.lower_ty(info.module, &mut generics, false, &info.ast.ty)?;
 
-            self.program.solver.add_applicable(tag, body, args);
+            self.program.tcx.add_applicable(tag, body, args);
         }
 
         Ok(())
@@ -236,9 +236,6 @@ impl<'a> Lowerer<'a> {
             let info = self.funcs.remove(&body_id).unwrap();
 
             self.lower_function(&mut calls, body_id, info)?;
-
-            let mut ty = self.program[body_id].ty();
-            self.program.solver.simplify_deep(&mut ty);
         }
 
         Ok(())

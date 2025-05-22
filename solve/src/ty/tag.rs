@@ -50,8 +50,8 @@ impl Tags {
         }
     }
 
-    pub fn contains(&self, tag: &Tag) -> bool {
-        self.tags.binary_search(tag).is_ok()
+    pub fn contains(&self, tag: Tag) -> bool {
+        self.tags.binary_search(&tag).is_ok()
     }
 
     pub fn insert(&mut self, tag: Tag) {
@@ -97,6 +97,13 @@ pub struct Tag {
 }
 
 impl Tag {
+    pub const INT: Tag = Tag::new(0x1, "int");
+    pub const FLOAT: Tag = Tag::new(0x2, "float");
+    pub const STR: Tag = Tag::new(0x3, "str");
+    pub const NONE: Tag = Tag::new(0x4, "none");
+    pub const TRUE: Tag = Tag::new(0x5, "true");
+    pub const FALSE: Tag = Tag::new(0x6, "false");
+
     /// The bitmask for the reserved tags.
     pub const RESERVED_MASK: u64 = 0xffff_0000_0000_0000;
 
@@ -216,13 +223,13 @@ mod tests {
 
         tags.insert(TAG_A);
         assert_eq!(tags.len(), 1);
-        assert!(tags.contains(&TAG_A));
-        assert!(!tags.contains(&TAG_B));
+        assert!(tags.contains(TAG_A));
+        assert!(!tags.contains(TAG_B));
 
         tags.insert(TAG_B);
         assert_eq!(tags.len(), 2);
-        assert!(tags.contains(&TAG_A));
-        assert!(tags.contains(&TAG_B));
+        assert!(tags.contains(TAG_A));
+        assert!(tags.contains(TAG_B));
     }
 
     #[test]
@@ -234,13 +241,13 @@ mod tests {
 
         tags.remove(&TAG_A);
         assert_eq!(tags.len(), 1);
-        assert!(!tags.contains(&TAG_A));
-        assert!(tags.contains(&TAG_B));
+        assert!(!tags.contains(TAG_A));
+        assert!(tags.contains(TAG_B));
 
         tags.remove(&TAG_B);
         assert_eq!(tags.len(), 0);
-        assert!(!tags.contains(&TAG_A));
-        assert!(!tags.contains(&TAG_B));
+        assert!(!tags.contains(TAG_A));
+        assert!(!tags.contains(TAG_B));
     }
 
     #[test]
@@ -258,10 +265,10 @@ mod tests {
 
         tags_a.union(&tags_b);
         assert_eq!(tags_a.len(), 4);
-        assert!(tags_a.contains(&TAG_A));
-        assert!(tags_a.contains(&TAG_B));
-        assert!(tags_a.contains(&TAG_C));
-        assert!(tags_a.contains(&TAG_D));
+        assert!(tags_a.contains(TAG_A));
+        assert!(tags_a.contains(TAG_B));
+        assert!(tags_a.contains(TAG_C));
+        assert!(tags_a.contains(TAG_D));
     }
 
     #[test]

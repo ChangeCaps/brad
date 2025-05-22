@@ -1,12 +1,13 @@
 use std::ops::Index;
 
-use crate::{diagnostic::Span, solve::Ty};
+use diagnostic::Span;
+use solve::Type;
 
 #[derive(Clone, Debug)]
 pub struct Local {
     pub is_mutable: bool,
     pub name: &'static str,
-    pub ty: Ty,
+    pub ty: Type,
     pub span: Span,
 }
 

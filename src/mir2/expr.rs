@@ -1,4 +1,4 @@
-use crate::solve::Tag;
+use solve::Tag;
 
 #[derive(Clone, Debug)]
 pub struct Expr {}

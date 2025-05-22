@@ -16,7 +16,6 @@ use compiler::Compiler;
 mod ast;
 mod attribute;
 mod compiler;
-mod diagnostic;
 mod hir;
 mod hir2;
 mod interpret;
@@ -29,7 +28,6 @@ mod mir;
 mod mir2;
 mod parse;
 mod sir;
-mod solve;
 
 #[derive(Parser)]
 pub struct Cli {

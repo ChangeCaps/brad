@@ -1,5 +1,6 @@
-use crate::diagnostic::Span;
 use std::slice;
+
+use diagnostic::Span;
 
 use super::Ty;
 

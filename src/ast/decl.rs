@@ -1,6 +1,8 @@
 use std::{fmt, ops::Deref};
 
-use crate::{attribute::Attributes, diagnostic::Span};
+use diagnostic::Span;
+
+use crate::attribute::Attributes;
 
 use super::{Binding, Expr, Generic, Generics, Path, Ty};
 

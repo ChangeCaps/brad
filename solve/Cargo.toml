@@ -1,8 +1,10 @@
 [package]
-name = "solve"
+name = "brad-solve"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 smallvec = { version = "1", features = ["const_new"] }
 seahash = "4"
+
+diagnostic = { workspace = true }

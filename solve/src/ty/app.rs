@@ -31,6 +31,11 @@ impl App {
     pub fn args(&self) -> &[Type] {
         &self.args
     }
+
+    /// Get a mutable reference the type arguments of the type application.
+    pub fn args_mut(&mut self) -> &mut [Type] {
+        Arc::make_mut(&mut self.args)
+    }
 }
 
 impl fmt::Display for App {

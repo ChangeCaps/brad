@@ -46,7 +46,7 @@ impl Base {
     #[must_use]
     pub fn inter(self, other: Self) -> Self {
         match (self, other) {
-            (Base::None, _) | (_, Base::None) => Base::None,
+            (Base::None, some) | (some, Base::None) => some,
 
             (
                 Base::Record {
@@ -228,7 +228,7 @@ impl fmt::Display for Base {
                     .collect::<Vec<_>>()
                     .join(" * ");
 
-                write!(f, "{fields}")
+                write!(f, "({fields})")
             }
 
             Base::Array { element } => {
@@ -241,7 +241,7 @@ impl fmt::Display for Base {
                 let input = input.to_string();
                 let output = output.to_string();
 
-                write!(f, "{input} -> {output}")
+                write!(f, "({input} -> {output})")
             }
         }
     }

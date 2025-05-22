@@ -1,15 +1,16 @@
-use crate::{
-    ast,
-    diagnostic::{Diagnostic, Report, Reporter, Source, SourceId, Sources},
-    hir, hir2,
-    interpret::Interpreter,
-    lower, lower2, lua, mir,
-    parse::{self, Interner, Tokens},
-};
 use std::{
     fs,
     io::{self, Write},
     path::Path,
+};
+
+use diagnostic::{Diagnostic, Report, Reporter, Source, SourceId, Sources};
+
+use crate::{
+    ast, hir, hir2,
+    interpret::Interpreter,
+    lower, lower2, lua, mir,
+    parse::{self, Interner, Tokens},
 };
 
 pub struct Compiler<'a> {

@@ -1,11 +1,8 @@
 use std::{collections::HashMap, mem};
 
-use crate::{
-    ast,
-    attribute::Attributes,
-    diagnostic::{Diagnostic, Span},
-    hir2 as hir, solve,
-};
+use diagnostic::{Diagnostic, Span};
+
+use crate::{ast, attribute::Attributes, hir2 as hir};
 
 use super::{AliasInfo, FuncInfo, Lowerer, TypeInfo};
 
@@ -48,18 +45,17 @@ impl Lowerer<'_> {
                         for arg in &ast.args {
                             input.push(hir::Argument {
                                 binding: hir::Binding::Wild { span: arg.span },
-                                ty: solve::Ty::var(self.program.solver.fresh_var()),
+                                ty: solve::Type::fresh_var(),
                             });
                         }
 
-                        let output = solve::Ty::var(self.program.solver.fresh_var());
+                        let output = solve::Type::fresh_var();
 
                         // lower the generics
                         let mut generics = Vec::new();
 
                         for _ in ast.generics() {
-                            let var = self.program.solver.fresh_var();
-                            generics.push(var);
+                            generics.push(solve::Var::fresh());
                         }
 
                         let sub_module = self.program.modules.insert_module(
@@ -142,7 +138,7 @@ impl Lowerer<'_> {
                         let full_name = format!("{}::{}", module_name, short_name);
                         let full_name = self.interner.intern(&full_name);
 
-                        let tag = self.make_tag(full_name);
+                        let tag = solve::Tag::generate(full_name);
 
                         // compute the number of generics
                         let generics = generics.as_ref().map_or(0, |g| g.params.len());
@@ -207,7 +203,7 @@ impl Lowerer<'_> {
                             generics: Vec::new(),
                             locals: hir::Locals::new(),
                             input: Vec::new(),
-                            output: solve::Ty::never(),
+                            output: solve::Type::bottom(),
                             expr: None,
                             span,
                         };
@@ -350,12 +346,5 @@ impl Lowerer<'_> {
         }
 
         Ok(())
-    }
-
-    fn make_tag(&mut self, name: &'static str) -> solve::Tag {
-        let tag = self.next_tag;
-        self.next_tag += 1;
-
-        solve::Tag::new(name, tag)
     }
 }

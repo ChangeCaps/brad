@@ -2,7 +2,9 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use expr::BodyLowerer;
 
-use crate::{ast, diagnostic::Diagnostic, hir};
+use diagnostic::Diagnostic;
+
+use crate::{ast, hir};
 
 mod expr;
 
@@ -547,7 +549,7 @@ fn lower_ty_inner(
             todo!("intersection types")
         }
 
-        ast::Ty::Neg {  .. } => {
+        ast::Ty::Neg { .. } => {
             todo!("negated types")
         }
 

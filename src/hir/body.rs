@@ -1,6 +1,8 @@
 use std::ops::{Index, IndexMut};
 
-use crate::{attribute::Attributes, diagnostic::Span};
+use diagnostic::Span;
+
+use crate::attribute::Attributes;
 
 use super::{Binding, Expr, Generics, Local, LocalId, Locals, Ty};
 

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{diagnostic::Diagnostic, hir, mir};
+use diagnostic::Diagnostic;
+
+use crate::{hir, mir};
 
 macro_rules! unpack {
     ($block:ident = $block_and:expr) => {{

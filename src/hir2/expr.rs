@@ -1,14 +1,12 @@
-use crate::{
-    diagnostic::Span,
-    solve::{Tag, Ty},
-};
+use diagnostic::Span;
+use solve::{Tag, Type};
 
 use super::{BodyId, LocalId, Locals};
 
 #[derive(Clone, Debug)]
 pub struct Expr {
     pub kind: ExprKind,
-    pub ty: Ty,
+    pub ty: Type,
     pub span: Span,
 }
 
@@ -16,7 +14,7 @@ impl Expr {
     pub fn none(span: Span) -> Self {
         Self {
             kind: ExprKind::ZeroSize(Tag::NONE),
-            ty: Ty::none(),
+            ty: Type::none(),
             span,
         }
     }

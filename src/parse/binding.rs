@@ -1,4 +1,6 @@
-use crate::{ast, diagnostic::Diagnostic};
+use diagnostic::Diagnostic;
+
+use crate::ast;
 
 use super::{ident, Delim, Token, Tokens};
 

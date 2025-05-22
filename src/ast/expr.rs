@@ -1,8 +1,8 @@
-use crate::diagnostic::Span;
+use std::fmt;
+
+use diagnostic::Span;
 
 use super::{Path, Ty};
-
-use std::fmt;
 
 #[derive(Clone, Debug)]
 pub enum Expr {

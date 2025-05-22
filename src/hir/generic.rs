@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::diagnostic::Diagnostic;
+use diagnostic::Diagnostic;
 
 use super::Ty;
 

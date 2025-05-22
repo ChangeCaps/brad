@@ -1,4 +1,6 @@
-use crate::{ast, diagnostic::Diagnostic};
+use diagnostic::Diagnostic;
+
+use crate::ast;
 
 use super::{binding, consume_newlines, ident, path, ty, Delim, Token, Tokens};
 
