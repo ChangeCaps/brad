@@ -139,7 +139,7 @@ impl Type {
     pub fn inter(self, other: Self) -> Self {
         let mut conjuncts = Vec::new();
 
-        for self_conjunct in self.conjuncts() {
+        for self_conjunct in self.into_conjuncts() {
             for other_conjunct in other.conjuncts() {
                 let conjunct = self_conjunct.clone().inter(other_conjunct.clone());
                 conjuncts.push(conjunct);
@@ -218,10 +218,12 @@ impl Type {
                 });
             }
 
-            negative = negative.inter(Self {
+            let term = Self {
                 hash: AtomicU64::new(0),
                 conjuncts: Arc::new(conjuncts),
-            });
+            };
+
+            negative = negative.inter(term);
         }
 
         negative.simplify_heuristic()
@@ -521,7 +523,7 @@ impl fmt::Display for Conjunct {
             (true, true) => write!(f, "⊤"),
 
             (false, true) => write!(f, "{}", self.positive.display(true)),
-            (true, false) => write!(f, "~{}", self.negative.display(false)),
+            (true, false) => write!(f, "~({})", self.negative.display(false)),
 
             (false, false) => {
                 let pos = self.positive.display(true);

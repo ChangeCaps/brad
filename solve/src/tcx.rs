@@ -177,12 +177,12 @@ impl Tcx {
                 return Ok(None);
             }
 
-            let upper_neg = Type::from(conjunct);
+            let upper = Type::from(conjunct).neg();
 
             let bounds = self.bounds_mut(var);
-            bounds.upper.inter_mut(upper_neg.clone().neg());
+            bounds.upper.inter_mut(upper.clone());
 
-            let nf = bounds.lower.clone().inter(upper_neg);
+            let nf = Self::make_normal_form(bounds.lower.clone(), upper);
             conjuncts.extend(nf.into_conjuncts());
 
             return Ok(None);

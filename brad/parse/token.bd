@@ -1,126 +1,126 @@
-type ident    = str
-type string   = str
-type integer  = int
-type floating = float
+type token::ident    = str
+type token::string   = str
+type token::integer  = int
+type token::floating = float
 
-type newline
-type eof
+type token::newline
+type token::eof
 
-type dotdot
-type eqeq
-type gteq
-type lteq
-type gtgt
-type ltlt
-type ampamp
-type pipepipe
-type pipegt
-type ltpipe
-type thin-arrow
-type thick-arrow
-type coloncolon
+type token::dotdot
+type token::eqeq
+type token::gteq
+type token::lteq
+type token::gtgt
+type token::ltlt
+type token::ampamp
+type token::pipepipe
+type token::pipegt
+type token::ltpipe
+type token::thin-arrow
+type token::thick-arrow
+type token::coloncolon
 
-type open-paren
-type open-bracket
-type open-brace
-type close-paren
-type close-bracket
-type close-brace
-type pound
-type bang
-type tilde
-type at
-type dollar
-type percent
-type caret
-type amp
-type pipe
-type star
-type slash
-type plus
-type minus
-type quote
-type question
-type under
-type semi
-type comma
-type dot
-type eq
-type gt
-type lt
+type token::open-paren
+type token::open-bracket
+type token::open-brace
+type token::close-paren
+type token::close-bracket
+type token::close-brace
+type token::pound
+type token::bang
+type token::tilde
+type token::at
+type token::dollar
+type token::percent
+type token::caret
+type token::amp
+type token::pipe
+type token::star
+type token::slash
+type token::plus
+type token::minus
+type token::quote
+type token::question
+type token::under
+type token::semi
+type token::comma
+type token::dot
+type token::eq
+type token::gt
+type token::lt
 
-type alias_
-type as_
-type async_
-type await_
-type break_
-type extern_
-type false_
-type fn_
-type import_
-type int_
-type is_
-type let_
-type loop_
-type match_
-type mut_
-type none_
-type pub_
-type ref_
-type return_
-type str_
-type true_
-type type_
+type token::alias_
+type token::as_
+type token::async_
+type token::await_
+type token::break_
+type token::extern_
+type token::false_
+type token::fn_
+type token::import_
+type token::int_
+type token::is_
+type token::let_
+type token::loop_
+type token::match_
+type token::mut_
+type token::none_
+type token::pub_
+type token::ref_
+type token::return_
+type token::str_
+type token::true_
+type token::type_
 
-type token = ident 
-           | string 
-           | integer 
-           | floating
+alias token = token::ident 
+           | token::string 
+           | token::integer 
+           | token::floating
 
-           | newline
-           | eof
+           | token::newline
+           | token::eof
 
-           | dotdot
-           | eqeq
-           | gteq
-           | lteq
-           | gtgt
-           | ltlt
-           | ampamp
-           | pipepipe
-           | pipegt
-           | ltpipe
-           | thin-arrow
-           | thick-arrow
-           | coloncolon
+           | token::dotdot
+           | token::eqeq
+           | token::gteq
+           | token::lteq
+           | token::gtgt
+           | token::ltlt
+           | token::ampamp
+           | token::pipepipe
+           | token::pipegt
+           | token::ltpipe
+           | token::thin-arrow
+           | token::thick-arrow
+           | token::coloncolon
 
-           | open-paren
-           | open-bracket
-           | open-brace
-           | close-paren
-           | close-bracket
-           | close-brace
+           | token::open-paren
+           | token::open-bracket
+           | token::open-brace
+           | token::close-paren
+           | token::close-bracket
+           | token::close-brace
 
 
-           | alias_
-           | as_
-           | async_
-           | await_
-           | break_
-           | extern_
-           | false_
-           | fn_
-           | import_
-           | int_
-           | is_
-           | let_
-           | loop_
-           | match_
-           | mut_
-           | none_
-           | pub_
-           | ref_
-           | return_
-           | str_
-           | true_
-           | type_
+           | token::alias_
+           | token::as_
+           | token::async_
+           | token::await_
+           | token::break_
+           | token::extern_
+           | token::false_
+           | token::fn_
+           | token::import_
+           | token::int_
+           | token::is_
+           | token::let_
+           | token::loop_
+           | token::match_
+           | token::mut_
+           | token::none_
+           | token::pub_
+           | token::ref_
+           | token::return_
+           | token::str_
+           | token::true_
+           | token::type_
