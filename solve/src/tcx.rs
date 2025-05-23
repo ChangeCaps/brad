@@ -127,10 +127,6 @@ impl Tcx {
     }
 
     fn constrain(&mut self, nf: Type, span: Span) -> Result<(), Diagnostic> {
-        if !self.errors.is_empty() {
-            return Ok(());
-        }
-
         let mut conjuncts = nf.into_conjuncts();
 
         while let Some(conjunct) = conjuncts.pop() {
