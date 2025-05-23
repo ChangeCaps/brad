@@ -8,15 +8,14 @@ pub struct Source {
 #[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct SourceId(pub u32);
 
+#[derive(Default)]
 pub struct Sources {
     sources: Vec<Source>,
 }
 
 impl Sources {
     pub fn new() -> Sources {
-        Sources {
-            sources: Vec::new(),
-        }
+        Default::default()
     }
 
     pub fn push(&mut self, source: Source) -> SourceId {

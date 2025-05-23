@@ -138,7 +138,7 @@ impl Lowerer<'_> {
 
             ast::Ty::Neg { ty, .. } => self.lower_ty(module, generics, allow_wild, ty)?.neg(),
 
-            ast::Ty::Ref { ty, .. } => {
+            ast::Ty::Ref { .. } => {
                 todo!()
             }
 

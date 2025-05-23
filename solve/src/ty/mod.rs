@@ -243,6 +243,7 @@ impl Type {
         self
     }
 
+    #[inline(always)]
     pub fn hash(&self) -> u64 {
         let hash = self.hash.load(atomic::Ordering::Relaxed);
 
@@ -262,6 +263,7 @@ impl Type {
         }
     }
 
+    #[inline(always)]
     fn invalidate_hash(&self) {
         self.hash.store(0, atomic::Ordering::Relaxed);
     }
@@ -272,6 +274,7 @@ impl Type {
 }
 
 impl Clone for Type {
+    #[inline(always)]
     fn clone(&self) -> Self {
         let hash = self.hash.load(atomic::Ordering::Relaxed);
 
@@ -283,6 +286,7 @@ impl Clone for Type {
 }
 
 impl PartialEq for Type {
+    #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
         self.hash() == other.hash()
     }
@@ -291,18 +295,21 @@ impl PartialEq for Type {
 impl Eq for Type {}
 
 impl PartialOrd for Type {
+    #[inline(always)]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Type {
+    #[inline(always)]
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.hash().cmp(&other.hash())
     }
 }
 
 impl Hash for Type {
+    #[inline(always)]
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write_u64(self.hash());
     }

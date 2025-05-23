@@ -1,6 +1,3 @@
-use crate::{
-    hir2 as hir,
-    mir2::ty::{Ty, TyKind},
-};
+use crate::hir2 as hir;
 
-pub fn build(hir: &hir::Program) {}
+pub fn build(_hir: &hir::Program) {}

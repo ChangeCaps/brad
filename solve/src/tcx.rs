@@ -145,68 +145,16 @@ impl Tcx {
     fn constrain_conjunct(
         &mut self,
         conjuncts: &mut Vec<Conjunct>,
-        mut conjunct: Conjunct,
+        conjunct: Conjunct,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        if let Some(var) = conjunct.positive.vars.pop() {
-            if conjunct.negative.vars.binary_search(&var).is_ok() {
-                return Ok(());
-            }
-
-            let upper = Type::from(conjunct).neg();
-
-            let bounds = self.bounds_mut(var);
-            bounds.upper.inter_mut(upper.clone());
-
-            let nf = Self::make_normal_form(bounds.lower.clone(), upper);
-            conjuncts.extend(nf.into_conjuncts());
-
+        let Some(conjunct) = self.constrain_vars(conjuncts, conjunct)? else {
             return Ok(());
-        }
+        };
 
-        if let Some(var) = conjunct.negative.vars.pop() {
-            if conjunct.positive.vars.binary_search(&var).is_ok() {
-                return Ok(());
-            }
-
-            let lower = Type::from(conjunct);
-
-            let bounds = self.bounds_mut(var);
-            bounds.lower.union_mut(lower.clone());
-
-            let nf = Self::make_normal_form(lower, bounds.upper.clone());
-            conjuncts.extend(nf.into_conjuncts());
-
+        let Some(conjunct) = self.constrain_apps(conjuncts, conjunct)? else {
             return Ok(());
-        }
-
-        if let Some(app) = conjunct.positive.apps.pop() {
-            if conjunct.negative.apps.binary_search(&app).is_ok() {
-                return Ok(());
-            }
-
-            let upper = Type::from(conjunct).neg();
-            let app = self.expand_application(app);
-
-            let nf = Self::make_normal_form(app, upper);
-            conjuncts.extend(nf.into_conjuncts());
-
-            return Ok(());
-        }
-
-        if let Some(app) = conjunct.negative.apps.pop() {
-            if conjunct.positive.apps.binary_search(&app).is_ok() {
-                return Ok(());
-            }
-
-            let lower = Type::from(conjunct);
-            let app = self.expand_application(app);
-
-            let nf = Self::make_normal_form(lower, app);
-            conjuncts.extend(nf.into_conjuncts());
-
-            return Ok(());
-        }
+        };
 
         let lhs = conjunct.positive;
         let rhs = conjunct.negative;
@@ -218,6 +166,85 @@ impl Tcx {
         self.constrain_bases(conjuncts, lhs, rhs, span)
     }
 
+    #[inline(always)]
+    fn constrain_vars(
+        &mut self,
+        conjuncts: &mut Vec<Conjunct>,
+        mut conjunct: Conjunct,
+    ) -> Result<Option<Conjunct>, Diagnostic> {
+        if let Some(var) = conjunct.positive.vars.pop() {
+            if conjunct.negative.vars.binary_search(&var).is_ok() {
+                return Ok(None);
+            }
+
+            let upper_neg = Type::from(conjunct);
+
+            let bounds = self.bounds_mut(var);
+            bounds.upper.inter_mut(upper_neg.clone().neg());
+
+            let nf = bounds.lower.clone().inter(upper_neg);
+            conjuncts.extend(nf.into_conjuncts());
+
+            return Ok(None);
+        }
+
+        if let Some(var) = conjunct.negative.vars.pop() {
+            if conjunct.positive.vars.binary_search(&var).is_ok() {
+                return Ok(None);
+            }
+
+            let lower = Type::from(conjunct);
+
+            let bounds = self.bounds_mut(var);
+            bounds.lower.union_mut(lower.clone());
+
+            let nf = Self::make_normal_form(lower, bounds.upper.clone());
+            conjuncts.extend(nf.into_conjuncts());
+
+            return Ok(None);
+        }
+
+        Ok(Some(conjunct))
+    }
+
+    #[inline(always)]
+    fn constrain_apps(
+        &mut self,
+        conjuncts: &mut Vec<Conjunct>,
+        mut conjunct: Conjunct,
+    ) -> Result<Option<Conjunct>, Diagnostic> {
+        if let Some(app) = conjunct.positive.apps.pop() {
+            if conjunct.negative.apps.binary_search(&app).is_ok() {
+                return Ok(None);
+            }
+
+            let upper = Type::from(conjunct).neg();
+            let app = self.expand_application(app);
+
+            let nf = Self::make_normal_form(app, upper);
+            conjuncts.extend(nf.into_conjuncts());
+
+            return Ok(None);
+        }
+
+        if let Some(app) = conjunct.negative.apps.pop() {
+            if conjunct.positive.apps.binary_search(&app).is_ok() {
+                return Ok(None);
+            }
+
+            let lower = Type::from(conjunct);
+            let app = self.expand_application(app);
+
+            let nf = Self::make_normal_form(lower, app);
+            conjuncts.extend(nf.into_conjuncts());
+
+            return Ok(None);
+        }
+
+        Ok(Some(conjunct))
+    }
+
+    #[inline(always)]
     fn constrain_bases(
         &mut self,
         conjuncts: &mut Vec<Conjunct>,
