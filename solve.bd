@@ -1,4 +1,10 @@
+import std::list
+import std::debug
+import std::string
+
 fn main {
-  match (1, none)
-  | _ as _, _ => 0
+  list::empty
+  |> list::prepend 0
+  |> list::prepend 1
+  |> debug::print
 }

@@ -59,12 +59,79 @@ impl Tcx {
         }
     }
 
+    pub fn instantiate(&mut self, mut ty: Type) -> Type {
+        let mut subst = SeaHashMap::default();
+        self.instantiate_impl(&mut ty, &mut subst);
+        ty
+    }
+
+    fn instantiate_impl(&mut self, ty: &mut Type, subst: &mut SeaHashMap<Var, Var>) {
+        for conjunct in ty.conjuncts_mut() {
+            for var in conjunct.vars_mut() {
+                if let Some(&sub) = subst.get(var) {
+                    *var = sub;
+                    continue;
+                }
+
+                let new_var = Var::fresh();
+                subst.insert(*var, new_var);
+                subst.insert(new_var, new_var);
+
+                let mut bounds = self.bounds.get(var).cloned().unwrap_or_default();
+
+                self.instantiate_impl(&mut bounds.lower, subst);
+                self.instantiate_impl(&mut bounds.upper, subst);
+
+                self.bounds.insert(new_var, bounds);
+
+                *var = new_var;
+            }
+
+            for app in conjunct.apps_mut() {
+                for arg in app.args_mut() {
+                    self.instantiate_impl(arg, subst);
+                }
+            }
+
+            for base in conjunct.bases_mut() {
+                self.instantiate_base(base, subst);
+            }
+        }
+    }
+
+    fn instantiate_base(&mut self, base: &mut Base, subst: &mut SeaHashMap<Var, Var>) {
+        match base {
+            Base::None => {}
+
+            Base::Record { fields } => {
+                for (_, ty) in fields.iter_mut() {
+                    self.instantiate_impl(ty, subst);
+                }
+            }
+
+            Base::Tuple { fields } => {
+                for ty in fields.iter_mut() {
+                    self.instantiate_impl(ty, subst);
+                }
+            }
+
+            Base::Array { element } => {
+                self.instantiate_impl(element, subst);
+            }
+
+            Base::Function { input, output } => {
+                self.instantiate_impl(input, subst);
+                self.instantiate_impl(output, subst);
+            }
+        }
+    }
+
     fn constrain(&mut self, nf: Type, span: Span) -> Result<(), Diagnostic> {
         if !self.errors.is_empty() {
             return Ok(());
         }
 
-        let mut conjuncts = nf.conjuncts.clone();
+        let mut conjuncts = nf.into_conjuncts();
 
         while let Some(conjunct) = conjuncts.pop() {
             if self.cache.contains(&conjunct) {
@@ -96,7 +163,7 @@ impl Tcx {
             bounds.upper.inter_mut(upper.clone());
 
             let nf = Self::make_normal_form(bounds.lower.clone(), upper);
-            conjuncts.extend(nf.conjuncts);
+            conjuncts.extend(nf.into_conjuncts());
 
             return Ok(());
         }
@@ -112,7 +179,7 @@ impl Tcx {
             bounds.lower.union_mut(lower.clone());
 
             let nf = Self::make_normal_form(lower, bounds.upper.clone());
-            conjuncts.extend(nf.conjuncts);
+            conjuncts.extend(nf.into_conjuncts());
 
             return Ok(());
         }
@@ -126,7 +193,7 @@ impl Tcx {
             let app = self.expand_application(app);
 
             let nf = Self::make_normal_form(app, upper);
-            conjuncts.extend(nf.conjuncts);
+            conjuncts.extend(nf.into_conjuncts());
 
             return Ok(());
         }
@@ -140,7 +207,7 @@ impl Tcx {
             let app = self.expand_application(app);
 
             let nf = Self::make_normal_form(lower, app);
-            conjuncts.extend(nf.conjuncts);
+            conjuncts.extend(nf.into_conjuncts());
 
             return Ok(());
         }
@@ -152,6 +219,16 @@ impl Tcx {
             return Ok(());
         }
 
+        self.constrain_bases(conjuncts, lhs, rhs, span)
+    }
+
+    fn constrain_bases(
+        &mut self,
+        conjuncts: &mut Vec<Conjunct>,
+        lhs: Term,
+        rhs: Term,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
         match (lhs.base, rhs.base) {
             (
                 ref lhs @ Base::Record {
@@ -169,7 +246,7 @@ impl Tcx {
                     };
 
                     let nf = Self::make_normal_form(lhs_ty.clone(), rhs_ty.clone());
-                    conjuncts.extend(nf.conjuncts);
+                    conjuncts.extend(nf.into_conjuncts());
                 }
 
                 Ok(())
@@ -190,7 +267,7 @@ impl Tcx {
 
                 for (lhs_ty, rhs_ty) in lhs_fields.into_iter().zip(rhs_fields) {
                     let nf = Self::make_normal_form(lhs_ty, rhs_ty);
-                    conjuncts.extend(nf.conjuncts);
+                    conjuncts.extend(nf.into_conjuncts());
                 }
 
                 Ok(())
@@ -205,7 +282,7 @@ impl Tcx {
                 },
             ) => {
                 let nf = Self::make_normal_form(lhs_element, rhs_element);
-                conjuncts.extend(nf.conjuncts);
+                conjuncts.extend(nf.into_conjuncts());
 
                 Ok(())
             }
@@ -223,8 +300,8 @@ impl Tcx {
                 let input = Self::make_normal_form(rhs_input, lhs_input);
                 let output = Self::make_normal_form(lhs_output, rhs_output);
 
-                conjuncts.extend(input.conjuncts);
-                conjuncts.extend(output.conjuncts);
+                conjuncts.extend(input.into_conjuncts());
+                conjuncts.extend(output.into_conjuncts());
 
                 Ok(())
             }
@@ -266,7 +343,7 @@ impl Tcx {
     }
 
     fn expand_impl(ty: &mut Type, subst: &SeaHashMap<Var, &Type>) {
-        for mut conjunct in mem::take(&mut ty.conjuncts) {
+        for mut conjunct in mem::take(ty.conjuncts_mut()) {
             let mut new_type = Type::top();
 
             conjunct.positive.vars.retain(|var| {
@@ -287,20 +364,15 @@ impl Tcx {
                 }
             });
 
-            for app in &mut conjunct.positive.apps {
+            for app in conjunct.apps_mut() {
                 for arg in app.args_mut() {
                     Self::expand_impl(arg, subst);
                 }
             }
 
-            for app in &mut conjunct.negative.apps {
-                for arg in app.args_mut() {
-                    Self::expand_impl(arg, subst);
-                }
+            for base in conjunct.bases_mut() {
+                Self::expand_base(base, subst);
             }
-
-            Self::expand_base(&mut conjunct.positive.base, subst);
-            Self::expand_base(&mut conjunct.negative.base, subst);
 
             ty.union_mut(new_type.inter(conjunct.into()));
         }

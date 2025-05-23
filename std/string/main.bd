@@ -1,3 +1,5 @@
+import std::array
+
 fn append (suffix: str) (s: str) -> str {
   prepend s suffix
 }
@@ -10,3 +12,7 @@ extern fn chars (s: str) -> [str]
 
 #[link = "brad_str_split"]
 extern fn split (sep: str) (s: str) -> [str]
+
+fn len (s: str) -> int {
+  chars s |> array::len
+}

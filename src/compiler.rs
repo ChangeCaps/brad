@@ -2,6 +2,7 @@ use std::{
     fs,
     io::{self, Write},
     path::Path,
+    time::Instant,
 };
 
 use diagnostic::{Diagnostic, Report, Reporter, Source, SourceId, Sources};
@@ -178,7 +179,11 @@ impl<'a> Compiler<'a> {
         reporter: &mut dyn Reporter,
         writer: &mut impl Write,
     ) -> Result<String, ()> {
+        let t = Instant::now();
+
         let hir = self.lower2(reporter)?;
+
+        println!("Lowering took: {:?}", t.elapsed());
 
         crate::mir2::build(&hir);
 

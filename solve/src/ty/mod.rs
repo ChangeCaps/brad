@@ -1,4 +1,12 @@
-use std::{fmt, mem};
+use std::{
+    cmp, fmt,
+    hash::{Hash, Hasher},
+    mem,
+    sync::{
+        Arc,
+        atomic::{self, AtomicU64},
+    },
+};
 
 mod app;
 mod base;
@@ -7,25 +15,29 @@ mod var;
 
 pub use app::App;
 pub use base::Base;
+use seahash::SeaHasher;
 pub use tag::{Tag, Tags};
 pub use var::{Bounds, Var};
 
 /// A type in disjunctive normal form.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug)]
 pub struct Type {
-    pub conjuncts: Vec<Conjunct>,
+    hash: AtomicU64,
+    conjuncts: Arc<Vec<Conjunct>>,
 }
 
 impl Type {
-    pub const fn bottom() -> Self {
+    pub fn bottom() -> Self {
         Self {
-            conjuncts: Vec::new(),
+            hash: AtomicU64::new(0),
+            conjuncts: Arc::new(Vec::new()),
         }
     }
 
     pub fn top() -> Self {
         Self {
-            conjuncts: vec![Conjunct::top()],
+            hash: AtomicU64::new(0),
+            conjuncts: Arc::new(vec![Conjunct::top()]),
         }
     }
 
@@ -92,6 +104,19 @@ impl Type {
         Self::from(Term::from(Base::Array { element: self }))
     }
 
+    pub fn conjuncts(&self) -> &[Conjunct] {
+        &self.conjuncts
+    }
+
+    pub fn conjuncts_mut(&mut self) -> &mut Vec<Conjunct> {
+        self.invalidate_hash();
+        Arc::make_mut(&mut self.conjuncts)
+    }
+
+    pub fn into_conjuncts(self) -> Vec<Conjunct> {
+        Arc::unwrap_or_clone(self.conjuncts)
+    }
+
     pub fn union_mut(&mut self, other: Self) {
         *self = self.take().union(other);
     }
@@ -106,7 +131,7 @@ impl Type {
 
     #[must_use]
     pub fn union(mut self, other: Self) -> Self {
-        self.conjuncts.extend(other.conjuncts);
+        self.conjuncts_mut().extend(other.into_conjuncts());
         self.simplify_heuristic()
     }
 
@@ -114,14 +139,18 @@ impl Type {
     pub fn inter(self, other: Self) -> Self {
         let mut conjuncts = Vec::new();
 
-        for self_conjunct in self.conjuncts {
-            for other_conjunct in &other.conjuncts {
+        for self_conjunct in self.conjuncts() {
+            for other_conjunct in other.conjuncts() {
                 let conjunct = self_conjunct.clone().inter(other_conjunct.clone());
                 conjuncts.push(conjunct);
             }
         }
 
-        Self { conjuncts }.simplify_heuristic()
+        Self {
+            hash: AtomicU64::new(0),
+            conjuncts: Arc::new(conjuncts),
+        }
+        .simplify_heuristic()
     }
 
     /// Negate the type.
@@ -130,7 +159,7 @@ impl Type {
     pub fn neg(self) -> Self {
         let mut negative = Self::top();
 
-        for conjunct in self.conjuncts {
+        for conjunct in self.into_conjuncts() {
             let mut conjuncts = Vec::new();
 
             for tag in conjunct.positive.tags.iter() {
@@ -189,24 +218,52 @@ impl Type {
                 });
             }
 
-            negative = negative.inter(Self { conjuncts });
+            negative = negative.inter(Self {
+                hash: AtomicU64::new(0),
+                conjuncts: Arc::new(conjuncts),
+            });
         }
 
         negative.simplify_heuristic()
     }
 
     pub fn simplify_heuristic(mut self) -> Self {
+        let conjuncts = self.conjuncts_mut();
+
         // if we have a conjunct that is ⊤, we can remove all other conjuncts
-        if self.conjuncts.iter().any(Conjunct::is_top) {
-            self.conjuncts.clear();
-            self.conjuncts.push(Conjunct::top());
+        if conjuncts.iter().any(Conjunct::is_top) {
+            conjuncts.clear();
+            conjuncts.push(Conjunct::top());
             return self;
         }
 
-        self.conjuncts.sort_unstable();
-        self.conjuncts.dedup();
+        conjuncts.sort_unstable();
+        conjuncts.dedup();
 
         self
+    }
+
+    pub fn hash(&self) -> u64 {
+        let hash = self.hash.load(atomic::Ordering::Relaxed);
+
+        if hash == 0 {
+            let mut hasher = SeaHasher::new();
+
+            for conjunct in self.conjuncts.iter() {
+                conjunct.hash(&mut hasher);
+            }
+
+            let hash = hasher.finish();
+            self.hash.store(hash, atomic::Ordering::Relaxed);
+
+            hash
+        } else {
+            hash
+        }
+    }
+
+    fn invalidate_hash(&self) {
+        self.hash.store(0, atomic::Ordering::Relaxed);
     }
 
     pub(crate) fn take(&mut self) -> Self {
@@ -214,22 +271,64 @@ impl Type {
     }
 }
 
+impl Clone for Type {
+    fn clone(&self) -> Self {
+        let hash = self.hash.load(atomic::Ordering::Relaxed);
+
+        Self {
+            hash: AtomicU64::new(hash),
+            conjuncts: Arc::clone(&self.conjuncts),
+        }
+    }
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash() == other.hash()
+    }
+}
+
+impl Eq for Type {}
+
+impl PartialOrd for Type {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Type {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.hash().cmp(&other.hash())
+    }
+}
+
+impl Hash for Type {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(self.hash());
+    }
+}
+
+impl From<Vec<Conjunct>> for Type {
+    fn from(conjuncts: Vec<Conjunct>) -> Self {
+        Self {
+            hash: AtomicU64::new(0),
+            conjuncts: Arc::new(conjuncts),
+        }
+    }
+}
+
 impl From<Conjunct> for Type {
     fn from(conjunct: Conjunct) -> Self {
-        Self {
-            conjuncts: vec![conjunct],
-        }
+        Self::from(vec![conjunct])
     }
 }
 
 impl From<Term> for Type {
     fn from(term: Term) -> Self {
-        Self {
-            conjuncts: vec![Conjunct {
-                positive: term,
-                negative: Term::extreme(),
-            }],
-        }
+        Self::from(vec![Conjunct {
+            positive: term,
+            negative: Term::extreme(),
+        }])
     }
 }
 
@@ -256,6 +355,42 @@ impl Conjunct {
         let negative = self.negative.inter_negative(other.negative);
 
         Self { positive, negative }
+    }
+
+    pub fn vars(&self) -> impl DoubleEndedIterator<Item = Var> + '_ {
+        let pos = self.positive.vars.iter();
+        let neg = self.negative.vars.iter();
+
+        pos.chain(neg).copied()
+    }
+
+    pub fn vars_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut Var> + '_ {
+        let pos = self.positive.vars.iter_mut();
+        let neg = self.negative.vars.iter_mut();
+
+        pos.chain(neg)
+    }
+
+    pub fn apps(&self) -> impl DoubleEndedIterator<Item = &App> + '_ {
+        let pos = self.positive.apps.iter();
+        let neg = self.negative.apps.iter();
+
+        pos.chain(neg)
+    }
+
+    pub fn apps_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut App> + '_ {
+        let pos = self.positive.apps.iter_mut();
+        let neg = self.negative.apps.iter_mut();
+
+        pos.chain(neg)
+    }
+
+    pub fn bases(&self) -> impl DoubleEndedIterator<Item = &Base> + '_ {
+        [&self.positive.base, &self.negative.base].into_iter()
+    }
+
+    pub fn bases_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut Base> + '_ {
+        [&mut self.positive.base, &mut self.negative.base].into_iter()
     }
 }
 

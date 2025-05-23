@@ -497,7 +497,7 @@ impl ExprLowerer<'_, '_> {
             // importantly, if the body however is recursive, then we CANNOT
             // instantiate, as this would break the soundness of type inference
             let ty = match self.recurses(body_id) {
-                false => ty, //self.program.solver.instantiate(ty),
+                false => self.program.tcx.instantiate(ty),
                 true => ty,
             };
 
