@@ -6,15 +6,6 @@ pub use types::*;
 
 use solve::{Tag, Tags};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Tid(usize);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Bid(usize);
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Local(usize);
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Program {
     pub bodies: Bodies,

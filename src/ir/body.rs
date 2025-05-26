@@ -1,8 +1,13 @@
-use super::Bid;
 use crate::attribute::Attributes;
 use std::ops::{Index, IndexMut};
 
 use super::{Expr, Tid};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Bid(usize);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Local(usize);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Body {

@@ -1,6 +1,8 @@
-use super::Tid;
 use solve::Tags;
 use std::ops::{Index, IndexMut};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Tid(usize);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Type {
@@ -33,10 +35,7 @@ impl Types {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (Tid, &Type)> {
-        self.types
-            .iter()
-            .enumerate()
-            .map(|(id, ty)| (Tid(id), ty))
+        self.types.iter().enumerate().map(|(id, ty)| (Tid(id), ty))
     }
 }
 
