@@ -43,6 +43,20 @@ impl Base {
         matches!(self, Self::None)
     }
 
+    pub fn complexity(&self) -> usize {
+        match self {
+            Base::None => 0,
+
+            Base::Record { fields } => fields.iter().map(|(_, ty)| ty.complexity()).sum(),
+
+            Base::Tuple { fields } => fields.iter().map(Type::complexity).sum(),
+
+            Base::Array { element } => element.complexity(),
+
+            Base::Function { input, output } => input.complexity() + output.complexity(),
+        }
+    }
+
     pub fn is_subtype_heuristic(&self, other: &Self) -> bool {
         match (self, other) {
             (

@@ -3,9 +3,9 @@ import std::io
 import std::error
 
 fn main -> none {
-  fs::open "./tests/file_io.bd" "r" 
+  fs::file::open "./tests/file_io.bd" "r" 
     |> error::assert
-    |> fs::read
+    |> fs::file::read
     |> error::assert
     |> io::print
 }

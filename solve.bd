@@ -1,10 +1,7 @@
-import std::list
-import std::debug
-import std::string
-
 fn main {
-  list::empty
-  |> list::prepend 0
-  |> list::prepend 1
-  |> debug::print
+  let x = foo
+  let y = x 0
+  let z = y 1
 }
+
+fn foo a b => a + b

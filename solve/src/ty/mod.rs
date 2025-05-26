@@ -1,6 +1,9 @@
 use std::{
-    cmp, fmt,
-    hash::{Hash, Hasher},
+    cell::RefCell,
+    cmp,
+    collections::HashMap,
+    fmt,
+    hash::{BuildHasherDefault, Hash, Hasher},
     mem,
     sync::{
         Arc,
@@ -15,9 +18,35 @@ mod var;
 
 pub use app::App;
 pub use base::Base;
-use seahash::SeaHasher;
 pub use tag::{Tag, Tags};
 pub use var::{Bounds, Var};
+
+use seahash::SeaHasher;
+
+macro_rules! cache {
+    ($key:expr, $key_type:ty, $complexity:expr, $result:expr $(,)?) => {{
+        thread_local! {
+            static CACHE: RefCell<HashMap<$key_type, Type, BuildHasherDefault<SeaHasher>>> = Default::default();
+        }
+
+        if $complexity < 16 {
+            return $result;
+        }
+
+        if let Some(cached) = CACHE.with_borrow(|cache| cache.get(&$key).cloned()) {
+            return cached;
+        }
+
+        let key = $key.clone();
+        let result = $result;
+
+        CACHE.with_borrow_mut(|cache| {
+            cache.insert(key, result.clone());
+        });
+
+        result
+    }};
+}
 
 /// A type in disjunctive normal form.
 #[derive(Debug)]
@@ -130,13 +159,31 @@ impl Type {
     }
 
     #[must_use]
-    pub fn union(mut self, other: Self) -> Self {
+    pub fn union(self, other: Self) -> Self {
+        cache!(
+            (self.clone(), other.clone()),
+            (Type, Type),
+            (self.complexity() + other.complexity()),
+            self.union_impl(other)
+        )
+    }
+
+    fn union_impl(mut self, other: Self) -> Self {
         self.conjuncts_mut().extend(other.into_conjuncts());
         self.simplify_heuristic()
     }
 
     #[must_use]
     pub fn inter(self, other: Self) -> Self {
+        cache!(
+            (self.clone(), other.clone()),
+            (Type, Type),
+            (self.complexity() + other.complexity()),
+            self.inter_impl(other)
+        )
+    }
+
+    fn inter_impl(self, other: Self) -> Self {
         let mut conjuncts = Vec::new();
 
         for self_conjunct in self.into_conjuncts() {
@@ -157,6 +204,10 @@ impl Type {
     #[must_use]
     #[allow(clippy::should_implement_trait)]
     pub fn neg(self) -> Self {
+        cache!(self, Type, self.complexity(), self.neg_impl())
+    }
+
+    fn neg_impl(self) -> Self {
         let mut negative = Self::top();
 
         for conjunct in self.into_conjuncts() {
@@ -229,7 +280,17 @@ impl Type {
         negative
     }
 
-    pub fn simplify_heuristic(mut self) -> Self {
+    #[inline(always)]
+    pub fn simplify_heuristic(self) -> Self {
+        cache!(
+            self,
+            Type,
+            self.complexity(),
+            self.simplify_heuristic_impl(),
+        )
+    }
+
+    fn simplify_heuristic_impl(mut self) -> Self {
         let conjuncts = self.conjuncts_mut();
 
         for i in 0..conjuncts.len() {
@@ -239,7 +300,9 @@ impl Type {
                 if conjuncts[i].is_subtype_heuristic(&conjuncts[j]) {
                     conjuncts.remove(i);
                     break;
-                } else if conjuncts[j].is_subtype_heuristic(&conjuncts[i]) {
+                }
+
+                if conjuncts[j].is_subtype_heuristic(&conjuncts[i]) {
                     conjuncts.remove(j);
                 } else {
                     j += 1;
@@ -269,6 +332,10 @@ impl Type {
         true
     }
 
+    pub fn complexity(&self) -> usize {
+        self.conjuncts.iter().map(Conjunct::complexity).sum()
+    }
+
     #[inline(always)]
     pub fn hash(&self) -> u64 {
         let hash = self.hash.load(atomic::Ordering::Relaxed);
@@ -276,8 +343,8 @@ impl Type {
         if hash == 0 {
             let mut hasher = SeaHasher::new();
 
-            for conjunct in self.conjuncts.iter() {
-                conjunct.hash(&mut hasher);
+            for conjunct in self.conjuncts() {
+                Hash::hash(conjunct, &mut hasher);
             }
 
             let hash = hasher.finish();
@@ -314,7 +381,7 @@ impl Clone for Type {
 impl PartialEq for Type {
     #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
-        self.hash() == other.hash()
+        self.conjuncts == other.conjuncts
     }
 }
 
@@ -432,6 +499,16 @@ impl Conjunct {
             && self.positive.is_subtype_heuristic(&other.positive)
             && self.negative.is_subtype_heuristic(&other.negative)
     }
+
+    pub fn complexity(&self) -> usize {
+        self.positive.complexity() + self.negative.complexity()
+    }
+
+    pub fn hash(&self) -> u64 {
+        let mut hasher = SeaHasher::new();
+        Hash::hash(self, &mut hasher);
+        hasher.finish()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -452,6 +529,10 @@ impl Term {
             tags: Tags::new(),
             base: Base::None,
         }
+    }
+
+    pub fn complexity(&self) -> usize {
+        self.vars.len() + self.apps.len() + self.tags.len() + self.base.complexity()
     }
 
     pub fn is_extreme(&self) -> bool {
