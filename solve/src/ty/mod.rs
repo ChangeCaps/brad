@@ -226,23 +226,47 @@ impl Type {
             negative = negative.inter(term);
         }
 
-        negative.simplify_heuristic()
+        negative
     }
 
     pub fn simplify_heuristic(mut self) -> Self {
         let conjuncts = self.conjuncts_mut();
 
-        // if we have a conjunct that is ⊤, we can remove all other conjuncts
-        if conjuncts.iter().any(Conjunct::is_top) {
-            conjuncts.clear();
-            conjuncts.push(Conjunct::top());
-            return self;
+        for i in 0..conjuncts.len() {
+            let mut j = i + 1;
+
+            while j < conjuncts.len() {
+                if conjuncts[i].is_subtype_heuristic(&conjuncts[j]) {
+                    conjuncts.remove(i);
+                    break;
+                } else if conjuncts[j].is_subtype_heuristic(&conjuncts[i]) {
+                    conjuncts.remove(j);
+                } else {
+                    j += 1;
+                }
+            }
         }
 
-        conjuncts.sort_unstable();
-        conjuncts.dedup();
-
         self
+    }
+
+    pub fn is_subtype_heuristic(&self, other: &Self) -> bool {
+        for self_conjunct in self.conjuncts() {
+            let mut is_subtype = false;
+
+            for other_conjunct in other.conjuncts() {
+                if self_conjunct.is_subtype_heuristic(other_conjunct) {
+                    is_subtype = true;
+                    break;
+                }
+            }
+
+            if !is_subtype {
+                return false;
+            }
+        }
+
+        true
     }
 
     #[inline(always)]
@@ -401,6 +425,13 @@ impl Conjunct {
     pub fn bases_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut Base> + '_ {
         [&mut self.positive.base, &mut self.negative.base].into_iter()
     }
+
+    pub fn is_subtype_heuristic(&self, other: &Self) -> bool {
+        (self.positive.is_extreme() && other.positive.is_extreme()
+            || self.negative.is_extreme() && other.negative.is_extreme())
+            && self.positive.is_subtype_heuristic(&other.positive)
+            && self.negative.is_subtype_heuristic(&other.negative)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -425,6 +456,14 @@ impl Term {
 
     pub fn is_extreme(&self) -> bool {
         self.vars.is_empty() && self.apps.is_empty() && self.tags.is_empty() && self.base.is_none()
+    }
+
+    /// Check if `self` is a subtype of `other` using a heuristic.
+    pub fn is_subtype_heuristic(&self, other: &Self) -> bool {
+        self.tags.is_subset(&other.tags)
+            && other.vars.iter().all(|v| self.vars.contains(v))
+            && other.apps.iter().all(|a| self.apps.contains(a))
+            && self.base.is_subtype_heuristic(&other.base)
     }
 
     pub fn display(&self, polarity: bool) -> impl fmt::Display + '_ {
@@ -605,5 +644,30 @@ impl fmt::Display for TermDisplay<'_> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_type_subtype_heuristic() {
+        let a = Type::int();
+        let b = Type::float();
+
+        assert!(a.is_subtype_heuristic(&a));
+        assert!(!a.is_subtype_heuristic(&b));
+        assert!(!b.is_subtype_heuristic(&a));
+
+        let b = b.union(a.clone());
+
+        assert!(a.is_subtype_heuristic(&b));
+        assert!(!b.is_subtype_heuristic(&a));
+
+        let b = Type::int().inter(Type::float());
+
+        assert!(!a.is_subtype_heuristic(&b));
+        assert!(b.is_subtype_heuristic(&a));
     }
 }

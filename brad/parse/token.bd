@@ -72,7 +72,7 @@ type token::str_
 type token::true_
 type token::type_
 
-alias token = token::ident 
+type token = token::ident 
            | token::string 
            | token::integer 
            | token::floating

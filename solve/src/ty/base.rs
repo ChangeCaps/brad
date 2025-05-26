@@ -43,6 +43,79 @@ impl Base {
         matches!(self, Self::None)
     }
 
+    pub fn is_subtype_heuristic(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Base::Record {
+                    fields: self_fields,
+                },
+                Base::Record {
+                    fields: other_fields,
+                },
+            ) => {
+                for (name, self_ty) in self_fields.iter() {
+                    if let Some((_, other_ty)) = other_fields.iter().find(|(n, _)| name == n) {
+                        if !self_ty.is_subtype_heuristic(other_ty) {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+
+                true
+            }
+
+            (
+                Base::Tuple {
+                    fields: self_fields,
+                },
+                Base::Tuple {
+                    fields: other_fields,
+                },
+            ) => {
+                if self_fields.len() != other_fields.len() {
+                    return false;
+                }
+
+                for (self_field, other_field) in self_fields.iter().zip(other_fields) {
+                    if !self_field.is_subtype_heuristic(other_field) {
+                        return false;
+                    }
+                }
+
+                true
+            }
+
+            (
+                Base::Array {
+                    element: self_element,
+                },
+                Base::Array {
+                    element: other_element,
+                },
+            ) => self_element.is_subtype_heuristic(other_element),
+
+            (
+                Base::Function {
+                    input: self_input,
+                    output: self_output,
+                },
+                Base::Function {
+                    input: other_input,
+                    output: other_output,
+                },
+            ) => {
+                self_input.is_subtype_heuristic(other_input)
+                    && other_output.is_subtype_heuristic(self_output)
+            }
+
+            (Base::None, Base::None) => true,
+
+            (_, _) => false,
+        }
+    }
+
     #[must_use]
     pub fn inter(self, other: Self) -> Self {
         match (self, other) {
