@@ -8,6 +8,12 @@ pub struct Source {
 #[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct SourceId(pub u32);
 
+impl Default for SourceId {
+    fn default() -> Self {
+        SourceId(u32::MIN)
+    }
+}
+
 #[derive(Default)]
 pub struct Sources {
     sources: Vec<Source>,
@@ -15,7 +21,7 @@ pub struct Sources {
 
 impl Sources {
     pub fn new() -> Sources {
-        Default::default()
+        Sources::default()
     }
 
     pub fn push(&mut self, source: Source) -> SourceId {

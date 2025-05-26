@@ -8,9 +8,9 @@ use std::{
 use diagnostic::{Diagnostic, Report, Reporter, Source, SourceId, Sources};
 
 use crate::{
-    ast, hir, hir2,
-    interpret::Interpreter,
-    lower, lower2, lua, mir,
+    ast, hir2,
+    lower2, lua,
+    v1::{hir, lower, mir, interpret::Interpreter},
     parse::{self, Interner, Tokens},
 };
 
@@ -179,14 +179,7 @@ impl<'a> Compiler<'a> {
         reporter: &mut dyn Reporter,
         writer: &mut impl Write,
     ) -> Result<String, ()> {
-        let t = Instant::now();
-
         let hir = self.lower2(reporter)?;
-
-        println!("Lowering took: {:?}", t.elapsed());
-
-        crate::mir2::build(&hir);
-
         lua::codegen(writer, &hir).unwrap();
         Ok(String::new())
     }
@@ -219,11 +212,11 @@ impl<'a> Compiler<'a> {
         //let mut formatter = lir::Formatter::new(std::io::stdout());
         //formatter.format(&lir).unwrap();
 
-        Ok(crate::llvm_codegen::codegen(sir))
+        Ok(crate::v1::llvm_codegen::codegen(sir))
     }
 
-    pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Diagnostic> {
-        crate::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
+    pub fn jit(&self, entrypoint: &str, llvm_ir: String) -> Result<(), Report> {
+        crate::v1::llvm_codegen::jit(llvm_ir.as_str(), entrypoint);
         Ok(())
     }
 }

@@ -1,10 +1,11 @@
 use std::{collections::BTreeMap, mem::discriminant, sync::LazyLock};
-
+use std::sync::Mutex;
 use clap::Args;
 use diagnostic::{SourceId, Span};
 use rand::{
     distr::{weighted::WeightedIndex, Distribution},
     prelude::IndexedRandom,
+    SeedableRng,
     Rng,
 };
 
@@ -12,6 +13,8 @@ use crate::{
     ast,
     parse::{Interner, Token},
 };
+
+pub static INTERNER: LazyLock<Mutex<Interner>> = LazyLock::new(Default::default);
 
 #[allow(non_upper_case_globals)]
 const span: Span = Span::new(SourceId(0), 0, 0);
@@ -120,6 +123,8 @@ pub struct GeneratorOptions {
     pub max_complexity: usize,
     #[clap(long, default_value = "100")]
     pub max_bruteforce_attempts: usize,
+    #[clap(long)]
+    pub seed: Option<u64>,
 }
 
 impl Default for GeneratorOptions {
@@ -143,20 +148,22 @@ impl Default for GeneratorOptions {
             max_depth: 1,
             max_complexity: 30,
             max_bruteforce_attempts: 100,
+            seed: None,
         }
     }
 }
 
+#[derive(Debug)]
 pub struct Generator {
     opts: GeneratorOptions,
-    rng: rand::rngs::ThreadRng,
-    interner: Interner,
+    rng: rand::rngs::StdRng,
 
     /// Types (Basic types, ADT's, aliases to ADT's, new types)
     tys: Types,
     bodies: Vec<(&'static str, ast::Func)>,
 }
 
+#[derive(Debug)]
 struct GeneratorCtx {
     name: &'static str,
     depth: usize,
@@ -166,6 +173,7 @@ struct GeneratorCtx {
     computed_locals: BTreeMap<&'static str, ast::Ty>,
 }
 
+#[derive(Debug)]
 struct Types {
     tys: Vec<ast::Ty>,
     adts: Vec<ast::Ty>,
@@ -175,10 +183,15 @@ struct Types {
 
 impl Generator {
     pub fn new(opts: GeneratorOptions) -> Self {
+        let rng = if let Some(seed) = opts.seed {
+            rand::rngs::StdRng::seed_from_u64(seed)
+        } else {
+            rand::rngs::StdRng::from_os_rng()
+        };
+
         Self {
             opts,
-            rng: rand::rng(),
-            interner: Interner::new(),
+            rng,
             tys: Types::new(),
             bodies: Vec::new(),
         }
@@ -208,7 +221,8 @@ impl Generator {
         // Generate a set of custom types.
         for _ in 0..self.rng.random_range(0..=self.opts.max_tys_rounds) {
             // Generate a random union type.
-            let mut tys: Vec<_> = (2..=self.opts.max_union_size).map(|_| self.ty()).collect();
+            let n = self.rng.random_range(2..=self.opts.max_union_size);
+            let mut tys: Vec<_> = (0..=n).map(|_| self.ty()).collect();
             tys.sort();
             tys.dedup();
 
@@ -218,7 +232,8 @@ impl Generator {
             }
 
             // Generate a random tuple
-            let tys: Vec<_> = (2..=self.opts.max_tuple_size).map(|_| self.ty()).collect();
+            let n = self.rng.random_range(2..=self.opts.max_tuple_size);
+            let tys: Vec<_> = (0..=n).map(|_| self.ty()).collect();
 
             assert!(tys.len() >= 2);
 
@@ -233,14 +248,18 @@ impl Generator {
                 });
             }
 
+            let n = self.rng.random_range(1..=self.opts.max_record_size);
+
             // Generate a random record
-            let fields = (0..self.opts.max_record_size)
+            let fields = (0..=n)
                 .map(|_| ast::Field {
                     name: self.name(None),
                     ty: self.ty(),
                     span,
                 })
                 .collect::<Vec<_>>();
+
+            assert!(!fields.is_empty(), "Record must have at least one field");
 
             self.tys.adts.push(ast::Ty::Record { fields, span });
 
@@ -281,7 +300,7 @@ impl Generator {
             let name = if i != 0 {
                 self.name(None)
             } else {
-                self.interner.intern("main")
+                INTERNER.lock().unwrap().intern("main")
             };
 
             // Do not create duplicate function names.
@@ -329,18 +348,25 @@ impl Generator {
             .iter()
             .for_each(|(_, body)| decls.push(ast::Decl::Func(body.clone())));
 
-        ast::Module { decls }
+        ast::Module {
+            attrs: Default::default(),
+            decls,
+        }
     }
 
     /// Generate a random (interned) name.
     fn name(&mut self, ctx: Option<&GeneratorCtx>) -> &'static str {
-        let len = self.rng.random_range(1..=10);
-        let mut name = String::with_capacity(len);
-
         let charset_first = b"abcdefghijklmnopqrstuvwxyz";
         let charset_full = b"abcdefghijklmnopqrstuvwxyz1234567890_--''";
 
+        let mut lower_bound = 2;
+
         for _ in 0..self.opts.max_bruteforce_attempts {
+            let len = self.rng.random_range(lower_bound..=lower_bound * 2);
+            let mut name = String::with_capacity(len);
+
+            lower_bound *= 2;
+
             name.push(*charset_first.choose(&mut self.rng).unwrap() as char);
 
             for _ in 0..len - 1 {
@@ -371,7 +397,7 @@ impl Generator {
                 continue;
             }
 
-            return self.interner.intern(name.as_str());
+            return INTERNER.lock().unwrap().intern(name.as_str());
         }
 
         unreachable!()
@@ -840,7 +866,7 @@ impl Types {
     }
 
     /// Return any random type
-    fn random_any(&self, rng: &mut rand::rngs::ThreadRng) -> ast::Ty {
+    fn random_any(&self, rng: &mut impl Rng) -> ast::Ty {
         let weights = [
             self.tys.len(),
             self.adts.len(),
@@ -874,7 +900,7 @@ impl Types {
     }
 
     /// Return a random *tagged* type.
-    fn random_tagged(&self, rng: &mut rand::rngs::ThreadRng) -> ast::Ty {
+    fn random_tagged(&self, rng: &mut impl Rng) -> ast::Ty {
         let weights = [self.tys.len(), self.named_tys.len()];
 
         let index = WeightedIndex::new(weights).unwrap().sample(rng);

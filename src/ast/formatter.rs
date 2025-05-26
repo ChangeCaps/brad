@@ -1,4 +1,5 @@
 use crate::ast::{Binding, CallExpr, Decl, Expr, Func, Generics, Module, Pattern, TupleExpr, Ty};
+use crate::attribute::Attributes;
 use clap::Args;
 use std::{io, io::Write};
 
@@ -48,6 +49,8 @@ impl<W: Write> Formatter<W> {
     }
 
     pub fn format_module(&mut self, module: &Module) -> Result {
+        self.format_attributes(&module.attrs, true)?;
+
         for decl in &module.decls {
             self.format_decl(decl)?;
         }
@@ -59,6 +62,8 @@ impl<W: Write> Formatter<W> {
         match decl {
             Decl::Func(func_decl) => {
                 writeln!(self.writer)?;
+
+                self.format_attributes(&func_decl.attrs, false)?;
 
                 if func_decl.is_extern {
                     write!(self.writer, "extern ")?;
@@ -107,6 +112,7 @@ impl<W: Write> Formatter<W> {
                     ..
                 } = func_decl
                 {
+                    write!(self.writer, " ")?;
                     self.format_expr(body)?
                 };
 
@@ -196,9 +202,20 @@ impl<W: Write> Formatter<W> {
                 self.format_expr(&unary_expr.target)
             }
             Expr::Binary(binary_expr) => {
+                if self.call_depth > 0 {
+                    write!(self.writer, "(")?;
+                }
+                self.call_depth += 1;
                 self.format_expr(&binary_expr.lhs)?;
                 write!(self.writer, " {} ", binary_expr.op)?;
-                self.format_expr(&binary_expr.rhs)
+                self.format_expr(&binary_expr.rhs)?;
+                self.call_depth -= 1;
+
+                if self.call_depth > 0 {
+                    write!(self.writer, ")")?;
+                }
+
+                Ok(())
             }
             Expr::Call(CallExpr { target, input, .. }) => {
                 if self.call_depth > 0 {
@@ -267,7 +284,7 @@ impl<W: Write> Formatter<W> {
                 self.format_expr(&let_expr.value)
             }
             Expr::Block(block_expr) => {
-                write!(self.writer, " {{")?;
+                write!(self.writer, "{{")?;
                 self.indent(|f| {
                     for expr in &block_expr.exprs {
                         f.write_indent()?;
@@ -284,6 +301,25 @@ impl<W: Write> Formatter<W> {
                 write!(self.writer, "}}")
             }
         }
+    }
+
+    pub fn format_attributes(&mut self, attrs: &Attributes, top_level: bool) -> Result {
+        for attr in &attrs.attributes {
+            write!(
+                self.writer,
+                "#{}[{}",
+                if top_level { "!" } else { "" },
+                attr.name
+            )?;
+
+            if let Some(value) = &attr.value {
+                write!(self.writer, " = {}", value)?;
+            }
+
+            writeln!(self.writer, "]")?;
+        }
+
+        Ok(())
     }
 
     pub fn format_binding(&mut self, binding: &Binding) -> Result {

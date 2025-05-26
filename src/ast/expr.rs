@@ -2,9 +2,9 @@ use std::fmt;
 
 use diagnostic::Span;
 
-use super::{Path, Ty};
+use super::{Path, Spanned, Ty};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Literal(Literal),
     List(ListExpr),
@@ -26,30 +26,55 @@ pub enum Expr {
     Block(BlockExpr),
 }
 
-impl Expr {
-    pub fn span(&self) -> Span {
+impl Spanned for Expr {
+    fn span(&self) -> Span {
         match self {
-            Self::Literal(e) => e.span(),
-            Self::List(e) => e.span,
-            Self::Record(e) => e.span,
-            Self::Tuple(e) => e.span,
-            Self::Path(e) => e.span,
-            Self::Index(e) => e.span,
-            Self::Field(e) => e.span,
-            Self::Unary(e) => e.span,
-            Self::Binary(e) => e.span,
-            Self::Call(e) => e.span,
-            Self::Lambda(e) => e.span,
-            Self::Assign(e) => e.span,
-            Self::Ref(e) => e.span,
-            Self::Match(e) => e.span,
-            Self::Loop(e) => e.span,
-            Self::Break(e) => e.span,
-            Self::Let(e) => e.span,
-            Self::Block(e) => e.span,
+            Self::Literal(lit) => lit.span(),
+            Self::List(list) => list.span(),
+            Self::Record(record) => record.span(),
+            Self::Tuple(tuple) => tuple.span(),
+            Self::Path(path) => path.span(),
+            Self::Index(index) => index.span(),
+            Self::Field(field) => field.span(),
+            Self::Unary(unary) => unary.span(),
+            Self::Binary(binary) => binary.span(),
+            Self::Call(call) => call.span(),
+            Self::Lambda(lambda) => lambda.span(),
+            Self::Assign(assign) => assign.span(),
+            Self::Ref(ref_expr) => ref_expr.span(),
+            Self::Match(match_expr) => match_expr.span(),
+            Self::Loop(loop_expr) => loop_expr.span(),
+            Self::Break(break_expr) => break_expr.span(),
+            Self::Let(let_expr) => let_expr.span(),
+            Self::Block(block) => block.span(),
         }
     }
 
+    fn reset_spans(&mut self) {
+        match self {
+            Self::Literal(lit) => lit.reset_spans(),
+            Self::List(list) => list.reset_spans(),
+            Self::Record(record) => record.reset_spans(),
+            Self::Tuple(tuple) => tuple.reset_spans(),
+            Self::Path(path) => path.reset_spans(),
+            Self::Index(index) => index.reset_spans(),
+            Self::Field(field) => field.reset_spans(),
+            Self::Unary(unary) => unary.reset_spans(),
+            Self::Binary(binary) => binary.reset_spans(),
+            Self::Call(call) => call.reset_spans(),
+            Self::Lambda(lambda) => lambda.reset_spans(),
+            Self::Assign(assign) => assign.reset_spans(),
+            Self::Ref(ref_expr) => ref_expr.reset_spans(),
+            Self::Match(match_expr) => match_expr.reset_spans(),
+            Self::Loop(loop_expr) => loop_expr.reset_spans(),
+            Self::Break(break_expr) => break_expr.reset_spans(),
+            Self::Let(let_expr) => let_expr.reset_spans(),
+            Self::Block(block) => block.reset_spans(),
+        }
+    }
+}
+
+impl Expr {
     pub fn empty(span: Span) -> Self {
         Self::Block(BlockExpr {
             exprs: Vec::new(),
@@ -58,7 +83,7 @@ impl Expr {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
     Int { value: i64, span: Span },
     Float { value: f64, span: Span },
@@ -68,8 +93,8 @@ pub enum Literal {
     None { span: Span },
 }
 
-impl Literal {
-    pub fn span(&self) -> Span {
+impl Spanned for Literal {
+    fn span(&self) -> Span {
         match self {
             Self::Int { span, .. } => *span,
             Self::Float { span, .. } => *span,
@@ -77,6 +102,17 @@ impl Literal {
             Self::True { span } => *span,
             Self::False { span } => *span,
             Self::None { span } => *span,
+        }
+    }
+
+    fn reset_spans(&mut self) {
+        match self {
+            Self::Int { span, .. } => *span = Span::default(),
+            Self::Float { span, .. } => *span = Span::default(),
+            Self::String { span, .. } => *span = Span::default(),
+            Self::True { span } => *span = Span::default(),
+            Self::False { span } => *span = Span::default(),
+            Self::None { span } => *span = Span::default(),
         }
     }
 }
@@ -94,53 +130,141 @@ impl std::fmt::Display for Literal {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ListExpr {
     pub items: Vec<Expr>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for ListExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.items.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct RecordExpr {
     pub fields: Vec<FieldInit>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for RecordExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.fields.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct FieldInit {
     pub name: &'static str,
     pub value: Expr,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for FieldInit {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.value.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct IndexExpr {
     pub target: Box<Expr>,
     pub index: Box<Expr>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for IndexExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.target.reset_spans();
+        self.index.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TupleExpr {
     pub items: Vec<Expr>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for TupleExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.items.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct FieldExpr {
     pub target: Box<Expr>,
     pub name: &'static str,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl FieldExpr {
+    pub fn new(target: Expr, name: &'static str, span: Span) -> Self {
+        Self {
+            target: Box::new(target),
+            name,
+            span,
+        }
+    }
+}
+
+impl Spanned for FieldExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.target.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnaryExpr {
     pub op: UnaryOp,
     pub target: Box<Expr>,
     pub span: Span,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+impl Spanned for UnaryExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.target.reset_spans();
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum UnaryOp {
     Neg,
     Not,
@@ -159,7 +283,7 @@ impl fmt::Display for UnaryOp {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BinaryExpr {
     pub lhs: Box<Expr>,
     pub rhs: Box<Expr>,
@@ -167,7 +291,19 @@ pub struct BinaryExpr {
     pub span: Span,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+impl Spanned for BinaryExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.lhs.reset_spans();
+        self.rhs.reset_spans();
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -230,48 +366,119 @@ impl fmt::Display for BinaryOp {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CallExpr {
     pub target: Box<Expr>,
     pub input: Box<Expr>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for CallExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.target.reset_spans();
+        self.input.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct LambdaExpr {
     pub args: Vec<Binding>,
     pub body: Box<Expr>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for LambdaExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.args.reset_spans();
+        self.body.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct AssignExpr {
     pub target: Box<Expr>,
     pub value: Box<Expr>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for AssignExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.target.reset_spans();
+        self.value.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct RefExpr {
     pub target: Box<Expr>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for RefExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.target.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct MatchExpr {
     pub target: Box<Expr>,
     pub arms: Vec<MatchArm>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for MatchExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.target.reset_spans();
+        self.arms.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct MatchArm {
     pub pattern: Pattern,
     pub body: Expr,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for MatchArm {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.pattern.reset_spans();
+        self.body.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Pattern {
     Ty {
         ty: Ty,
@@ -280,15 +487,25 @@ pub enum Pattern {
     },
 }
 
-impl Pattern {
-    pub fn span(&self) -> Span {
+impl Spanned for Pattern {
+    fn span(&self) -> Span {
         match self {
             Self::Ty { span, .. } => *span,
         }
     }
+
+    fn reset_spans(&mut self) {
+        match self {
+            Self::Ty { span, ty, binding } => {
+                *span = Span::default();
+                ty.reset_spans();
+                binding.reset_spans();
+            }
+        }
+    }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Binding {
     Wild {
         span: Span,
@@ -306,6 +523,27 @@ pub enum Binding {
     },
 }
 
+impl Spanned for Binding {
+    fn span(&self) -> Span {
+        match self {
+            Self::Wild { span } => *span,
+            Self::Bind { span, .. } => *span,
+            Self::Tuple { span, .. } => *span,
+        }
+    }
+
+    fn reset_spans(&mut self) {
+        match self {
+            Self::Wild { span } => *span = Span::default(),
+            Self::Bind { span, .. } => *span = Span::default(),
+            Self::Tuple { span, bindings } => {
+                *span = Span::default();
+                bindings.reset_spans();
+            }
+        }
+    }
+}
+
 impl Binding {
     pub fn span(&self) -> Span {
         match self {
@@ -316,19 +554,41 @@ impl Binding {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LoopExpr {
     pub body: Box<Expr>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for LoopExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.body.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct BreakExpr {
     pub value: Option<Box<Expr>>,
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for BreakExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.value.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct LetExpr {
     pub binding: Binding,
     pub ty: Option<Ty>,
@@ -336,8 +596,32 @@ pub struct LetExpr {
     pub span: Span,
 }
 
-#[derive(Clone, Debug)]
+impl Spanned for LetExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.binding.reset_spans();
+        self.ty.reset_spans();
+        self.value.reset_spans();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct BlockExpr {
     pub exprs: Vec<Expr>,
     pub span: Span,
+}
+
+impl Spanned for BlockExpr {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.exprs.reset_spans();
+    }
 }

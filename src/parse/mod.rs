@@ -24,6 +24,7 @@ use diagnostic::{Diagnostic, Span};
 use crate::ast;
 
 pub fn module(input: &mut Tokens) -> Result<ast::Module, Diagnostic> {
+    let attrs = attributes(input, true)?;
     let mut decls = Vec::new();
 
     while !input.is(Token::Eof) {
@@ -40,7 +41,7 @@ pub fn module(input: &mut Tokens) -> Result<ast::Module, Diagnostic> {
         decls.push(decl(input)?);
     }
 
-    Ok(ast::Module { decls })
+    Ok(ast::Module { attrs, decls })
 }
 
 pub fn ident(input: &mut Tokens) -> Result<(&'static str, Span), Diagnostic> {

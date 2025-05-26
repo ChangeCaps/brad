@@ -46,9 +46,7 @@ impl From<Vec<Diagnostic>> for Report {
 
 impl Report {
     pub fn new() -> Report {
-        Report {
-            diagnostics: Vec::new(),
-        }
+        Report::default()
     }
 
     pub fn push(&mut self, diagnostic: Diagnostic) {

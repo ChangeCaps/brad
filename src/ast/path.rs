@@ -2,7 +2,7 @@ use std::fmt;
 
 use diagnostic::Span;
 
-use super::generic::Spec;
+use super::{generic::Spec, Spanned};
 
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Path {
@@ -11,10 +11,31 @@ pub struct Path {
     pub span: Span,
 }
 
+impl Spanned for Path {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+        self.segments.reset_spans();
+    }
+}
+
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct PathSegment {
     pub name: &'static str,
     pub span: Span,
+}
+
+impl Spanned for PathSegment {
+    fn span(&self) -> Span {
+        self.span
+    }
+
+    fn reset_spans(&mut self) {
+        self.span = Span::default();
+    }
 }
 
 impl AsRef<str> for PathSegment {

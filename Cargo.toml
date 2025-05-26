@@ -4,29 +4,30 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["diagnostic", "solve"]
+members = ["diagnostic", "solve", "fuzz"]
 
 [workspace.dependencies]
 diagnostic = { package = "brad-diagnostic", path = "diagnostic" }
 solve      = { package = "brad-solve",      path = "solve"      }
 
-[features]
-default = ["llvm-sys-191"]
+[lib]
+name = "brad"
+path = "src/main.rs"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "brad"
+path = "src/main.rs"
 
 [dependencies]
 colored = "3.0"
 clap = { version = "4.5.31", features = ["derive"] }
 rand = "0.9.0"
 seahash = "4.1.0"
+llvm-sys-191 = { package = "llvm-sys", version = "191.0.0" }
 
 diagnostic = { workspace = true }
 solve      = { workspace = true }
-
-[dependencies.llvm-sys-191]
-package = "llvm-sys"
-version = "191.0.0"
-optional = true
-
 
 [profile.release]
 lto = true
