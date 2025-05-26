@@ -9,7 +9,8 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-brad = { path = "../" }
+brad = { workspace = true }
+diagnostic = { workspace = true }
 
 [[bin]]
 name = "ast_formatter"

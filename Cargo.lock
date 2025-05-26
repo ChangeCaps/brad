@@ -95,6 +95,7 @@ name = "brad-fuzz"
 version = "0.0.0"
 dependencies = [
  "brad",
+ "brad-diagnostic",
  "libfuzzer-sys",
 ]
 

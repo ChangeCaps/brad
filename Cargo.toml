@@ -7,6 +7,7 @@ edition = "2021"
 members = ["diagnostic", "solve", "fuzz"]
 
 [workspace.dependencies]
+brad = { path = "." }
 diagnostic = { package = "brad-diagnostic", path = "diagnostic" }
 solve = { package = "brad-solve", path = "solve" }
 

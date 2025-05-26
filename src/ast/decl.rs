@@ -4,7 +4,7 @@ use diagnostic::Span;
 
 use crate::attribute::Attributes;
 
-use super::{Binding, Expr, Generic, Generics, Path, Ty, Spanned};
+use super::{Binding, Expr, Generic, Generics, Path, Spanned, Ty};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Decl {
