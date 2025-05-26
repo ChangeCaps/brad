@@ -1,10 +1,10 @@
 use crate::ast::GeneratorOptions;
 use crate::compiler::Compiler;
-use diagnostic::{Report, Source, Sources};
 use crate::parse::{Interner, Tokens};
 use crate::v1::cli::{execute_v1, PipelineV1Cmd};
 use crate::{ast, parse};
 use clap::{Args, Parser, Subcommand};
+use diagnostic::{Report, Source, Sources};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::{fs, process};

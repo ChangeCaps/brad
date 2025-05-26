@@ -1,6 +1,6 @@
 use diagnostic::Span;
 
-use super::{Spanned, Generic, Path};
+use super::{Generic, Path, Spanned};
 
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub enum Ty {
@@ -130,8 +130,8 @@ impl Spanned for Ty {
             Ty::Inter { span, tys } => {
                 tys.reset_spans();
                 *span = Span::default()
-            },
-            Ty::Neg {span, ty }=> {
+            }
+            Ty::Neg { span, ty } => {
                 ty.reset_spans();
                 *span = Span::default();
             }

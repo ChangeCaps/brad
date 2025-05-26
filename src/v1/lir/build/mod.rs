@@ -4,7 +4,7 @@ use diagnostic::Diagnostic;
 
 use crate::{
     attribute::Attributes,
-    v1::{lir, sir}
+    v1::{lir, sir},
 };
 
 pub fn build(

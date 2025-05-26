@@ -7,10 +7,9 @@ use std::{
 use diagnostic::{Diagnostic, Report, Reporter, Source, SourceId, Sources};
 
 use crate::{
-    ast, hir2,
-    lower2, lua,
-    v1::{hir, lower, mir, interpret::Interpreter},
+    ast, hir2, lower2, lua,
     parse::{self, Interner, Tokens},
+    v1::{hir, interpret::Interpreter, lower, mir},
 };
 
 pub struct Compiler<'a> {

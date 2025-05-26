@@ -2,7 +2,7 @@ use std::slice;
 
 use diagnostic::Span;
 
-use super::{Ty, Spanned};
+use super::{Spanned, Ty};
 
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Generic {

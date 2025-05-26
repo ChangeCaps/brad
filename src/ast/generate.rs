@@ -1,13 +1,12 @@
-use std::{collections::BTreeMap, mem::discriminant, sync::LazyLock};
-use std::sync::Mutex;
 use clap::Args;
 use diagnostic::{SourceId, Span};
 use rand::{
     distr::{weighted::WeightedIndex, Distribution},
     prelude::IndexedRandom,
-    SeedableRng,
-    Rng,
+    Rng, SeedableRng,
 };
+use std::sync::Mutex;
+use std::{collections::BTreeMap, mem::discriminant, sync::LazyLock};
 
 use crate::{
     ast,
