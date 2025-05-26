@@ -2,7 +2,6 @@ use std::{
     fs,
     io::{self, Write},
     path::Path,
-    time::Instant,
 };
 
 use diagnostic::{Diagnostic, Report, Reporter, Source, SourceId, Sources};

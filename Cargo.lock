@@ -91,20 +91,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "brad-fuzz"
+version = "0.0.0"
+dependencies = [
+ "brad",
+ "libfuzzer-sys",
+]
+
+[[package]]
 name = "brad-solve"
 version = "0.1.0"
 dependencies = [
  "brad-diagnostic",
  "seahash",
  "smallvec",
-]
-
-[[package]]
-name = "brad-fuzz"
-version = "0.0.0"
-dependencies = [
- "brad",
- "libfuzzer-sys",
 ]
 
 [[package]]

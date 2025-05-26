@@ -17,7 +17,7 @@ pub use spanned::*;
 pub use ty::*;
 
 use crate::attribute::Attributes;
-use crate::diagnostic::Span;
+use diagnostic::Span;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Module {

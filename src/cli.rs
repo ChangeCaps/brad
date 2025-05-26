@@ -1,6 +1,6 @@
 use crate::ast::GeneratorOptions;
 use crate::compiler::Compiler;
-use crate::diagnostic::{Report, Source, Sources};
+use diagnostic::{Report, Source, Sources};
 use crate::parse::{Interner, Tokens};
 use crate::v1::cli::{execute_v1, PipelineV1Cmd};
 use crate::{ast, parse};

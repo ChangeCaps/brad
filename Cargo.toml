@@ -8,7 +8,7 @@ members = ["diagnostic", "solve", "fuzz"]
 
 [workspace.dependencies]
 diagnostic = { package = "brad-diagnostic", path = "diagnostic" }
-solve      = { package = "brad-solve",      path = "solve"      }
+solve = { package = "brad-solve", path = "solve" }
 
 [lib]
 name = "brad"
@@ -27,7 +27,7 @@ seahash = "4.1.0"
 llvm-sys-191 = { package = "llvm-sys", version = "191.0.0" }
 
 diagnostic = { workspace = true }
-solve      = { workspace = true }
+solve = { workspace = true }
 
 [profile.release]
 lto = true
