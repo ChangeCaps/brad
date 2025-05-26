@@ -11,7 +11,7 @@ pub use formatter::Formatter;
 pub use source::{Source, SourceId, Sources};
 pub use span::Span;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Report {
     diagnostics: Vec<Diagnostic>,
 }
@@ -46,9 +46,7 @@ impl From<Vec<Diagnostic>> for Report {
 
 impl Report {
     pub fn new() -> Report {
-        Report {
-            diagnostics: Vec::new(),
-        }
+        Report::default()
     }
 
     pub fn push(&mut self, diagnostic: Diagnostic) {

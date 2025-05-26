@@ -215,7 +215,6 @@ impl<W: Write> Codegen<'_, W> {
                     }
 
                     hir::UnaryOp::Not => format!("make_bool(not has_tag({}, 'true'))", target),
-
                     hir::UnaryOp::Deref => todo!(),
                 }
             }

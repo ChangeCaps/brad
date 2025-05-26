@@ -5,6 +5,8 @@
 
 #include "gc.h"
 
+#include "debug.h"
+
 brad_thread_context brad_context = {0};
 
 void brad_init() {
@@ -55,9 +57,7 @@ brad_ptr brad_alloc(
 
     brad_push_allocation(ptr);
 
-#ifdef DEBUG
-    printf("Allocated %p, size: %d\n", (void*)ptr, (int)size);
-#endif
+    DEBUG_MESSAGE("Allocated %p, size: %d, name: %s\n", (void*)ptr, (int)size, allocation->name);
 
     return ptr;
 }
@@ -68,13 +68,7 @@ void brad_retain(
     brad_allocation* allocation = brad_allocation_from_ptr(ptr);
     allocation->ref_count++;
 
-#ifdef DEBUG
-    printf(
-        "Retaining %p, ref count: %d\n",
-        (void*)ptr,
-        (int)allocation->ref_count
-    );
-#endif
+    DEBUG_MESSAGE("Retaining %p, ref count: %d\n", (void*)ptr, (int)allocation->ref_count);
 }
 
 void brad_release(
@@ -83,13 +77,7 @@ void brad_release(
     brad_allocation* allocation = brad_allocation_from_ptr(ptr);
     allocation->ref_count--;
 
-#ifdef DEBUG
-    printf(
-        "Releasing %p, ref count: %d\n",
-        (void*)ptr,
-        (int)allocation->ref_count
-    );
-#endif
+    DEBUG_MESSAGE("Releasing %p, ref count: %d\n", (void*)ptr, (int)allocation->ref_count);
 }
 
 void brad_mark(
@@ -97,9 +85,7 @@ void brad_mark(
 ) {
     brad_allocation* allocation = brad_allocation_from_ptr(ptr);
 
-#ifdef DEBUG
-    printf("  marking %p\n", (void*)ptr);
-#endif
+    DEBUG_MESSAGE("  marking %p\n", (void*)ptr);
 
     allocation->mark_count = 1;
     allocation->marker(ptr);
@@ -113,10 +99,7 @@ brad_marker brad_get_marker(
 }
 
 void brad_collect() {
-#ifdef DEBUG
-    printf("Collecting garbage:\n\n");
-    printf("Unmarking all allocations:\n");
-#endif
+    DEBUG_MESSAGE_SINGLE("Collecting garbage:\n\nUnmarking all allocations:\n");
 
     for (brad_size i = 0; i < brad_context.allocations.len; i++) {
         if (!brad_context.allocations.allocations[i]) {
@@ -129,11 +112,7 @@ void brad_collect() {
         allocation->mark_count = 0;
     }
 
-#ifdef DEBUG
-    printf("\n");
-    printf("Marking all referenced allocations:\n");
-    printf("\n");
-#endif
+    DEBUG_MESSAGE_SINGLE("\nMarking all referenced allocations:\n");
 
     for (brad_size i = 0; i < brad_context.allocations.len; i++) {
         if (!brad_context.allocations.allocations[i]) {
@@ -147,21 +126,16 @@ void brad_collect() {
             continue;
         }
 
-#ifdef DEBUG
-        printf(
-            "Marking root %p\n",
-            (void*)brad_context.allocations.allocations[i]
+        DEBUG_MESSAGE(
+            "Marking %p, ref count: %d\n",
+            (void*)brad_context.allocations.allocations[i],
+            (int)allocation->ref_count
         );
-#endif
 
         brad_mark(brad_context.allocations.allocations[i]);
     }
 
-#ifdef DEBUG
-    printf("\n");
-    printf("Freeing all unmarked allocations:\n");
-    printf("\n");
-#endif
+    DEBUG_MESSAGE_SINGLE("\nFreeing all unmarked allocations:\n");
 
     for (brad_size i = 0; i < brad_context.allocations.len; i++) {
         if (!brad_context.allocations.allocations[i]) {
@@ -172,24 +146,18 @@ void brad_collect() {
             brad_allocation_from_ptr(brad_context.allocations.allocations[i]);
 
         if (allocation->mark_count == 0) {
-#ifdef DEBUG
-            printf(
-                "Freeing %p\n",
-                (void*)brad_context.allocations.allocations[i]
+            DEBUG_MESSAGE(
+                "Freeing %p, ref count: %d\n",
+                (void*)brad_context.allocations.allocations[i],
+                (int)allocation->ref_count
             );
-#endif
             free(allocation);
 
             brad_context.allocations.allocations[i] = (brad_ptr)NULL;
         }
     }
 
-#ifdef DEBUG
-    printf("\n");
-    printf("Garbage collection complete:\n");
-    printf("\n");
-    printf("Remaining allocations:\n");
-#endif
+    DEBUG_MESSAGE_SINGLE("\nGarbage collection complete:\n\nRemaining allocations:\n");
 
     for (brad_size i = 0; i < brad_context.allocations.len; i++) {
         if (!brad_context.allocations.allocations[i]) {
@@ -200,7 +168,7 @@ void brad_collect() {
         brad_allocation* allocation =
             brad_allocation_from_ptr(brad_context.allocations.allocations[i]);
 
-        printf(
+        DEBUG_MESSAGE(
             "%p, ref count: %d, name: %s\n",
             (void*)brad_context.allocations.allocations[i],
             (int)allocation->ref_count,
@@ -209,7 +177,5 @@ void brad_collect() {
 #endif
     }
 
-#ifdef DEBUG
-    printf("\n");
-#endif
+    DEBUG_MESSAGE_SINGLE("\n");
 }

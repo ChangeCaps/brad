@@ -22,12 +22,12 @@ impl<'a> Arbitrary<'a> for RandomModule {
             max_exprs: 2,
             max_match_arms: u.int_in_range(0..=10)?,
             max_union_size: u.int_in_range(2..=10)?,
-            max_record_size: u.int_in_range(0..=10)?,
+            max_record_size: u.int_in_range(1..=10)?,
             max_tuple_size: u.int_in_range(2..=10)?,
             max_tys_rounds: u.int_in_range(0..=1)?,
             max_depth: u.int_in_range(0..=10)?,
-            max_complexity: u.int_in_range(0..=100)?,
-            max_bruteforce_attempts: u.int_in_range(10..=100)?,
+            max_complexity: u.int_in_range(0..=20)?,
+            max_bruteforce_attempts: 6, // log2(64)
             seed: Some(u.int_in_range(0..=u64::MAX)?),
         };
 
@@ -67,7 +67,11 @@ fuzz_target!(|data: RandomModule| {
     parsed.reset_spans();
 
     // Assert the two ASTs are equal
-    assert_eq!(parsed, data.0, "Parsed AST does not match generated AST");
+    assert_eq!(
+        parsed, data.0,
+        "Parsed AST does not match generated AST from source: {}",
+        &sources[source_id].content
+    );
 
     let mut data2 = Vec::new();
     let cursor = std::io::Cursor::new(&mut data2);

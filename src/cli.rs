@@ -152,6 +152,9 @@ pub fn execute_cli(sources: &mut Sources) -> Result<(), Report> {
                 Cmd::Lex(_) => println!("{:#?}", tokens),
                 Cmd::Fmt { options, .. } => {
                     let module = parse::module(&mut tokens)?;
+
+                    println!("Module: {:#?}", module);
+
                     let mut formatter = ast::Formatter::new(std::io::stdout(), options.clone());
                     formatter.format_module(&module).unwrap();
                 }

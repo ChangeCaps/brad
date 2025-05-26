@@ -6,6 +6,7 @@ fn main -> none {
     |> list::prepend 1
     |> list::prepend 2
     |> list::prepend 3
+    |> list::prepend "hello"
     |> list::filter is-odd
     |> list::map \x. x * 2 
 
