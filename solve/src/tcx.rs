@@ -25,6 +25,10 @@ impl Tcx {
         Self::default()
     }
 
+    pub fn bounds(&self, var: Var) -> Bounds {
+        self.bounds.get(&var).cloned().unwrap_or(Bounds::default())
+    }
+
     fn bounds_mut(&mut self, var: Var) -> &mut Bounds {
         self.bounds.entry(var).or_default()
     }
@@ -103,25 +107,25 @@ impl Tcx {
         match base {
             Base::None => {}
 
-            Base::Record { fields } => {
-                for (_, ty) in fields.iter_mut() {
+            Base::Record(record) => {
+                for (_, ty) in &mut record.fields {
                     self.instantiate_impl(ty, subst);
                 }
             }
 
-            Base::Tuple { fields } => {
-                for ty in fields.iter_mut() {
+            Base::Tuple(tuple) => {
+                for ty in &mut tuple.fields {
                     self.instantiate_impl(ty, subst);
                 }
             }
 
-            Base::Array { element } => {
-                self.instantiate_impl(element, subst);
+            Base::Array(array) => {
+                self.instantiate_impl(&mut array.element, subst);
             }
 
-            Base::Function { input, output } => {
-                self.instantiate_impl(input, subst);
-                self.instantiate_impl(output, subst);
+            Base::Function(function) => {
+                self.instantiate_impl(&mut function.input, subst);
+                self.instantiate_impl(&mut function.output, subst);
             }
         }
     }
@@ -219,7 +223,7 @@ impl Tcx {
             }
 
             let upper = Type::from(conjunct).neg();
-            let app = self.expand_application(app);
+            let app = self.expand(app);
 
             let nf = Self::make_normal_form(app, upper);
             conjuncts.extend(nf.into_conjuncts());
@@ -233,7 +237,7 @@ impl Tcx {
             }
 
             let lower = Type::from(conjunct);
-            let app = self.expand_application(app);
+            let app = self.expand(app);
 
             let nf = Self::make_normal_form(lower, app);
             conjuncts.extend(nf.into_conjuncts());
@@ -253,14 +257,9 @@ impl Tcx {
         span: Span,
     ) -> Result<(), Diagnostic> {
         match (lhs.base, rhs.base) {
-            (
-                ref lhs @ Base::Record {
-                    fields: ref lhs_fields,
-                },
-                Base::Record { fields: rhs_fields },
-            ) => {
-                for (name, rhs_ty) in rhs_fields {
-                    let Some(lhs_ty) = Self::find_field(lhs_fields, name) else {
+            (Base::Record(lhs), Base::Record(rhs)) => {
+                for (name, rhs_ty) in rhs.fields {
+                    let Some(lhs_ty) = Self::find_field(&lhs.fields, name) else {
                         let diagnostic = Diagnostic::error("missing::field")
                             .message(format!("field `{name}` not found in record `{}`", lhs))
                             .span(span);
@@ -275,20 +274,20 @@ impl Tcx {
                 Ok(())
             }
 
-            (Base::Tuple { fields: lhs_fields }, Base::Tuple { fields: rhs_fields }) => {
-                if lhs_fields.len() != rhs_fields.len() {
+            (Base::Tuple(lhs), Base::Tuple(rhs)) => {
+                if lhs.fields.len() != rhs.fields.len() {
                     let diagnostic = Diagnostic::error("unsatisfiable::tuple")
                         .message(format!(
                             "tuples have different lengths: `{}` and `{}`",
-                            lhs_fields.len(),
-                            rhs_fields.len(),
+                            lhs.fields.len(),
+                            rhs.fields.len(),
                         ))
                         .span(span);
 
                     return Err(diagnostic);
                 }
 
-                for (lhs_ty, rhs_ty) in lhs_fields.into_iter().zip(rhs_fields) {
+                for (lhs_ty, rhs_ty) in lhs.fields.into_iter().zip(rhs.fields) {
                     let nf = Self::make_normal_form(lhs_ty, rhs_ty);
                     conjuncts.extend(nf.into_conjuncts());
                 }
@@ -296,32 +295,16 @@ impl Tcx {
                 Ok(())
             }
 
-            (
-                Base::Array {
-                    element: lhs_element,
-                },
-                Base::Array {
-                    element: rhs_element,
-                },
-            ) => {
-                let nf = Self::make_normal_form(lhs_element, rhs_element);
+            (Base::Array(lhs), Base::Array(rhs)) => {
+                let nf = Self::make_normal_form(lhs.element, rhs.element);
                 conjuncts.extend(nf.into_conjuncts());
 
                 Ok(())
             }
 
-            (
-                Base::Function {
-                    input: lhs_input,
-                    output: lhs_output,
-                },
-                Base::Function {
-                    input: rhs_input,
-                    output: rhs_output,
-                },
-            ) => {
-                let input = Self::make_normal_form(rhs_input, lhs_input);
-                let output = Self::make_normal_form(lhs_output, rhs_output);
+            (Base::Function(lhs), Base::Function(rhs)) => {
+                let input = Self::make_normal_form(rhs.input, lhs.input);
+                let output = Self::make_normal_form(lhs.output, rhs.output);
 
                 conjuncts.extend(input.into_conjuncts());
                 conjuncts.extend(output.into_conjuncts());
@@ -353,7 +336,7 @@ impl Tcx {
         }
     }
 
-    fn expand_application(&self, app: App) -> Type {
+    pub fn expand(&self, app: App) -> Type {
         let (body, args) = &self.applicables[&app.tag()];
         let mut body = body.clone();
 
@@ -405,25 +388,25 @@ impl Tcx {
         match base {
             Base::None => {}
 
-            Base::Record { fields } => {
-                for (_, ty) in fields.iter_mut() {
+            Base::Record(record) => {
+                for (_, ty) in record.fields.iter_mut() {
                     Self::expand_impl(ty, subst);
                 }
             }
 
-            Base::Tuple { fields } => {
-                for ty in fields.iter_mut() {
+            Base::Tuple(tuple) => {
+                for ty in tuple.fields.iter_mut() {
                     Self::expand_impl(ty, subst);
                 }
             }
 
-            Base::Array { element } => {
-                Self::expand_impl(element, subst);
+            Base::Array(array) => {
+                Self::expand_impl(&mut array.element, subst);
             }
 
-            Base::Function { input, output } => {
-                Self::expand_impl(input, subst);
-                Self::expand_impl(output, subst);
+            Base::Function(function) => {
+                Self::expand_impl(&mut function.input, subst);
+                Self::expand_impl(&mut function.output, subst);
             }
         }
     }

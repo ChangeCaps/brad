@@ -1,5 +1,6 @@
-use crate::attribute::Attributes;
 use std::ops::{Index, IndexMut};
+
+use crate::attribute::Attributes;
 
 use super::{Expr, Tid};
 
@@ -9,7 +10,7 @@ pub struct Bid(usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Local(usize);
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Body {
     pub name: Option<String>,
     pub attrs: Attributes,
@@ -26,9 +27,47 @@ impl Body {
     }
 }
 
-#[derive(Default, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Locals {
+    locals: Vec<Tid>,
+}
+
+#[derive(Default, Clone, Debug, PartialEq)]
 pub struct Bodies {
     bodies: Vec<Body>,
+}
+
+impl Locals {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(&mut self, tid: Tid) -> Local {
+        let id = self.locals.len();
+        self.locals.push(tid);
+        Local(id)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (Local, &Tid)> {
+        self.locals
+            .iter()
+            .enumerate()
+            .map(|(id, body)| (Local(id), body))
+    }
+}
+
+impl Index<Local> for Locals {
+    type Output = Tid;
+
+    fn index(&self, Local(id): Local) -> &Self::Output {
+        &self.locals[id]
+    }
+}
+
+impl IndexMut<Local> for Locals {
+    fn index_mut(&mut self, Local(id): Local) -> &mut Self::Output {
+        &mut self.locals[id]
+    }
 }
 
 impl Bodies {

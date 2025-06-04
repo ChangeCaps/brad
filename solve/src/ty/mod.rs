@@ -17,7 +17,7 @@ mod tag;
 mod var;
 
 pub use app::App;
-pub use base::Base;
+pub use base::{Array, Base, Function, Record, Tuple};
 pub use tag::{Tag, Tags};
 pub use var::{Bounds, Var};
 
@@ -115,22 +115,22 @@ impl Type {
     }
 
     pub fn record(fields: Vec<(&'static str, Self)>) -> Self {
-        Self::from(Term::from(Base::Record { fields }))
+        Self::from(Term::from(Base::Record(Record { fields })))
     }
 
     pub fn tuple(fields: Vec<Self>) -> Self {
-        Self::from(Term::from(Base::Tuple { fields }))
+        Self::from(Term::from(Base::Tuple(Tuple { fields })))
     }
 
     pub fn function(self, other: Self) -> Self {
-        Self::from(Term::from(Base::Function {
+        Self::from(Term::from(Base::Function(Function {
             input: self,
             output: other,
-        }))
+        })))
     }
 
     pub fn array(self) -> Self {
-        Self::from(Term::from(Base::Array { element: self }))
+        Self::from(Term::from(Base::Array(Array { element: self })))
     }
 
     pub fn conjuncts(&self) -> &[Conjunct] {

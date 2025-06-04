@@ -3,35 +3,47 @@ use std::fmt;
 use super::Type;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A record type.
+pub struct Record {
+    /// The fields of the record.
+    pub fields: Vec<(&'static str, Type)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A tuple type.
+pub struct Tuple {
+    /// The fields of the tuple.
+    pub fields: Vec<Type>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// An array type.
+pub struct Array {
+    /// The element type of the array.
+    pub element: Type,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A function type.
+pub struct Function {
+    /// The input type of the function.
+    pub input: Type,
+
+    /// The output type of the function.
+    pub output: Type,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Base {
     None,
 
-    /// A record type.
-    Record {
-        /// The fields of the record.
-        fields: Vec<(&'static str, Type)>,
-    },
+    Record(Record),
 
-    /// A tuple type.
-    Tuple {
-        /// The fields of the tuple.
-        fields: Vec<Type>,
-    },
+    Tuple(Tuple),
 
-    /// An array type.
-    Array {
-        /// The element type of the array.
-        element: Type,
-    },
+    Array(Array),
 
-    /// A function type.
-    Function {
-        /// The input type of the function.
-        input: Type,
-
-        /// The output type of the function.
-        output: Type,
-    },
+    Function(Function),
 }
 
 impl Base {
@@ -46,29 +58,18 @@ impl Base {
     pub fn complexity(&self) -> usize {
         match self {
             Base::None => 0,
-
-            Base::Record { fields } => fields.iter().map(|(_, ty)| ty.complexity()).sum(),
-
-            Base::Tuple { fields } => fields.iter().map(Type::complexity).sum(),
-
-            Base::Array { element } => element.complexity(),
-
-            Base::Function { input, output } => input.complexity() + output.complexity(),
+            Base::Record(record) => record.fields.iter().map(|(_, ty)| ty.complexity()).sum(),
+            Base::Tuple(tuple) => tuple.fields.iter().map(Type::complexity).sum(),
+            Base::Array(array) => array.element.complexity(),
+            Base::Function(function) => function.input.complexity() + function.output.complexity(),
         }
     }
 
     pub fn is_subtype_heuristic(&self, other: &Self) -> bool {
         match (self, other) {
-            (
-                Base::Record {
-                    fields: self_fields,
-                },
-                Base::Record {
-                    fields: other_fields,
-                },
-            ) => {
-                for (name, self_ty) in self_fields.iter() {
-                    if let Some((_, other_ty)) = other_fields.iter().find(|(n, _)| name == n) {
+            (Base::Record(this), Base::Record(other)) => {
+                for (name, self_ty) in &this.fields {
+                    if let Some((_, other_ty)) = other.fields.iter().find(|(n, _)| name == n) {
                         if !self_ty.is_subtype_heuristic(other_ty) {
                             return false;
                         }
@@ -80,19 +81,12 @@ impl Base {
                 true
             }
 
-            (
-                Base::Tuple {
-                    fields: self_fields,
-                },
-                Base::Tuple {
-                    fields: other_fields,
-                },
-            ) => {
-                if self_fields.len() != other_fields.len() {
+            (Base::Tuple(this), Base::Tuple(other)) => {
+                if this.fields.len() != other.fields.len() {
                     return false;
                 }
 
-                for (self_field, other_field) in self_fields.iter().zip(other_fields) {
+                for (self_field, other_field) in this.fields.iter().zip(&other.fields) {
                     if !self_field.is_subtype_heuristic(other_field) {
                         return false;
                     }
@@ -101,27 +95,13 @@ impl Base {
                 true
             }
 
-            (
-                Base::Array {
-                    element: self_element,
-                },
-                Base::Array {
-                    element: other_element,
-                },
-            ) => self_element.is_subtype_heuristic(other_element),
+            (Base::Array(this), Base::Array(other)) => {
+                this.element.is_subtype_heuristic(&other.element)
+            }
 
-            (
-                Base::Function {
-                    input: self_input,
-                    output: self_output,
-                },
-                Base::Function {
-                    input: other_input,
-                    output: other_output,
-                },
-            ) => {
-                self_input.is_subtype_heuristic(other_input)
-                    && other_output.is_subtype_heuristic(self_output)
+            (Base::Function(this), Base::Function(other)) => {
+                this.input.is_subtype_heuristic(&other.input)
+                    && other.output.is_subtype_heuristic(&this.output)
             }
 
             (Base::None, Base::None) => true,
@@ -135,75 +115,42 @@ impl Base {
         match (self, other) {
             (Base::None, some) | (some, Base::None) => some,
 
-            (
-                Base::Record {
-                    fields: mut self_fields,
-                },
-                Base::Record {
-                    fields: mut other_fields,
-                },
-            ) => {
-                for (name, self_ty) in self_fields.iter_mut() {
-                    if let Some(i) = other_fields.iter().position(|(n, _)| name == n) {
-                        let (_, other_ty) = other_fields.swap_remove(i);
-                        *self_ty = self_ty.take().inter(other_ty);
+            (Base::Record(mut this), Base::Record(mut other)) => {
+                for (name, ty) in this.fields.iter_mut() {
+                    if let Some(i) = other.fields.iter().position(|(n, _)| name == n) {
+                        let (_, other_ty) = other.fields.remove(i);
+                        *ty = ty.take().inter(other_ty);
                     }
                 }
 
-                self_fields.extend(other_fields);
+                this.fields.extend(other.fields);
 
-                Base::Record {
-                    fields: self_fields,
-                }
+                Base::Record(this)
             }
 
-            (
-                Base::Tuple {
-                    fields: mut self_fields,
-                },
-                Base::Tuple {
-                    fields: other_fields,
-                },
-            ) => {
-                if self_fields.len() != other_fields.len() {
+            (Base::Tuple(mut this), Base::Tuple(other)) => {
+                if this.fields.len() != other.fields.len() {
                     return Base::None;
                 }
 
-                for (self_field, other_field) in self_fields.iter_mut().zip(other_fields) {
-                    *self_field = self_field.take().inter(other_field);
+                for (field, other_field) in this.fields.iter_mut().zip(other.fields) {
+                    *field = field.take().inter(other_field);
                 }
 
-                Base::Tuple {
-                    fields: self_fields,
-                }
+                Base::Tuple(this)
             }
 
-            (
-                Base::Array {
-                    element: self_element,
-                },
-                Base::Array {
-                    element: other_element,
-                },
-            ) => Base::Array {
-                element: self_element.inter(other_element),
-            },
+            (Base::Array(this), Base::Array(other)) => {
+                let element = this.element.inter(other.element);
+                Base::Array(Array { element })
+            }
 
-            (
-                Base::Function {
-                    input: self_input,
-                    output: self_output,
-                },
-                Base::Function {
-                    input: other_input,
-                    output: other_output,
-                },
-            ) => {
+            (Base::Function(this), Base::Function(other)) => {
                 // function types are contravariant over input and covariant over output
-                Base::Function {
-                    input: self_input.union(other_input),
-                    output: self_output.inter(other_output),
-                }
+                Base::Function(Function {
+                    input: this.input.union(other.input),
+                    output: this.output.inter(other.output),
+                })
             }
 
             (_, _) => Base::None,
@@ -215,77 +162,44 @@ impl Base {
         match (self, other) {
             (Base::None, some) | (some, Base::None) => some,
 
-            (
-                Base::Record {
-                    fields: mut self_fields,
-                },
-                Base::Record {
-                    fields: mut other_fields,
-                },
-            ) => {
-                self_fields.retain_mut(|(name, self_ty)| {
-                    match other_fields.iter().position(|(n, _)| name == n) {
+            (Base::Record(mut this), Base::Record(mut other)) => {
+                this.fields.retain_mut(|(name, ty)| {
+                    match other.fields.iter().position(|(n, _)| name == n) {
                         Some(i) => {
-                            let (_, other_ty) = other_fields.swap_remove(i);
-                            *self_ty = self_ty.take().union(other_ty);
+                            let (_, other_ty) = other.fields.remove(i);
+                            *ty = ty.take().union(other_ty);
                             true
                         }
                         None => false,
                     }
                 });
 
-                Base::Record {
-                    fields: self_fields,
-                }
+                Base::Record(this)
             }
 
-            (
-                Base::Tuple {
-                    fields: mut self_fields,
-                },
-                Base::Tuple {
-                    fields: other_fields,
-                },
-            ) => {
-                if self_fields.len() != other_fields.len() {
+            (Base::Tuple(mut this), Base::Tuple(other)) => {
+                if this.fields.len() != other.fields.len() {
                     return Base::None;
                 }
 
-                for (self_field, other_field) in self_fields.iter_mut().zip(other_fields) {
+                for (self_field, other_field) in this.fields.iter_mut().zip(other.fields) {
                     *self_field = self_field.take().union(other_field);
                 }
 
-                Base::Tuple {
-                    fields: self_fields,
-                }
+                Base::Tuple(this)
             }
 
-            (
-                Base::Array {
-                    element: self_element,
-                },
-                Base::Array {
-                    element: other_element,
-                },
-            ) => Base::Array {
-                element: self_element.union(other_element),
-            },
+            (Base::Array(this), Base::Array(other)) => {
+                let element = this.element.union(other.element);
+                Base::Array(Array { element })
+            }
 
-            (
-                Base::Function {
-                    input: self_input,
-                    output: self_output,
-                },
-                Base::Function {
-                    input: other_input,
-                    output: other_output,
-                },
-            ) => {
+            (Base::Function(this), Base::Function(other)) => {
                 // function types are contravariant over input and covariant over output
-                Base::Function {
-                    input: self_input.inter(other_input),
-                    output: self_output.union(other_output),
-                }
+                Base::Function(Function {
+                    input: this.input.inter(other.input),
+                    output: this.output.union(other.output),
+                })
             }
 
             (_, _) => Base::None,
@@ -293,43 +207,52 @@ impl Base {
     }
 }
 
+impl fmt::Display for Record {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let fields = self
+            .fields
+            .iter()
+            .map(|(name, ty)| format!("{name}: {ty}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        write!(f, "{{ {fields} }}")
+    }
+}
+
+impl fmt::Display for Tuple {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let fields = self
+            .fields
+            .iter()
+            .map(Type::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        write!(f, "({fields})")
+    }
+}
+
+impl fmt::Display for Array {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}]", self.element)
+    }
+}
+
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({} -> {})", self.input, self.output)
+    }
+}
+
 impl fmt::Display for Base {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Base::None => write!(f, ""),
-
-            Base::Record { fields } => {
-                let fields = fields
-                    .iter()
-                    .map(|(name, ty)| format!("{name}: {ty}"))
-                    .collect::<Vec<_>>()
-                    .join("; ");
-
-                write!(f, "{{ {fields} }}")
-            }
-
-            Base::Tuple { fields } => {
-                let fields = fields
-                    .iter()
-                    .map(|ty| ty.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" * ");
-
-                write!(f, "({fields})")
-            }
-
-            Base::Array { element } => {
-                let element = element.to_string();
-
-                write!(f, "[{element}]")
-            }
-
-            Base::Function { input, output } => {
-                let input = input.to_string();
-                let output = output.to_string();
-
-                write!(f, "({input} -> {output})")
-            }
+            Base::Record(record) => write!(f, "{}", record),
+            Base::Tuple(tuple) => write!(f, "{}", tuple),
+            Base::Array(array) => write!(f, "{}", array),
+            Base::Function(function) => write!(f, "{}", function),
         }
     }
 }
