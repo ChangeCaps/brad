@@ -1,4 +1,6 @@
-use crate::{ast, diagnostic::Diagnostic, parse::Token};
+use diagnostic::Diagnostic;
+
+use crate::{ast, parse::Token};
 
 use super::{ident, ty, Tokens};
 

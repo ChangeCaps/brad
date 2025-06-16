@@ -3,7 +3,8 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use crate::{diagnostic::Span, solve::Tag};
+use diagnostic::Span;
+use solve::Tag;
 
 use super::BodyId;
 

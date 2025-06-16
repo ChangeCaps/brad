@@ -1,14 +1,12 @@
 use std::ops::{Index, IndexMut};
 
-use crate::solve::Solver;
-
 use super::{Bodies, Body, BodyId, Module, ModuleId, Modules};
 
 #[derive(Debug, Default)]
 pub struct Program {
     pub modules: Modules,
     pub bodies: Bodies,
-    pub solver: Solver,
+    pub tcx: solve::Tcx,
 }
 
 impl Program {

@@ -47,12 +47,12 @@ fuzz_target!(|data: RandomModule| {
 
     formatter.format_module(&data.0).unwrap();
 
-    let mut sources = brad::diagnostic::Sources::new();
+    let mut sources = diagnostic::Sources::new();
     let mut interner = brad::ast::INTERNER.lock().unwrap();
 
     let content = String::from_utf8(data1).unwrap();
 
-    let source = brad::diagnostic::Source {
+    let source = diagnostic::Source {
         content,
         file: "/dev/null".into(),
     };

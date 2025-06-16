@@ -1,14 +1,17 @@
-use crate::ast;
-use crate::diagnostic::{SourceId, Span};
-use crate::parse::{Interner, Token};
 use clap::Args;
-use rand::distr::weighted::WeightedIndex;
-use rand::distr::Distribution;
-use rand::prelude::IndexedRandom;
-use rand::{Rng, SeedableRng};
-use std::collections::BTreeMap;
-use std::mem::discriminant;
-use std::sync::{LazyLock, Mutex};
+use diagnostic::{SourceId, Span};
+use rand::{
+    distr::{weighted::WeightedIndex, Distribution},
+    prelude::IndexedRandom,
+    Rng, SeedableRng,
+};
+use std::sync::Mutex;
+use std::{collections::BTreeMap, mem::discriminant, sync::LazyLock};
+
+use crate::{
+    ast,
+    parse::{Interner, Token},
+};
 
 pub static INTERNER: LazyLock<Mutex<Interner>> = LazyLock::new(Default::default);
 

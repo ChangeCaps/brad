@@ -3,6 +3,14 @@ name = "brad"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = ["diagnostic", "solve", "fuzz"]
+
+[workspace.dependencies]
+brad = { path = "." }
+diagnostic = { package = "brad-diagnostic", path = "diagnostic" }
+solve = { package = "brad-solve", path = "solve" }
+
 [lib]
 name = "brad"
 path = "src/main.rs"
@@ -16,7 +24,15 @@ path = "src/main.rs"
 colored = "3.0"
 clap = { version = "4.5.31", features = ["derive"] }
 rand = "0.9.0"
+seahash = "4.1.0"
 llvm-sys-191 = { package = "llvm-sys", version = "191.0.0" }
 
-[workspace]
-members = ["fuzz"]
+diagnostic = { workspace = true }
+solve = { workspace = true }
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+debug = true
+panic = "abort"

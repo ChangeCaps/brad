@@ -1,4 +1,4 @@
-use crate::diagnostic::Span;
+use diagnostic::Span;
 
 use super::{BodyId, LocalId, NamedId, Ty};
 

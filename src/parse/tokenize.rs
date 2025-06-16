@@ -1,4 +1,4 @@
-use crate::diagnostic::{Diagnostic, SourceId, Span};
+use diagnostic::{Diagnostic, SourceId, Span};
 
 use super::{interner::Interner, stream::Tokens, token::Token, TokenEntry};
 

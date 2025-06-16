@@ -134,7 +134,7 @@ impl<W: Write> Codegen<'_, W> {
         Ok(match expr.kind {
             hir::ExprKind::Int(value) => format!("make_int({value})"),
             hir::ExprKind::Float(value) => format!("make_float({value})"),
-            hir::ExprKind::ZeroSize(tag) => format!("make_tag('{}')", tag.name),
+            hir::ExprKind::ZeroSize(tag) => format!("make_tag('{}')", tag.name()),
             hir::ExprKind::Local(id) => format!("{}{}", "l".repeat(self.level + 1), id.0),
 
             hir::ExprKind::String(value) => {
@@ -150,7 +150,7 @@ impl<W: Write> Codegen<'_, W> {
 
             hir::ExprKind::Tag(tag, ref value) => {
                 let value = self.expr(value)?;
-                format!("add_tag('{}', {})", tag.name, value)
+                format!("add_tag('{}', {})", tag.name(), value)
             }
 
             hir::ExprKind::Func(body) => {
@@ -381,7 +381,11 @@ impl<W: Write> Codegen<'_, W> {
                         } => {
                             let if_word = if i == 0 { "if" } else { "elseif" };
 
-                            writeln!(self.code, "  {if_word} has_tag('{}', {trg}) then", tag.name)?;
+                            writeln!(
+                                self.code,
+                                "  {if_word} has_tag('{}', {trg}) then",
+                                tag.name()
+                            )?;
 
                             self.binding(binding, &trg)?;
                             let value = self.expr(&arm.body)?;

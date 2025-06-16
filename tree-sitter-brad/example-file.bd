@@ -1,0 +1,16 @@
+import std::list
+
+fn foo (x: int) -> float {
+  0.0
+}
+
+fn bar x y => x * y 
+
+fn main {
+    let x = 10
+    let y = "Super cool string"
+    let z = 10.0 |> bar <| 20.0
+    match z
+      | float as a => a
+      | int   as b => foo b
+}

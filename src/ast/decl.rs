@@ -1,6 +1,10 @@
-use super::{Binding, Expr, Generic, Generics, Path, Spanned, Ty};
-use crate::{attribute::Attributes, diagnostic::Span};
 use std::{fmt, ops::Deref};
+
+use diagnostic::Span;
+
+use crate::attribute::Attributes;
+
+use super::{Binding, Expr, Generic, Generics, Path, Spanned, Ty};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Decl {

@@ -1,4 +1,3 @@
-fn main -> none {
-  let x: parse::token = parse::dotdot
-
+fn main {
+  let x: parse::token = parse::token parse::token::dotdot
 }

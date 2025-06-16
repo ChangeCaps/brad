@@ -1,7 +1,8 @@
-use super::Ty;
-use crate::ast::spanned::Spanned;
-use crate::diagnostic::Span;
 use std::slice;
+
+use diagnostic::Span;
+
+use super::{Spanned, Ty};
 
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Generic {

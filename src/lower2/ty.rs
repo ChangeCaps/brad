@@ -1,4 +1,6 @@
-use crate::{ast, diagnostic::Diagnostic, hir2 as hir, solve};
+use diagnostic::Diagnostic;
+
+use crate::{ast, hir2 as hir};
 
 use super::{Generics, Lowerer};
 
@@ -9,7 +11,7 @@ impl Lowerer<'_> {
         generics: &mut Generics<'_>,
         allow_wild: bool,
         ty: &ast::Ty,
-    ) -> Result<solve::Ty, ()> {
+    ) -> Result<solve::Type, ()> {
         Ok(match ty {
             ast::Ty::Wild(span) => {
                 if !allow_wild {
@@ -22,21 +24,21 @@ impl Lowerer<'_> {
                     return Err(());
                 }
 
-                solve::Ty::Var(self.program.solver.fresh_var())
+                solve::Type::fresh_var()
             }
 
-            ast::Ty::Int(_) => solve::Ty::INT,
-            ast::Ty::Float(_) => solve::Ty::FLOAT,
-            ast::Ty::Str(_) => solve::Ty::STR,
-            ast::Ty::True(_) => solve::Ty::TRUE,
-            ast::Ty::False(_) => solve::Ty::FALSE,
-            ast::Ty::None(_) => solve::Ty::NONE,
-            ast::Ty::Never(_) => solve::Ty::Bot,
+            ast::Ty::Int(_) => solve::Type::int(),
+            ast::Ty::Float(_) => solve::Type::float(),
+            ast::Ty::Str(_) => solve::Type::str(),
+            ast::Ty::True(_) => solve::Type::true_(),
+            ast::Ty::False(_) => solve::Type::false_(),
+            ast::Ty::None(_) => solve::Type::none(),
+            ast::Ty::Never(_) => solve::Type::bottom(),
 
             ast::Ty::Generic(generic) => match generics {
                 Generics::Explicit(generics) => {
                     match generics.iter().find(|(name, _)| name == &generic.name) {
-                        Some((_, ty)) => ty.clone(),
+                        Some((_, ty)) => solve::Type::var(*ty),
                         None => {
                             let diagnostic = Diagnostic::error("unbound::generic")
                                 .message(format!("unbound generic `{}`", generic.name))
@@ -51,11 +53,11 @@ impl Lowerer<'_> {
 
                 Generics::Implicit(generics) => {
                     match generics.iter().find(|(name, _)| name == &generic.name) {
-                        Some((_, ty)) => ty.clone(),
+                        Some((_, ty)) => solve::Type::var(*ty),
                         None => {
-                            let ty = solve::Ty::Var(self.program.solver.fresh_var());
-                            generics.push((generic.name, ty.clone()));
-                            ty
+                            let var = solve::Var::fresh();
+                            generics.push((generic.name, var));
+                            solve::Type::var(var)
                         }
                     }
                 }
@@ -85,10 +87,10 @@ impl Lowerer<'_> {
 
                 let Some(ref spec) = path.spec else {
                     let args = (0..arg_count)
-                        .map(|_| solve::Ty::Var(self.program.solver.fresh_var()))
+                        .map(|_| solve::Type::fresh_var())
                         .collect::<Vec<_>>();
 
-                    return Ok(solve::Ty::app(tag, args));
+                    return Ok(solve::Type::app(solve::App::new(tag, args)));
                 };
 
                 let args = spec
@@ -111,7 +113,7 @@ impl Lowerer<'_> {
                     return Err(());
                 }
 
-                solve::Ty::app(tag, args)
+                solve::Type::app(solve::App::new(tag, args))
             }
 
             ast::Ty::Union { tys, .. } => {
@@ -121,45 +123,65 @@ impl Lowerer<'_> {
                     .collect::<Result<Vec<_>, _>>()?;
 
                 let first = tys.remove(0);
-
-                tys.into_iter().fold(first, solve::Ty::union)
+                tys.into_iter().fold(first, solve::Type::union)
             }
 
-            ast::Ty::Ref { ty, .. } => {
-                solve::Ty::ref_(self.lower_ty(module, generics, allow_wild, ty)?)
+            ast::Ty::Inter { tys, .. } => {
+                let mut tys = tys
+                    .iter()
+                    .map(|ty| self.lower_ty(module, generics, allow_wild, ty))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let first = tys.remove(0);
+                tys.into_iter().fold(first, solve::Type::inter)
+            }
+
+            ast::Ty::Neg { ty, .. } => self.lower_ty(module, generics, allow_wild, ty)?.neg(),
+
+            ast::Ty::Ref { .. } => {
+                todo!()
             }
 
             ast::Ty::List { ty, .. } => {
-                solve::Ty::array(self.lower_ty(module, generics, allow_wild, ty)?)
+                solve::Type::array(self.lower_ty(module, generics, allow_wild, ty)?)
             }
 
             ast::Ty::Func { input, output, .. } => {
                 let input = self.lower_ty(module, generics, allow_wild, input)?;
                 let output = self.lower_ty(module, generics, allow_wild, output)?;
 
-                solve::Ty::func(input, output)
+                solve::Type::function(input, output)
             }
 
             ast::Ty::Tuple { tys, .. } => {
                 let tys = tys
                     .iter()
                     .map(|ty| self.lower_ty(module, generics, allow_wild, ty))
-                    .collect::<Result<_, _>>()?;
+                    .collect::<Result<Vec<_>, _>>()?;
 
-                solve::Ty::Tuple(tys)
+                solve::Type::tuple(tys)
             }
 
             ast::Ty::Record { fields, .. } => {
-                let fields = fields
-                    .iter()
-                    .map(|field| {
-                        let ty = self.lower_ty(module, generics, allow_wild, &field.ty)?;
+                let mut lowered_fields = Vec::new();
 
-                        Ok((field.name, ty))
-                    })
-                    .collect::<Result<_, _>>()?;
+                for field in fields {
+                    let ty = self.lower_ty(module, generics, allow_wild, &field.ty)?;
 
-                solve::Ty::Record(fields)
+                    if lowered_fields.iter().any(|(name, _)| *name == field.name) {
+                        let diagnostic = Diagnostic::error("duplicate::field")
+                            .message(format!("duplicate field `{}`", field.name))
+                            .label(field.span, "here");
+
+                        self.reporter.emit(diagnostic);
+
+                        return Err(());
+                    }
+
+                    lowered_fields.push((field.name, ty));
+                }
+
+                solve::Type::record(lowered_fields)
             }
         })
     }

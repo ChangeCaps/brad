@@ -19,10 +19,9 @@ pub use stream::*;
 pub use token::*;
 pub use ty::*;
 
-use crate::{
-    ast,
-    diagnostic::{Diagnostic, Span},
-};
+use diagnostic::{Diagnostic, Span};
+
+use crate::ast;
 
 pub fn module(input: &mut Tokens) -> Result<ast::Module, Diagnostic> {
     let attrs = attributes(input, true)?;

@@ -356,20 +356,24 @@ impl<W: Write> Formatter<W> {
             Ty::Never(_) => write!(self.writer, "!"),
             Ty::Generic(generic) => write!(self.writer, "'{}", generic.name),
             Ty::Path(path) => write!(self.writer, "{}", path),
+
             Ty::Ref { ty, .. } => {
                 write!(self.writer, "ref ")?;
                 self.format_ty(ty)
             }
+
             Ty::Func { input, output, .. } => {
                 self.format_ty(input)?;
                 write!(self.writer, " -> ")?;
                 self.format_ty(output)
             }
+
             Ty::List { ty, .. } => {
                 write!(self.writer, "[")?;
                 self.format_ty(ty)?;
                 write!(self.writer, "]")
             }
+
             Ty::Tuple { tys, .. } => {
                 if tys.len() > 1 {
                     write!(self.writer, "(")?;
@@ -387,6 +391,7 @@ impl<W: Write> Formatter<W> {
 
                 Ok(())
             }
+
             Ty::Union { tys, .. } => {
                 if tys.len() > 1 {
                     write!(self.writer, "(")?;
@@ -405,6 +410,31 @@ impl<W: Write> Formatter<W> {
 
                 Ok(())
             }
+
+            Ty::Inter { tys, .. } => {
+                if tys.len() > 1 {
+                    write!(self.writer, "(")?;
+                }
+
+                for (i, ty) in tys.iter().enumerate() {
+                    if i > 0 {
+                        write!(self.writer, " & ")?;
+                    }
+                    self.format_ty(ty)?;
+                }
+
+                if tys.len() > 1 {
+                    write!(self.writer, ")")?;
+                }
+
+                Ok(())
+            }
+
+            Ty::Neg { ty, .. } => {
+                write!(self.writer, "~")?;
+                self.format_ty(ty)
+            }
+
             Ty::Record { fields, .. } => {
                 write!(self.writer, "{{")?;
                 for (i, field) in fields.iter().enumerate() {

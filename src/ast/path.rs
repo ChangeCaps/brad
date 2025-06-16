@@ -1,7 +1,8 @@
-use super::generic::Spec;
-use crate::ast::spanned::Spanned;
-use crate::diagnostic::Span;
 use std::fmt;
+
+use diagnostic::Span;
+
+use super::{generic::Spec, Spanned};
 
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Path {

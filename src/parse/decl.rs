@@ -1,12 +1,14 @@
 use std::borrow::Cow;
 
-use super::{binding, consume_newlines, expr, generics, ident, ty, Delim, Token, Tokens};
+use diagnostic::Diagnostic;
+
 use crate::{
     ast::{self, Name},
     attribute::{Attribute, Attributes},
-    diagnostic::Diagnostic,
     parse::{block, path},
 };
+
+use super::{binding, consume_newlines, expr, generics, ident, ty, Delim, Token, Tokens};
 
 pub fn decl(input: &mut Tokens) -> Result<ast::Decl, Diagnostic> {
     let attrs = attributes(input, false)?;

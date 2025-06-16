@@ -1,6 +1,8 @@
+use diagnostic::Diagnostic;
+
+use crate::{ast, ast::Spanned};
+
 use super::{binding, consume_newlines, ident, path, ty, Delim, Token, Tokens};
-use crate::ast::Spanned;
-use crate::{ast, diagnostic::Diagnostic};
 
 pub fn expr(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
     let (token, _) = input.peek();
@@ -538,7 +540,7 @@ fn lambda(input: &mut Tokens) -> Result<ast::Expr, Diagnostic> {
         return Err(diagnostic);
     }
 
-    let body = Box::new(expr(input)?);
+    let body = Box::new(tuple(input)?);
 
     let span = start.join(body.span());
 

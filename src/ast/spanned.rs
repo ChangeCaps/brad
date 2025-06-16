@@ -1,4 +1,4 @@
-use crate::diagnostic::Span;
+use diagnostic::Span;
 
 /// The `Spanned` trait is used to represent types that have a span.
 /// It is also used to reset the spans of the contained types to have structurally equivalent ASTs.

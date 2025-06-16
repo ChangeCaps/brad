@@ -1,8 +1,8 @@
 use crate::cli::ModuleArgs;
 use crate::compiler::Compiler;
-use crate::diagnostic::{Report, Sources};
 use crate::v1;
 use clap::Subcommand;
+use diagnostic::{Report, Sources};
 use std::fs;
 use std::path::Path;
 

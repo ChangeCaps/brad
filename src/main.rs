@@ -3,12 +3,11 @@ pub mod ast;
 mod attribute;
 mod cli;
 mod compiler;
-pub mod diagnostic;
 mod hir2;
+mod ir;
 mod lower2;
 mod lua;
 pub mod parse;
-mod solve;
 mod v1;
 
 use diagnostic::Sources;

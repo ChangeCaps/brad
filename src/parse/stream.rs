@@ -1,6 +1,6 @@
 use std::{fmt, sync::Arc};
 
-use crate::diagnostic::{Diagnostic, Span};
+use diagnostic::{Diagnostic, Span};
 
 use super::token::Token;
 

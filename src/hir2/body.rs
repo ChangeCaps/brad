@@ -1,6 +1,9 @@
 use std::ops::{Index, IndexMut};
 
-use crate::{attribute::Attributes, diagnostic::Span, solve::Ty};
+use diagnostic::Span;
+use solve::{Type, Var};
+
+use crate::attribute::Attributes;
 
 use super::{Binding, Expr, Local, LocalId, Locals};
 
@@ -9,10 +12,10 @@ pub struct Body {
     pub attrs: Attributes,
     pub is_extern: bool,
     pub name: String,
-    pub generics: Vec<Ty>,
+    pub generics: Vec<Var>,
     pub locals: Locals,
     pub input: Vec<Argument>,
-    pub output: Ty,
+    pub output: Type,
     pub expr: Option<Expr>,
     pub span: Span,
 }
@@ -20,15 +23,15 @@ pub struct Body {
 #[derive(Clone, Debug)]
 pub struct Argument {
     pub binding: Binding,
-    pub ty: Ty,
+    pub ty: Type,
 }
 
 impl Body {
-    pub fn ty(&self) -> Ty {
+    pub fn ty(&self) -> Type {
         let mut ty = self.output.clone();
 
         for arg in self.input.iter().rev() {
-            ty = Ty::func(arg.ty.clone(), ty);
+            ty = arg.ty.clone().function(ty);
         }
 
         ty

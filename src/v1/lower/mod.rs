@@ -2,7 +2,9 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use expr::BodyLowerer;
 
-use crate::{ast, diagnostic::Diagnostic, v1::hir};
+use diagnostic::Diagnostic;
+
+use crate::{ast, v1::hir};
 
 mod expr;
 
@@ -543,6 +545,14 @@ fn lower_ty_inner(
             hir::Ty::Union(tys)
         }
 
+        ast::Ty::Inter { .. } => {
+            todo!("intersection types")
+        }
+
+        ast::Ty::Neg { .. } => {
+            todo!("negated types")
+        }
+
         ast::Ty::Record { fields, .. } => {
             let fields = fields
                 .iter()
@@ -623,8 +633,7 @@ fn resolve_item(
 
         _ => {
             let diagnostic = Diagnostic::error("unresolved::type")
-                .message(format!("module does not contain type `{}`", item.name))
-                .span(item.span);
+                .message(format!("module does not contain type `{}`", item.name));
 
             Err(diagnostic)
         }

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "brad",
+      "camelcase": "brad",
+      "title": "Brad",
+      "scope": "source.brad",
+      "file-types": [
+        "bd"
+      ],
+      "injection-regex": "^brad$",
+      "class-name": "TreeSitterBrad"
+    }
+  ],
+  "metadata": {
+    "version": "0.0.0",
+    "license": "AGPL",
+    "description": "Brad grammar for tree-sitter",
+    "authors": [
+      {
+        "name": "BRAD Team"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/changecaps/brad"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true,
+    "zig": false
+  }
+}
