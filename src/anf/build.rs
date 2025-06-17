@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 
-use crate::{hir2 as hir, ir};
+// TODO :: javad things
 
-pub fn build(program: &hir::Program) -> ir::Program {
-    let mut ir = ir::Program::default();
+use crate::{anf, hir2 as hir};
+
+pub fn build(program: &hir::Program) -> anf::Program {
+    let mut ir = anf::Program::default();
 
     for (bid, body) in program.bodies.iter() {
         println!("Building body: {}", body.name);
 
-        let mut locals = ir::Locals::default();
+        let mut locals = anf::Locals::default();
 
         let mut ctx = BuildContext {
             hir: program,
@@ -28,22 +30,22 @@ pub fn build(program: &hir::Program) -> ir::Program {
 
 struct BuildContext<'a> {
     hir: &'a hir::Program,
-    ir: &'a mut ir::Program,
+    ir: &'a mut anf::Program,
 
-    locals: &'a mut ir::Locals,
-    local_map: &'a mut HashMap<hir::LocalId, ir::Local>,
+    locals: &'a mut anf::Locals,
+    local_map: &'a mut HashMap<hir::LocalId, anf::Local>,
 
-    ty_subst: &'a mut HashMap<solve::Var, ir::Type>,
-    ty_map: &'a mut HashMap<(solve::Type, bool), ir::Type>,
+    ty_subst: &'a mut HashMap<solve::Var, anf::Type>,
+    ty_map: &'a mut HashMap<(solve::Type, bool), anf::Type>,
 }
 
 impl BuildContext<'_> {
-    fn build_tid(&mut self, ty: &solve::Type, pol: bool) -> ir::Tid {
+    fn build_tid(&mut self, ty: &solve::Type, pol: bool) -> anf::Tid {
         let ir = self.build_type(ty, pol);
         self.ir.types.insert(ir)
     }
 
-    fn build_type(&mut self, ty: &solve::Type, pol: bool) -> ir::Type {
+    fn build_type(&mut self, ty: &solve::Type, pol: bool) -> anf::Type {
         if let Some(ty) = self.ty_map.get(&(ty.clone(), pol)) {
             return ty.clone();
         }
@@ -55,14 +57,14 @@ impl BuildContext<'_> {
             terms.extend(ir_term.terms);
         }
 
-        let ir = ir::Type { terms };
+        let ir = anf::Type { terms };
         self.ty_map.insert((ty.clone(), pol), ir.clone());
         ir
     }
 
-    fn build_type_term(&mut self, term: &solve::Term, pol: bool) -> ir::Type {
-        let mut ty = ir::Type {
-            terms: vec![ir::Term {
+    fn build_type_term(&mut self, term: &solve::Term, pol: bool) -> anf::Type {
+        let mut ty = anf::Type {
+            terms: vec![anf::Term {
                 tags: term.tags.clone(),
                 base: self.build_type_base(&term.base, pol),
             }],
@@ -91,9 +93,9 @@ impl BuildContext<'_> {
         ty
     }
 
-    fn build_type_base(&mut self, base: &solve::Base, pol: bool) -> ir::Base {
+    fn build_type_base(&mut self, base: &solve::Base, pol: bool) -> anf::Base {
         match base {
-            solve::Base::None => ir::Base::Any,
+            solve::Base::None => anf::Base::Any,
 
             solve::Base::Record(record) => {
                 let fields = record
@@ -102,7 +104,7 @@ impl BuildContext<'_> {
                     .map(|(name, ty)| (*name, self.build_tid(ty, pol)))
                     .collect();
 
-                ir::Base::Record(fields)
+                anf::Base::Record(fields)
             }
 
             solve::Base::Tuple(tuple) => {
@@ -112,19 +114,19 @@ impl BuildContext<'_> {
                     .map(|ty| self.build_tid(ty, pol))
                     .collect();
 
-                ir::Base::Tuple(types)
+                anf::Base::Tuple(types)
             }
 
             solve::Base::Array(array) => {
                 let ty = self.build_tid(&array.element, pol);
-                ir::Base::Array(ty)
+                anf::Base::Array(ty)
             }
 
             solve::Base::Function(function) => {
                 let input = self.build_tid(&function.input, !pol);
                 let output = self.build_tid(&function.output, pol);
 
-                ir::Base::Function(input, output)
+                anf::Base::Function(input, output)
             }
         }
     }

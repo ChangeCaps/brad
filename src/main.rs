@@ -1,10 +1,10 @@
 #![allow(dead_code)]
+mod anf;
 pub mod ast;
 mod attribute;
 mod cli;
 mod compiler;
 mod hir2;
-mod ir;
 mod lower2;
 mod lua;
 pub mod parse;
