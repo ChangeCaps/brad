@@ -1,7 +1,8 @@
+use super::{Bodies, Body, BodyId, Module, ModuleId, Modules};
 use std::ops::{Index, IndexMut};
 
-use super::{Bodies, Body, BodyId, Module, ModuleId, Modules};
-
+/// Program before specialization.
+/// Still has type context etc.
 #[derive(Debug, Default)]
 pub struct Program {
     pub modules: Modules,

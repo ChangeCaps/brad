@@ -13,17 +13,17 @@ pub struct Body {
     pub is_extern: bool,
     pub name: String,
     pub generics: Vec<Var>,
-    pub locals: Locals,
-    pub input: Vec<Argument>,
+    pub locals: Locals<Type>,
+    pub input: Vec<Argument<Type>>,
     pub output: Type,
     pub expr: Option<Expr>,
     pub span: Span,
 }
 
 #[derive(Clone, Debug)]
-pub struct Argument {
+pub struct Argument<T = Type> {
     pub binding: Binding,
-    pub ty: Type,
+    pub ty: T,
 }
 
 impl Body {
