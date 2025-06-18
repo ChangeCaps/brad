@@ -72,6 +72,9 @@ pub enum ExprKind {
         access: Vec<&'static str>,
         src: Value, // reg
     },
+    Return {
+        val: Value,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
