@@ -25,9 +25,17 @@ pub struct Locals<T = Type> {
     locals: Vec<Local<T>>,
 }
 
+impl <T> Default for Locals<T> {
+    fn default() -> Self {
+        Self {
+            locals: Vec::new(),
+        }
+    }
+}
+
 impl<T> Locals<T> {
     pub fn new() -> Self {
-        Self { locals: Vec::new() }
+        Self::default()
     }
 
     pub fn len(&self) -> usize {

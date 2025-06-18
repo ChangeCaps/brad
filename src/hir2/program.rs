@@ -1,25 +1,16 @@
 use super::{Bodies, Body, BodyId, Module, ModuleId, Modules};
-use solve::Type;
 use std::ops::{Index, IndexMut};
 
-#[derive(Debug)]
-pub struct Program<T = Type> {
+/// Program before specialization.
+/// Still has type context etc.
+#[derive(Debug, Default)]
+pub struct Program {
     pub modules: Modules,
-    pub bodies: Bodies<T>,
+    pub bodies: Bodies,
     pub tcx: solve::Tcx,
 }
 
-impl<T> Default for Program<T> {
-    fn default() -> Self {
-        Self {
-            modules: Modules::default(),
-            bodies: Bodies::default(),
-            tcx: solve::Tcx::default(),
-        }
-    }
-}
-
-impl<T> Program<T> {
+impl Program {
     pub fn new() -> Self {
         Self::default()
     }
