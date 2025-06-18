@@ -1,7 +1,7 @@
+use crate::anf::Type;
 use crate::attribute::Attributes;
 use crate::hir2::{Argument, Expr, Locals};
 use diagnostic::Span;
-use solve::Type;
 use std::ops::{Index, IndexMut};
 
 pub struct SpecializedBodyId(pub usize);
