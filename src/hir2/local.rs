@@ -4,10 +4,10 @@ use diagnostic::Span;
 use solve::Type;
 
 #[derive(Clone, Debug)]
-pub struct Local {
+pub struct Local<T = Type> {
     pub is_mutable: bool,
     pub name: &'static str,
-    pub ty: Type,
+    pub ty: T,
     pub span: Span,
 }
 
@@ -20,14 +20,14 @@ impl LocalId {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct Locals {
-    locals: Vec<Local>,
+#[derive(Clone, Debug)]
+pub struct Locals<T = Type> {
+    locals: Vec<Local<T>>,
 }
 
-impl Locals {
+impl<T> Locals<T> {
     pub fn new() -> Self {
-        Self::default()
+        Self { locals: Vec::new() }
     }
 
     pub fn len(&self) -> usize {
@@ -38,7 +38,7 @@ impl Locals {
         self.locals.is_empty()
     }
 
-    pub fn insert(&mut self, local: Local) -> LocalId {
+    pub fn insert(&mut self, local: Local<T>) -> LocalId {
         let id = self.locals.len();
         self.locals.push(local);
         LocalId(id)
@@ -49,8 +49,8 @@ impl Locals {
     }
 }
 
-impl Index<LocalId> for Locals {
-    type Output = Local;
+impl<T> Index<LocalId> for Locals<T> {
+    type Output = Local<T>;
 
     fn index(&self, LocalId(id): LocalId) -> &Self::Output {
         &self.locals[id]

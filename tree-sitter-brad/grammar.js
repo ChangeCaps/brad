@@ -12,6 +12,10 @@
 const PRECEDENCE = {
     TYPE_FUNCTION: 1,
     FUNCTION_RETURN_TYPE: 2,
+    ACCESS: 14,
+    UNARY: 13,
+    REF: 2,
+    CALL: 1,
 };
 
 module.exports = grammar({
@@ -21,7 +25,7 @@ module.exports = grammar({
 
     rules: {
         // module
-        source_file: $ => seq(repeat($.module_attribute), repeat(seq(repeat($.declaration_attribute), $._declaration))),
+        source_file: $ => $._expression, // seq(repeat($.module_attribute), repeat(seq(repeat($.declaration_attribute), $._declaration))),
 
         // attributes
         module_attribute: $ => seq('#', '!', '[', $.attribute, ']'),
@@ -53,10 +57,140 @@ module.exports = grammar({
             )),
 
         // expressions
-        _expression: $ => choice(),
+        _expression: $ => choice(
+            $.match_expression,
+            $.let_expression,
+            $.loop_expression,
+            $.access_expression,
+            $.unary_expression,
+            $.binary_expression,
+            $.term_expression,
+            'break'
+        ),
+
         _block_expression: $ => seq('{', repeat($._expression), '}'),
 
+        match_arm: $ => seq(
+            '|',
+            $._type,
+            optional(seq('as', $.bind)),
+            '=>',
+            $._expression,
+        ),
+
+        match_expression: $ => seq(
+            'match',
+            $._expression,
+            '\n',
+            repeat(seq(
+                $.match_arm,
+                repeat1(seq('\n', $.match_arm))
+            ))
+        ),
+
+        loop_expression: $ => seq(
+            'loop',
+            $._block_expression,
+        ),
+
+        let_expression: $ => seq(
+            'let',
+            $.bind,
+            optional(seq(':', $._type)),
+            seq('=', $._expression),
+        ),
+
+        call_expression: $ => prec.left(PRECEDENCE.CALL, seq(
+            $._expression,
+            repeat($._expression),
+        )),
+
+        access_expression: $ => choice(
+            prec.left(PRECEDENCE.ACCESS, seq($._expression, '.', $.identifier)),
+            prec.left(PRECEDENCE.ACCESS, seq($._expression, '[', $._expression, ']')),
+        ),
+
+        unary_expression: $ => choice(
+            prec.left(PRECEDENCE.UNARY, seq('*', $._expression)),
+            prec.left(PRECEDENCE.UNARY, seq('~', $._expression)),
+            prec.left(PRECEDENCE.UNARY, seq('-', $._expression)),
+            prec.left(PRECEDENCE.UNARY, seq('!', $._expression)),
+            prec.left(PRECEDENCE.REF, seq('ref', $._expression)),
+        ),
+
+        binary_expression: $ => choice(
+            prec.left(12, seq($._expression, '%', $._expression)),
+            prec.left(12, seq($._expression, '/', $._expression)),
+            prec.left(12, seq($._expression, '*', $._expression)),
+
+            prec.left(11, seq($._expression, '+', $._expression)),
+            prec.left(11, seq($._expression, '-', $._expression)),
+
+            prec.left(10, seq($._expression, '>>', $._expression)),
+            prec.left(10, seq($._expression, '<<', $._expression)),
+
+            prec.left(9, seq($._expression, '&', $._expression)),
+            prec.left(8, seq($._expression, '^', $._expression)),
+            prec.left(7, seq($._expression, '|', $._expression)),
+
+            prec.left(6, seq($._expression, '>=', $._expression)),
+            prec.left(6, seq($._expression, '<=', $._expression)),
+            prec.left(6, seq($._expression, '<', $._expression)),
+            prec.left(6, seq($._expression, '>', $._expression)),
+            prec.left(5, seq($._expression, '!=', $._expression)),
+            prec.left(5, seq($._expression, '==', $._expression)),
+            prec.left(4, seq($._expression, '&&', $._expression)),
+            prec.left(3, seq($._expression, '||', $._expression)),
+            // ref
+            // call
+            prec.left(0, seq($._expression, '=', $._expression)),
+        ),
+
         // initializers
+        term_expression: $ => choice(
+            $._string_literal,
+            $._float_literal,
+            $._integer_literal,
+            $.path,
+            seq(
+                '[',
+                repeat('\n'),
+                optional(
+                    seq(
+                        $._expression,
+                        repeat(seq(';', repeat('\n'), $._expression)),
+                        optional(';'),
+                        repeat('\n')
+                    )
+                ),
+                ']'
+            ), // list
+            seq($._expression, repeat1(seq(',', $._expression))), // tuple
+            seq(
+                '{',
+                repeat('\n'),
+                optional(
+                    seq(
+                        $._field_value,
+                        repeat(seq(';', repeat('\n'), $._field_value)),
+                        optional(';'),
+                        repeat('\n'),
+                    )
+                ),
+                '}'
+            ), // record
+            seq(
+                '(',
+                $._expression,
+                ')'
+            ), // parenthesis
+        ),
+
+        _field_value: $ => seq(
+            $.identifier,
+            ':',
+            $._expression,
+        ),
 
         // types
 
@@ -108,8 +242,10 @@ module.exports = grammar({
         _bind_identifier: $ => seq(optional('mut'), $.identifier),
         _bind_multiple: $ => seq(
             '(',
-            repeat1(seq($.bind, optional(','))),
-            ')'
+            $.bind,
+            repeat(seq(',', $.bind)),
+            optional(','),
+            ')',
         ),
 
         // misc

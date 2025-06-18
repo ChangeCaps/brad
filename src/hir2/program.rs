@@ -1,15 +1,25 @@
+use super::{Bodies, Body, BodyId, Module, ModuleId, Modules};
+use solve::Type;
 use std::ops::{Index, IndexMut};
 
-use super::{Bodies, Body, BodyId, Module, ModuleId, Modules};
-
-#[derive(Debug, Default)]
-pub struct Program {
+#[derive(Debug)]
+pub struct Program<T = Type> {
     pub modules: Modules,
-    pub bodies: Bodies,
+    pub bodies: Bodies<T>,
     pub tcx: solve::Tcx,
 }
 
-impl Program {
+impl<T> Default for Program<T> {
+    fn default() -> Self {
+        Self {
+            modules: Modules::default(),
+            bodies: Bodies::default(),
+            tcx: solve::Tcx::default(),
+        }
+    }
+}
+
+impl<T> Program<T> {
     pub fn new() -> Self {
         Self::default()
     }
