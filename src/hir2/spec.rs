@@ -1,4 +1,4 @@
-use crate::anf::Type;
+use crate::anf::{Type, Types};
 use crate::attribute::Attributes;
 use crate::hir2::{Argument, Expr, Locals};
 use diagnostic::Span;
@@ -56,8 +56,10 @@ impl IndexMut<SpecializedBodyId> for SpecializedBodies {
     }
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct SpecializedProgram {
     pub bodies: SpecializedBodies,
+    pub types: Types,
 }
 
 impl Index<SpecializedBodyId> for SpecializedProgram {

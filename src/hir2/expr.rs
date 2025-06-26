@@ -31,7 +31,7 @@ pub enum ExprKind<T = Type> {
     Func(BodyId),
     Array(Vec<Expr<T>>),
     Tuple(Vec<Expr<T>>),
-    Record(Vec<Init>),
+    Record(Vec<Init<T>>),
     Index(Box<Expr<T>>, Box<Expr<T>>),
     Field(Box<Expr<T>>, &'static str),
     Unary(UnaryOp, Box<Expr<T>>),
