@@ -1,6 +1,6 @@
-use std::ops::{Index, IndexMut};
-
 use crate::attribute::Attributes;
+use diagnostic::Span;
+use std::ops::{Index, IndexMut};
 
 use super::{Expr, Tid};
 
@@ -8,7 +8,7 @@ use super::{Expr, Tid};
 pub struct Bid(usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Local(usize);
+pub struct Local(pub usize);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Body {
@@ -18,7 +18,8 @@ pub struct Body {
     pub locals: Vec<Tid>,
     pub arguments: usize,
     pub output: Tid,
-    pub expr: Option<Expr>,
+    pub exprs: Vec<Expr>,
+    pub span: Span,
 }
 
 impl Body {

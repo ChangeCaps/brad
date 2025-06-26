@@ -1,14 +1,16 @@
 use solve::{Tag, Tags};
+use std::collections::HashMap;
 use std::{
     mem,
     ops::{Index, IndexMut},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Tid(usize);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Tid(pub usize);
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Type {
+    /// Terms of a type (union)
     pub terms: Vec<Term>,
 }
 
@@ -48,7 +50,7 @@ impl Type {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Term {
     pub tags: Tags,
     pub base: Base,
@@ -56,7 +58,7 @@ pub struct Term {
 
 impl Term {}
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Base {
     Any,
     Record(Vec<(&'static str, Tid)>),
@@ -68,6 +70,7 @@ pub enum Base {
 #[derive(Clone, Debug, Default)]
 pub struct Types {
     types: Vec<Type>,
+    map: HashMap<Type, Tid>,
 }
 
 impl Types {
@@ -76,9 +79,14 @@ impl Types {
     }
 
     pub fn insert(&mut self, ty: Type) -> Tid {
-        let id = self.types.len();
+        if let Some(&tid) = self.map.get(&ty) {
+            return tid;
+        }
+
+        let tid = Tid(self.types.len());
         self.types.push(ty.clone());
-        Tid(id)
+        self.map.insert(ty, tid);
+        tid
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (Tid, &Type)> {
