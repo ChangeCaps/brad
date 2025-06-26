@@ -1,3 +1,4 @@
+use diagnostic::Span;
 use solve::{Tag, Tags};
 
 use super::{Bid, Local, Tid};
@@ -19,6 +20,10 @@ pub enum ExprKind {
         target: Value,
         arms: Vec<(Tag, Arm)>,
         default: Option<Box<Arm>>,
+    },
+    TagInit {
+        dst: Local,
+        tag: Tag,
     },
     TupleInit {
         dst: Local,
@@ -89,6 +94,7 @@ pub enum Value {
 pub struct Expr {
     pub kind: ExprKind,
     pub ty: Tid,
+    pub span: Span,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

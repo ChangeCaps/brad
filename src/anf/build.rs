@@ -1,6 +1,8 @@
-use crate::anf::Type;
+use crate::anf::{Tid, Type, Value};
 use crate::hir2::ExprKind;
 use crate::{anf, hir2 as hir};
+use solve::Tag;
+use std::collections::HashMap;
 
 struct BuildContext<'a> {
     ir: anf::Program,
@@ -35,7 +37,7 @@ impl<'a> BuildContext<'a> {
             locals,
             arguments: hir_body.input.len(),
             output: self.ir.types.insert(hir_body.output.clone()),
-            expr: None,
+            exprs: Vec::new(),
             span: hir_body.span,
         };
 
@@ -43,6 +45,7 @@ impl<'a> BuildContext<'a> {
             ctx: self,
             body: &mut body,
             hir_body,
+            local_map: HashMap::new(),
         };
 
         body_ctx.build();
@@ -55,6 +58,7 @@ struct BodyBuildContext<'a, 'b> {
     ctx: &'a mut BuildContext<'b>,
     body: &'a mut anf::Body,
     hir_body: &'a hir::SpecializedBody,
+    local_map: HashMap<hir::LocalId, anf::Local>,
 }
 
 impl<'a, 'b> BodyBuildContext<'a, 'b> {
@@ -67,24 +71,62 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
 
         // build exprs after allocating arguments.
         if let Some(hir_expr) = &self.hir_body.expr {
-            self.body.expr = Some(self.build_expr(hir_expr));
+            let expr_value = self.build_expr(hir_expr);
+            self.body.exprs.push(anf::Expr {
+                kind: anf::ExprKind::Return { val: expr_value },
+                ty: self.body.output,
+                span: hir_expr.span,
+            })
+        } else {
+            let none_value = self.next_local(self.body.output);
+
+            // If there is no expression, we still need to return a unit value.
+            self.body.exprs.push(anf::Expr {
+                kind: anf::ExprKind::TagInit {
+                    dst: none_value,
+                    tag: Tag::NONE,
+                },
+                ty: self.body.output,
+                span: self.hir_body.span,
+            });
+
+            self.body.exprs.push(anf::Expr {
+                kind: anf::ExprKind::Return {
+                    val: Value::Local(none_value),
+                },
+                ty: self.body.output,
+                span: self.hir_body.span,
+            });
         }
     }
 
-    pub fn build_expr(&mut self, hir_expr: &hir::Expr<Type>) -> anf::Expr {
+    pub fn prev_local(&self) -> anf::Local {
+        anf::Local(self.body.locals.len() - 1)
+    }
+
+    pub fn next_local(&mut self, tid: Tid) -> anf::Local {
+        let local = anf::Local(self.body.locals.len());
+        self.body.locals.push(tid);
+        local
+    }
+
+    pub fn build_expr(&mut self, hir_expr: &hir::Expr<Type>) -> Value {
         match hir_expr.kind {
-            ExprKind::Int(_) => {
-                todo!()
+            ExprKind::Int(v) => Value::Int(v),
+            ExprKind::Float(v) => Value::Float(v),
+            ExprKind::ZeroSize(v) => {
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+                let local = self.next_local(tid);
+
+                self.body.exprs.push(anf::Expr {
+                    kind: anf::ExprKind::TagInit { dst: local, tag: v },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                Value::Local(local)
             }
-            ExprKind::Float(_) => {
-                todo!()
-            }
-            ExprKind::ZeroSize(_) => {
-                todo!()
-            }
-            ExprKind::String(_) => {
-                todo!()
-            }
+            ExprKind::String(v) => Value::String(v),
             ExprKind::Local(_) => {
                 todo!()
             }
