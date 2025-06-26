@@ -1,6 +1,6 @@
-use std::ops::{Index, IndexMut};
-
 use crate::attribute::Attributes;
+use diagnostic::Span;
+use std::ops::{Index, IndexMut};
 
 use super::{Expr, Tid};
 
@@ -19,6 +19,7 @@ pub struct Body {
     pub arguments: usize,
     pub output: Tid,
     pub expr: Option<Expr>,
+    pub span: Span,
 }
 
 impl Body {

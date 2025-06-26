@@ -36,7 +36,7 @@ impl Module {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ModuleId(usize);
+pub struct ModuleId(pub usize);
 
 #[derive(Clone, Debug, Default)]
 pub struct Modules {

@@ -2,7 +2,7 @@ use crate::ast::GeneratorOptions;
 use crate::compiler::Compiler;
 use crate::parse::{Interner, Tokens};
 use crate::v1::cli::{execute_v1, PipelineV1Cmd};
-use crate::{ast, parse};
+use crate::{ast, hir2, parse};
 use clap::{Args, Parser, Subcommand};
 use diagnostic::{Report, Source, Sources};
 use std::io::Write;
@@ -82,8 +82,9 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
             compiler.tokenize2(&mut rep).map_err(|_| rep.clone())?;
             compiler.parse2(&mut rep).map_err(|_| rep.clone())?;
 
-            let _ = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
-
+            let hir = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
+            let mut formatter = hir2::Formatter::new(std::io::stdout(), &hir);
+            formatter.format().unwrap();
             Ok(())
         }
         PipelineV2Cmd::Lua(_) => {
