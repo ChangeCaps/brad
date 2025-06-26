@@ -1,17 +1,16 @@
-use crate::anf::{Tid, Type, Value};
-use crate::hir2::ExprKind;
-use crate::{anf, hir2 as hir};
+use crate::anf::{Bid, Body, Expr, ExprKind, Local, Program, Tid, Type, Value};
+use crate::hir2 as hir;
 use solve::Tag;
 use std::collections::HashMap;
 
 struct BuildContext<'a> {
-    ir: anf::Program,
+    ir: Program,
     hir: &'a hir::SpecializedProgram,
 }
 
 impl<'a> BuildContext<'a> {
-    pub fn build(program: &hir::SpecializedProgram) -> anf::Program {
-        let ir = anf::Program::default();
+    pub fn build(program: &hir::SpecializedProgram) -> Program {
+        let ir = Program::default();
 
         let mut ctx = BuildContext { ir, hir: program };
 
@@ -23,14 +22,14 @@ impl<'a> BuildContext<'a> {
         ctx.ir
     }
 
-    pub fn build_body(&mut self, hir_body: &hir::SpecializedBody) -> anf::Bid {
+    pub fn build_body(&mut self, hir_body: &hir::SpecializedBody) -> Bid {
         let locals = if hir_body.is_extern {
             Vec::new()
         } else {
             Vec::with_capacity(hir_body.input.len() + hir_body.locals.len())
         };
 
-        let mut body = anf::Body {
+        let mut body = Body {
             name: Some(hir_body.name.clone()),
             attrs: hir_body.attrs.clone(),
             is_extern: hir_body.is_extern,
@@ -56,9 +55,10 @@ impl<'a> BuildContext<'a> {
 
 struct BodyBuildContext<'a, 'b> {
     ctx: &'a mut BuildContext<'b>,
-    body: &'a mut anf::Body,
+    body: &'a mut Body,
     hir_body: &'a hir::SpecializedBody,
-    local_map: HashMap<hir::LocalId, anf::Local>,
+    /// Map between HIR locals and ANF locals.
+    local_map: HashMap<hir::LocalId, Local>,
 }
 
 impl<'a, 'b> BodyBuildContext<'a, 'b> {
@@ -72,8 +72,8 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
         // build exprs after allocating arguments.
         if let Some(hir_expr) = &self.hir_body.expr {
             let expr_value = self.build_expr(hir_expr);
-            self.body.exprs.push(anf::Expr {
-                kind: anf::ExprKind::Return { val: expr_value },
+            self.body.exprs.push(Expr {
+                kind: ExprKind::Return { val: expr_value },
                 ty: self.body.output,
                 span: hir_expr.span,
             })
@@ -81,8 +81,8 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
             let none_value = self.next_local(self.body.output);
 
             // If there is no expression, we still need to return a unit value.
-            self.body.exprs.push(anf::Expr {
-                kind: anf::ExprKind::TagInit {
+            self.body.exprs.push(Expr {
+                kind: ExprKind::TagInit {
                     dst: none_value,
                     tag: Tag::NONE,
                 },
@@ -90,8 +90,8 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
                 span: self.hir_body.span,
             });
 
-            self.body.exprs.push(anf::Expr {
-                kind: anf::ExprKind::Return {
+            self.body.exprs.push(Expr {
+                kind: ExprKind::Return {
                     val: Value::Local(none_value),
                 },
                 ty: self.body.output,
@@ -100,88 +100,88 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
         }
     }
 
-    pub fn prev_local(&self) -> anf::Local {
-        anf::Local(self.body.locals.len() - 1)
+    pub fn prev_local(&self) -> Local {
+        Local(self.body.locals.len() - 1)
     }
 
-    pub fn next_local(&mut self, tid: Tid) -> anf::Local {
-        let local = anf::Local(self.body.locals.len());
+    pub fn next_local(&mut self, tid: Tid) -> Local {
+        let local = Local(self.body.locals.len());
         self.body.locals.push(tid);
         local
     }
 
     pub fn build_expr(&mut self, hir_expr: &hir::Expr<Type>) -> Value {
         match hir_expr.kind {
-            ExprKind::Int(v) => Value::Int(v),
-            ExprKind::Float(v) => Value::Float(v),
-            ExprKind::ZeroSize(v) => {
+            hir::ExprKind::Int(v) => Value::Int(v),
+            hir::ExprKind::Float(v) => Value::Float(v),
+            hir::ExprKind::ZeroSize(v) => {
                 let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
                 let local = self.next_local(tid);
 
-                self.body.exprs.push(anf::Expr {
-                    kind: anf::ExprKind::TagInit { dst: local, tag: v },
+                self.body.exprs.push(Expr {
+                    kind: ExprKind::TagInit { dst: local, tag: v },
                     ty: tid,
                     span: hir_expr.span,
                 });
 
                 Value::Local(local)
             }
-            ExprKind::String(v) => Value::String(v),
-            ExprKind::Local(_) => {
+            hir::ExprKind::String(v) => Value::String(v),
+            hir::ExprKind::Local(_) => {
                 todo!()
             }
-            ExprKind::Tag(_, _) => {
+            hir::ExprKind::Tag(_, _) => {
                 todo!()
             }
-            ExprKind::Func(_) => {
+            hir::ExprKind::Func(_) => {
                 todo!()
             }
-            ExprKind::Array(_) => {
+            hir::ExprKind::Array(_) => {
                 todo!()
             }
-            ExprKind::Tuple(_) => {
+            hir::ExprKind::Tuple(_) => {
                 todo!()
             }
-            ExprKind::Record(_) => {
+            hir::ExprKind::Record(_) => {
                 todo!()
             }
-            ExprKind::Index(_, _) => {
+            hir::ExprKind::Index(_, _) => {
                 todo!()
             }
-            ExprKind::Field(_, _) => {
+            hir::ExprKind::Field(_, _) => {
                 todo!()
             }
-            ExprKind::Unary(_, _) => {
+            hir::ExprKind::Unary(_, _) => {
                 todo!()
             }
-            ExprKind::Binary(_, _, _) => {
+            hir::ExprKind::Binary(_, _, _) => {
                 todo!()
             }
-            ExprKind::Call(_, _) => {
+            hir::ExprKind::Call(_, _) => {
                 todo!()
             }
-            ExprKind::Lambda { .. } => {
+            hir::ExprKind::Lambda { .. } => {
                 todo!()
             }
-            ExprKind::Assign(_, _) => {
+            hir::ExprKind::Assign(_, _) => {
                 todo!()
             }
-            ExprKind::Ref(_) => {
+            hir::ExprKind::Ref(_) => {
                 todo!()
             }
-            ExprKind::Match(_, _) => {
+            hir::ExprKind::Match(_, _) => {
                 todo!()
             }
-            ExprKind::Loop(_) => {
+            hir::ExprKind::Loop(_) => {
                 todo!()
             }
-            ExprKind::Break(_) => {
+            hir::ExprKind::Break(_) => {
                 todo!()
             }
-            ExprKind::Let(_, _) => {
+            hir::ExprKind::Let(_, _) => {
                 todo!()
             }
-            ExprKind::Block(_) => {
+            hir::ExprKind::Block(_) => {
                 todo!()
             }
         }
