@@ -151,11 +151,39 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
             hir::ExprKind::Field(_, _) => {
                 todo!()
             }
-            hir::ExprKind::Unary(_, _) => {
-                todo!()
+            hir::ExprKind::Unary(op, ref arg) => {
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+                let val = self.build_expr(arg);
+                let local = self.next_local(tid);
+                self.body.exprs.push(Expr {
+                    kind: ExprKind::Unary {
+                        op: op.into(),
+                        dst: local,
+                        val,
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                Value::Local(local)
             }
-            hir::ExprKind::Binary(_, _, _) => {
-                todo!()
+            hir::ExprKind::Binary(op, ref lhs, ref rhs) => {
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+                let lhs = self.build_expr(lhs);
+                let rhs = self.build_expr(rhs);
+                let local = self.next_local(tid);
+                self.body.exprs.push(Expr {
+                    kind: ExprKind::Binary {
+                        op: op.into(),
+                        dst: local,
+                        lhs,
+                        rhs,
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                Value::Local(local)
             }
             hir::ExprKind::Call(_, _) => {
                 todo!()
@@ -163,8 +191,35 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
             hir::ExprKind::Lambda { .. } => {
                 todo!()
             }
-            hir::ExprKind::Assign(_, _) => {
-                todo!()
+            hir::ExprKind::Assign(ref lhs, ref rhs) => {
+                let Value::Local(local) = self.build_expr(lhs) else {
+                    panic!("Expected a local value for assignment, found: {:?}", lhs);
+                };
+
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+                let rhs = self.build_expr(rhs);
+
+                self.body.exprs.push(Expr {
+                    kind: ExprKind::Mov {
+                        dst: local,
+                        src: rhs,
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                let none_value = self.next_local(tid);
+
+                self.body.exprs.push(Expr {
+                    kind: ExprKind::TagInit {
+                        dst: none_value,
+                        tag: Tag::NONE,
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                Value::Local(none_value)
             }
             hir::ExprKind::Ref(_) => {
                 todo!()
@@ -181,8 +236,30 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
             hir::ExprKind::Let(_, _) => {
                 todo!()
             }
-            hir::ExprKind::Block(_) => {
-                todo!()
+            hir::ExprKind::Block(ref hir_exprs) => {
+                let block_tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+                let mut last_value = None;
+
+                for expr in hir_exprs {
+                    last_value = Some(self.build_expr(expr));
+                }
+
+                if last_value.is_none() {
+                    // If the block is empty, we need to return a unit value.
+                    let local = self.next_local(block_tid);
+                    self.body.exprs.push(Expr {
+                        kind: ExprKind::TagInit {
+                            dst: local,
+                            tag: Tag::NONE,
+                        },
+                        ty: block_tid,
+                        span: hir_expr.span,
+                    });
+
+                    last_value = Some(Value::Local(local));
+                }
+
+                last_value.unwrap()
             }
         }
     }

@@ -1,7 +1,7 @@
+use super::{Bid, Local, Tid};
+use crate::hir2;
 use diagnostic::Span;
 use solve::{Tag, Tags};
-
-use super::{Bid, Local, Tid};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExprKind {
@@ -17,6 +17,7 @@ pub enum ExprKind {
         rhs: Value,
     },
     Match {
+        dst: Local,
         target: Value,
         arms: Vec<(Tag, Arm)>,
         default: Option<Box<Arm>>,
@@ -53,7 +54,7 @@ pub enum ExprKind {
     },
     Mov {
         dst: Local, // reg
-        src: Local, // reg
+        src: Value, // reg
     },
     Read {
         dst: Local, // reg
@@ -76,6 +77,14 @@ pub enum ExprKind {
         index: Value,
         access: Vec<&'static str>,
         src: Value, // reg
+    },
+    Loop {
+        dst: Local,
+        body: Vec<Expr>,
+    },
+    Continue {},
+    Break {
+        value: Option<Value>,
     },
     Return {
         val: Value,
@@ -104,6 +113,17 @@ pub enum UnaryOp {
     BitNot,
 }
 
+impl From<hir2::UnaryOp> for UnaryOp {
+    fn from(op: hir2::UnaryOp) -> Self {
+        match op {
+            hir2::UnaryOp::Neg => UnaryOp::Neg,
+            hir2::UnaryOp::Not => UnaryOp::Not,
+            hir2::UnaryOp::BitNot => UnaryOp::BitNot,
+            _ => panic!("Unsupported unary operation: {:?}", op),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     Add,
@@ -126,8 +146,33 @@ pub enum BinaryOp {
     Ge,
 }
 
+impl From<hir2::BinaryOp> for BinaryOp {
+    fn from(op: hir2::BinaryOp) -> Self {
+        match op {
+            hir2::BinaryOp::Add => BinaryOp::Add,
+            hir2::BinaryOp::Sub => BinaryOp::Sub,
+            hir2::BinaryOp::Mul => BinaryOp::Mul,
+            hir2::BinaryOp::Div => BinaryOp::Div,
+            hir2::BinaryOp::Mod => BinaryOp::Mod,
+            hir2::BinaryOp::And => BinaryOp::And,
+            hir2::BinaryOp::Or => BinaryOp::Or,
+            hir2::BinaryOp::BitAnd => BinaryOp::BitAnd,
+            hir2::BinaryOp::BitOr => BinaryOp::BitOr,
+            hir2::BinaryOp::BitXor => BinaryOp::BitXor,
+            hir2::BinaryOp::Shl => BinaryOp::Shl,
+            hir2::BinaryOp::Shr => BinaryOp::Shr,
+            hir2::BinaryOp::Eq => BinaryOp::Eq,
+            hir2::BinaryOp::Ne => BinaryOp::Ne,
+            hir2::BinaryOp::Lt => BinaryOp::Lt,
+            hir2::BinaryOp::Le => BinaryOp::Le,
+            hir2::BinaryOp::Gt => BinaryOp::Gt,
+            hir2::BinaryOp::Ge => BinaryOp::Ge,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Arm {
     pub local: Local,
-    pub body: Expr,
+    pub body: Vec<Expr>,
 }
