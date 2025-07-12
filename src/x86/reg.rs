@@ -1,71 +1,52 @@
-use std::collections::BTreeSet;
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct Reg(u8);
-
-struct Allocator {
-    good: BTreeSet<Reg>,
-    bad: BTreeSet<Reg>,
-}
-
-impl Allocator {
-    fn new() -> Self {
-        let mut ret = Self {
-            good: BTreeSet::new(),
-            bad: BTreeSet::new(),
-        };
-
-        for i in 0..4 {
-            ret.bad.insert(Reg(i));
-        }
-
-        for i in 6..16 {
-            ret.good.insert(Reg(i));
-        }
-
-        ret
-    }
-
-    fn alloc(mut self) -> Option<Reg> {
-        match self.good.len() {
-            0 => self.bad.pop_first(),
-            _ => self.good.pop_first(),
-        }
-    }
-
-    fn alloc_fixed(mut self, reg: Reg) -> Option<Reg> {
-        self.good.take(&reg).or(self.bad.take(&reg))
-    }
-
-    fn free(mut self, reg: Reg) {
-        if reg.0 < 4 {
-            self.bad.insert(reg);
-        } else {
-            self.good.insert(reg);
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Reg {
+    index: u8,
+    pub float: bool,
 }
 
 impl Reg {
-    pub fn name(self) -> &'static str {
-        match self.0 {
-            0 => "rax",
-            1 => "rbx",
-            2 => "rcx",
-            3 => "rdx",
-            4 => "rsp",
-            5 => "rbp",
-            6 => "rsi",
-            7 => "rdi",
-            8 => "r8",
-            9 => "r9",
-            10 => "r10",
-            11 => "r11",
-            12 => "r12",
-            13 => "r13",
-            14 => "r14",
-            15 => "r15",
-            _ => "NOT A REG",
+    pub const RAX: Reg = Reg::int(0);
+    pub const RBX: Reg = Reg::int(1);
+    pub const RCX: Reg = Reg::int(2);
+    pub const RDX: Reg = Reg::int(3);
+    pub const RSP: Reg = Reg::int(4);
+    pub const RBP: Reg = Reg::int(5);
+    pub const RSI: Reg = Reg::int(6);
+    pub const RDI: Reg = Reg::int(7);
+    pub const R8: Reg = Reg::int(8);
+    pub const R9: Reg = Reg::int(9);
+    pub const R10: Reg = Reg::int(10);
+    pub const R11: Reg = Reg::int(11);
+    pub const R12: Reg = Reg::int(12);
+    pub const R13: Reg = Reg::int(13);
+    pub const R14: Reg = Reg::int(14);
+    pub const R15: Reg = Reg::int(15);
+
+    pub const XMM0: Reg = Reg::float(0);
+    pub const XMM1: Reg = Reg::float(1);
+    pub const XMM2: Reg = Reg::float(2);
+    pub const XMM3: Reg = Reg::float(3);
+    pub const XMM4: Reg = Reg::float(4);
+    pub const XMM5: Reg = Reg::float(5);
+    pub const XMM6: Reg = Reg::float(6);
+    pub const XMM7: Reg = Reg::float(7);
+    pub const XMM8: Reg = Reg::float(8);
+    pub const XMM9: Reg = Reg::float(9);
+    pub const XMM10: Reg = Reg::float(10);
+    pub const XMM11: Reg = Reg::float(11);
+    pub const XMM12: Reg = Reg::float(12);
+    pub const XMM13: Reg = Reg::float(13);
+    pub const XMM14: Reg = Reg::float(14);
+    pub const XMM15: Reg = Reg::float(15);
+
+    pub const fn int(index: u8) -> Self {
+        Self {
+            index,
+            float: false,
         }
+    }
+
+    pub const fn float(index: u8) -> Self {
+        Self { index, float: true }
     }
 }
