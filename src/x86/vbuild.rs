@@ -1,6 +1,6 @@
 use solve::Tag;
 
-use crate::anf;
+use crate::anf::{self, Local};
 
 use super::{
     common::{Imm32, Imm64, MemScale, PrimitiveType},
@@ -267,6 +267,7 @@ impl BodyBuilder {
         &mut self,
         body: &anf::Body,
         types: &anf::Types,
+        dst: &Local,
         target: &anf::Value,
         arms: &Vec<(Tag, anf::Arm)>,
         default: &Option<Box<anf::Arm>>,
@@ -287,10 +288,11 @@ impl BodyBuilder {
                     self.build_binary(body, types, op, dst, lhs, rhs);
                 }
                 anf::ExprKind::Match {
+                    dst,
                     target,
                     arms,
                     default,
-                } => self.build_match(body, types, target, arms, default),
+                } => self.build_match(body, types, dst, target, arms, default),
                 anf::ExprKind::TagInit { dst, tag } => todo!(),
                 anf::ExprKind::TupleInit { dst, vals } => todo!(),
                 anf::ExprKind::ArrayInit { dst, vals } => todo!(),
@@ -300,7 +302,20 @@ impl BodyBuilder {
                 anf::ExprKind::Call { dst, src, arg } => todo!(),
                 anf::ExprKind::Mov { dst, src } => {
                     let v_dst = Self::virtual_from_local(dst);
-                    let v_src = Self::virtual_from_local(src);
+                    let v_src = match src {
+                        anf::Value::Local(local) => Self::virtual_from_local(local),
+                        anf::Value::Int(val) => {
+                            let virt = self.next_vreg();
+                            self.mov_ri(virt, Imm64::Const(val.clone()));
+                            virt
+                        }
+                        anf::Value::Float(_) => {
+                            todo!()
+                        }
+                        anf::Value::String(_) => {
+                            todo!()
+                        }
+                    };
 
                     self.mov_rr(v_dst, v_src);
                 }
@@ -411,6 +426,9 @@ impl BodyBuilder {
                     todo!()
                 }
                 anf::ExprKind::Return { val } => todo!(),
+                anf::ExprKind::Loop { dst, body } => todo!(),
+                anf::ExprKind::Continue {} => todo!(),
+                anf::ExprKind::Break { value } => todo!(),
             }
         }
     }
