@@ -33,9 +33,19 @@ pub enum Instr {
         dst: Reg,
     },
 
+    ADD_RI {
+        dst: Reg,
+        rhs: Imm32,
+    },
+
     ADD_RR {
         dst: Reg,
         rhs: Reg,
+    },
+
+    SUB_RI {
+        dst: Reg,
+        rhs: Imm32,
     },
 
     SUB_RR {
@@ -146,5 +156,9 @@ impl InstrBlock {
 
     pub fn putl(&mut self, label: ComptimeVal) {
         self.put(InstrElement::Label(label));
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &InstrElement> {
+        self.elems.iter()
     }
 }

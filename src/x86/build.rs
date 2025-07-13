@@ -39,13 +39,19 @@ impl Builder {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallingConv {
+    // integer args
     iargs: Vec<Reg>,
+    // float args
     fargs: Vec<Reg>,
 
+    // integer returns
     iret: Vec<Reg>,
+    // float returns
     fret: Vec<Reg>,
 
+    // integer registers to be saved
     isave: BTreeSet<Reg>,
+    // float registers to be saved
     fsave: BTreeSet<Reg>,
 }
 
@@ -214,6 +220,19 @@ enum VLocation {
     None,
     Stack(i32),
     Reg(Reg),
+}
+
+#[derive(Debug, Clone)]
+pub struct BodyOutput {
+    pub instrs: InstrBlock,
+}
+
+impl BodyOutput {
+    pub fn new() -> Self {
+        Self {
+            instrs: InstrBlock::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -659,7 +678,7 @@ impl BodyBuilder {
         self.usage.free(reg);
     }
 
-    pub fn build(&mut self, v_body: vbuild::BodyOutput, types: &anf::Types) -> InstrBlock {
+    pub fn build(&mut self, v_body: vbuild::BodyOutput, types: &anf::Types) -> BodyOutput {
         // step 1 - register alloc base assembly
 
         println!("{:#?}", v_body);
@@ -1043,11 +1062,80 @@ impl BodyBuilder {
         // step 2 - save registers based where required based on function calls
 
         // step 3 - save clobbered registers
+        let iclobber: Vec<Reg> = self
+            .usage
+            .iclobber
+            .intersection(&self.conv.isave)
+            .cloned()
+            .collect();
+
+        let fclobber: Vec<Reg> = self
+            .usage
+            .fclobber
+            .intersection(&self.conv.fsave)
+            .cloned()
+            .collect();
+
+        let mut out = BodyOutput::new();
+
+        let sp_diff = {
+            let mut offset: i32 = 8;
+            for reg in &iclobber {
+                offset = offset + 8;
+                out.instrs.puti(Instr::MOV_MR {
+                    scale: MemScale::S1,
+                    index: None,
+                    base: Some(Reg::RSP),
+                    offset: Imm32::Const(-offset),
+                    src: reg.clone(),
+                });
+            }
+
+            offset
+        };
+
+        if sp_diff > 8 {
+            out.instrs.puti(Instr::SUB_RI {
+                dst: Reg::RSP,
+                rhs: Imm32::Const(sp_diff - 8),
+            });
+        }
+
+        for instr in self.instrs.iter() {
+            match instr {
+                InstrElement::Instr(instr) => match instr {
+                    Instr::RET => {
+                        if sp_diff > 8 {
+                            out.instrs.puti(Instr::ADD_RI {
+                                dst: Reg::RSP,
+                                rhs: Imm32::Const(sp_diff - 8),
+                            });
+                        }
+
+                        {
+                            let mut offset: i32 = 8;
+                            for reg in &iclobber {
+                                offset = offset + 8;
+                                out.instrs.puti(Instr::MOV_RM {
+                                    dst: reg.clone(),
+                                    scale: MemScale::S1,
+                                    index: None,
+                                    base: Some(Reg::RSP),
+                                    offset: Imm32::Const(-offset),
+                                });
+                            }
+                        }
+                        out.instrs.puti(instr.clone());
+                    }
+                    _ => out.instrs.puti(instr.clone()),
+                },
+                InstrElement::Label(comptime_val) => out.instrs.put(instr.clone()),
+            }
+        }
 
         // block
 
-        print!("{:#?}", self.instrs);
-
-        todo!()
+        print!("{:#?}", out);
+        out
     }
 }
