@@ -121,6 +121,7 @@ class BenchmarkTarget(str, Enum):
     """Available BRAD compilation targets"""
 
     LUA = "lua"
+    LUAJIT = "luajit"
     SIMPLE_SPEC = "simple-spec-pipeline"
 
 
@@ -304,6 +305,13 @@ class LuaRunner(TargetRunner):
                     )
 
 
+class LuaJitRunner(LuaRunner):
+    def get_execution_command(self, file_path: Path) -> Optional[List[str]]:
+        if self.lua_file.exists():
+            return ["luajit", str(self.lua_file)]
+        return None
+
+
 class SimpleSpecRunner(TargetRunner):
     """Runner for BRAD simple specification pipeline"""
 
@@ -340,6 +348,7 @@ class TargetRunnerRegistry:
     def _register_builtin_runners(self):
         """Register built-in runners"""
         self.register(BenchmarkTarget.LUA, LuaRunner)
+        self.register(BenchmarkTarget.LUAJIT, LuaJitRunner)
         self.register(BenchmarkTarget.SIMPLE_SPEC, SimpleSpecRunner)
 
     def register(self, target: BenchmarkTarget, runner_class: type) -> None:
@@ -1968,13 +1977,6 @@ def main(
 
     except KeyboardInterrupt as e:
         click.secho("\n⚠️  Benchmark interrupted by user", fg="yellow")
-
-        # Dump traceback to see where we were
-        if click.get_current_context().obj is None:
-            import traceback
-
-            traceback.print_exc()
-
         sys.exit(1)
     except Exception as e:
         click.secho(f"\n❌ Benchmark failed: {e}", fg="red", err=True)
