@@ -1,6 +1,5 @@
 use crate::hir2;
 use solve::Type;
-use std::fmt::{Debug, Display};
 
 const INDENT_SIZE: usize = 4;
 

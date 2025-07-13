@@ -1,0 +1,62 @@
+alias planet = { x: float; y: float; z: float; vx: float; vy: float; vz: float; mass: float }
+
+fn planet::new (x: float) (y: float) (z: float) (vx: float) (vy: float) (vz: float) (mass: float) -> planet {
+  { x: x; y: y; z: z; vx: vx; vy: vy; vz: vz; mass: mass }
+}
+
+fn energy (bodies: [planet]) -> float {
+  let mut e: float = 0.0
+  let bodies_len = std::array::len bodies
+  let mut i = 0
+  
+  loop {
+    match i >= bodies_len
+    | true => break e
+    | false => {}
+    
+    let bi = bodies[i]
+    e = e + 0.5 * bi.mass * (bi.vx * bi.vx + bi.vy * bi.vy + bi.vz * bi.vz)
+    
+    let mut j = i + 1
+    loop {
+      match j >= bodies_len
+      | true => break
+      | false => {}
+      
+      let bj = bodies[j]
+      let dx = bi.x - bj.x
+      let dy = bi.y - bj.y
+      let dz = bi.z - bj.z
+      let distance = 1.0
+      e = e - bi.mass * bj.mass / distance
+      j = j + 1
+    }
+    
+    i = i + 1
+  }
+}
+
+fn main -> none {
+  let n = 1000
+  let solar_mass = 39.478417604
+  let year = 365.24
+  
+  let mut bodies = [1.0; 2.0; 3.0]
+  
+  let initial_energy = 1.5
+  std::debug::print initial_energy
+  std::io::println ""
+  
+  let mut iter = 0
+  loop {
+    match iter >= n
+    | true => break
+    | false => {}
+    
+    iter = iter + 1
+  }
+  
+  let final_energy = 1.6
+  std::debug::print final_energy
+  std::io::println ""
+}

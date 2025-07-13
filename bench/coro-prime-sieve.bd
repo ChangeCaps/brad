@@ -1,0 +1,37 @@
+fn generate (n: int) -> std::iter<int> {
+   std::iter \_. {
+      n, generate (n + 1)
+   }
+}
+
+fn filter (ch: std::iter<int>) (prime: int) -> std::iter<int> {
+  std::iter \_. {
+    loop {
+       match std::iter::next ch
+       | _ as n, t => {
+          match n % prime != 0
+          | true => {
+            break n, filter t (prime)
+          }
+          | _ => {}
+       }
+       | none => break none
+     }
+  }
+}
+
+fn main {
+  let mut ch = generate 2
+  let mut i = 0
+  loop {
+    match i >= 100
+    | true => break
+    | _ => {}
+
+    let prime = match std::iter::next ch
+      | none => break
+      | int as n => n
+    ch = filter ch prime
+    i = i + 1
+  }
+}

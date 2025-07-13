@@ -1,0 +1,123 @@
+fn count-nucleotides (sequence: str) (k: int) -> [str] {
+  let chars = std::string::chars sequence
+  let seq-len = std::array::len chars
+  let mut counts = []
+  let mut i = 0
+  
+  loop {
+    match i + k > seq-len
+    | true => break counts
+    | false => {}
+    
+    let mut kmer = ""
+    let mut j = 0
+    loop {
+      match j >= k
+      | true => break
+      | false => {}
+      
+      kmer = std::string::append kmer chars[i + j]
+      j = j + 1
+    }
+    
+    counts = update-count counts kmer
+    i = i + 1
+  }
+}
+
+fn update-count (counts: [(str, int)]) (kmer: str) -> [(str, int)] {
+  let mut result = []
+  let mut found = false
+  let mut i = 0
+  let counts-len = std::array::len counts
+  
+  loop {
+    match i >= counts-len
+    | true => break
+    | false => {}
+    
+    let entry = counts[i]
+    match entry
+    | (k, c) => {
+      match k == kmer
+      | true => {
+        result = std::array::append result (k, c + 1)
+        found = true
+      }
+      | false => result = std::array::append result entry
+    }
+    
+    i = i + 1
+  }
+  
+  match found
+  | true => result
+  | false => std::array::append result (kmer, 1)
+}
+
+fn print-nucleotide-count (kmer: str) (count: int) -> none {
+  std::io::print kmer
+  std::io::print " "
+  std::debug::print count
+  std::io::println ""
+}
+
+fn main -> none {
+  let dna-sequence = "GGTATTTTAATTTATAGTAGCGATGATTGTAGCGGATAAATAAGCTAAGCTAAATAAGCTAAGCTAATGAAGCTAAGCTAAT"
+  
+  let one-mers = count-nucleotides dna-sequence 1
+  let two-mers = count-nucleotides dna-sequence 2
+  let three-mers = count-nucleotides dna-sequence 3
+  
+  std::io::println "1-nucleotide frequencies:"
+  let mut i = 0
+  let one-len = std::array::len one-mers
+  loop {
+    match i >= one-len
+    | true => break
+    | false => {}
+    
+    let entry = one-mers[i]
+    match entry
+    | (kmer, count) => print-nucleotide-count kmer count
+    
+    i = i + 1
+  }
+  
+  std::io::println ""
+  std::io::println "2-nucleotide frequencies:"
+  let mut j = 0
+  let two-len = std::array::len two-mers
+  loop {
+    match j >= two-len
+    | true => break
+    | false => {}
+    
+    let entry = two-mers[j]
+    match entry
+    | (kmer, count) => print-nucleotide-count kmer count
+    
+    j = j + 1
+  }
+  
+  std::io::println ""
+  let ggt-count = match count-nucleotides dna-sequence 3
+  | counts => {
+    let mut k = 0
+    let counts-len = std::array::len counts
+    loop {
+      match k >= counts-len
+      | true => break 0
+      | false => {}
+      
+      let entry = counts[k]
+      match entry
+      | ("GGT", count) => break count
+      | _ => {}
+      
+      k = k + 1
+    }
+  }
+  
+  print-nucleotide-count "GGT" ggt-count
+}

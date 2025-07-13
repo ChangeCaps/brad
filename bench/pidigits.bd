@@ -1,0 +1,66 @@
+fn print-digits-line (digits-printed: int) -> none {
+  std::io::print "\t:"
+  std::debug::print digits-printed
+  std::io::println ""
+}
+
+fn print-padded-line (digits-printed: int) (remaining: int) -> none {
+  let mut spaces = remaining
+  loop {
+    match spaces <= 0
+    | true => break
+    | false => {}
+    std::io::print " "
+    spaces = spaces - 1
+  }
+  print-digits-line digits-printed
+}
+
+fn main -> none {
+  let digits_to_print = 27
+  let mut digits_printed = 0
+  let mut k = 1
+  let mut n1 = 4
+  let mut n2 = 3
+  let mut d = 1
+  
+  loop {
+    match digits_printed >= digits_to_print
+    | true => break
+    | false => {}
+    
+    let u = n1 / d
+    let v = n2 / d
+    
+    match u == v
+    | true => {
+      std::debug::print u
+      digits_printed = digits_printed + 1
+      let digits_printed_mod_ten = digits_printed % 10
+      
+      match digits_printed_mod_ten == 0
+      | true => print-digits-line digits_printed
+      | false => {}
+      
+      let to_minus = u * 10 * d
+      n1 = n1 * 10 - to_minus
+      n2 = n2 * 10 - to_minus
+    }
+    | false => {
+      let k2 = k * 2
+      let u_new = n1 * (k2 - 1)
+      let v_new = n2 * 2
+      let w = n1 * (k - 1)
+      n1 = u_new + v_new
+      let u_final = n2 * (k + 2)
+      n2 = w + u_final
+      d = d * (k2 + 1)
+      k = k + 1
+    }
+  }
+  
+  let final_mod = digits_printed % 10
+  match final_mod > 0
+  | true => print-padded-line digits_printed (10 - final_mod)
+  | false => {}
+}
