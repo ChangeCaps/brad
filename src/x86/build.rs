@@ -1129,7 +1129,7 @@ impl BodyBuilder {
                     }
                     _ => out.instrs.puti(instr.clone()),
                 },
-                InstrElement::Label(comptime_val) => out.instrs.put(instr.clone()),
+                InstrElement::Label(_) => out.instrs.put(instr.clone()),
             }
         }
 
