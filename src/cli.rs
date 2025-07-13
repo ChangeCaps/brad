@@ -7,7 +7,7 @@ use clap::{Args, Parser, Subcommand};
 use diagnostic::{Report, Source, Sources};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::{fs, process};
+use std::fs;
 
 #[derive(Args, Clone)]
 pub struct FileArgs {
@@ -88,7 +88,8 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
             Ok(())
         }
         PipelineV2Cmd::Lua(_) => {
-            let mut file = fs::File::create("out.lua").unwrap();
+            let file_path = f.output.as_ref().map_or("out.lua", |p| p.to_str().unwrap());
+            let mut file = fs::File::create(file_path).unwrap();
 
             compiler.lua(&mut rep, &mut file).map_err(|_| rep.clone())?;
 
@@ -107,14 +108,7 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
 
             drop(file);
 
-            let output = process::Command::new("lua")
-                .arg("out.lua")
-                .stdout(process::Stdio::inherit())
-                .stderr(process::Stdio::inherit())
-                .output()
-                .expect("failed to execute process");
-
-            process::exit(output.status.code().unwrap_or(1));
+            Ok(())
         }
         PipelineV2Cmd::SimpleSpecPipeline(_) => {
             let hir = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;

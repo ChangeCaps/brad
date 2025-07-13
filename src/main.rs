@@ -22,5 +22,6 @@ fn main() {
         let mut writer = std::io::stdout();
         let mut formatter = diagnostic::Formatter::new(&mut writer, &sources);
         formatter.write_report(&diagnostic).unwrap();
+        std::process::exit(1);
     }
 }
