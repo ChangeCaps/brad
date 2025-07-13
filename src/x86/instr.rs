@@ -51,7 +51,7 @@ pub enum Instr {
     IDIV_RAX_R {
         rhs: Reg,
     },
-    IMOD_RDX_RAX_R {
+    IMOD_RDX_R {
         rhs: Reg,
     },
 
@@ -65,6 +65,10 @@ pub enum Instr {
     OR_RR {
         dst: Reg,
         rhs: Reg,
+    },
+    XOR_RI {
+        dst: Reg,
+        rhs: Imm32,
     },
     XOR_RR {
         dst: Reg,

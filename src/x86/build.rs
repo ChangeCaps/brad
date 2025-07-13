@@ -136,16 +136,12 @@ impl RegUsage {
 
         self.map.clear();
 
-        for i in 0..4 {
-            self.ifree.insert(Reg::int(i));
+        for reg in Reg::ALLOC_I {
+            self.ifree.insert(reg);
         }
 
-        for i in 5..16 {
-            self.ifree.insert(Reg::int(i));
-        }
-
-        for i in 0..16 {
-            self.ffree.insert(Reg::float(i));
+        for reg in Reg::ALLOC_F {
+            self.ffree.insert(reg);
         }
     }
 
@@ -263,13 +259,19 @@ impl BodyBuilder {
         };
     }
 
-    pub fn ensure_reg(&mut self, v_reg: VirtualReg, rconst: RegConstraint, save: &Vec<Reg>) -> Reg {
+    pub fn ensure_reg(
+        &mut self,
+        v_reg: VirtualReg,
+        rconst: RegConstraint,
+        save: &Vec<Reg>,
+        forbidden: &Vec<Reg>,
+    ) -> Reg {
         let idx = v_reg.usize();
 
         match self.v_map[idx] {
-            VLocation::None => self.alloc(v_reg, rconst, save),
+            VLocation::None => self.alloc(v_reg, rconst, save, forbidden),
             VLocation::Stack(offset) => {
-                let reg = self.alloc(v_reg, rconst, save);
+                let reg = self.alloc(v_reg, rconst, save, forbidden);
                 self.instrs.puti(Instr::MOV_RM {
                     dst: reg,
                     scale: MemScale::S1,
@@ -283,78 +285,192 @@ impl BodyBuilder {
         }
     }
 
-    pub fn alloc(&mut self, v_reg: VirtualReg, rconst: RegConstraint, save: &Vec<Reg>) -> Reg {
+    pub fn evict_regs(&mut self, regs: &Vec<Reg>, save: &Vec<Reg>) {
+        let forbidden = &mut regs.clone();
+        forbidden.extend(save.iter());
+
+        for reg in regs {
+            self.evict_reg(reg.clone(), forbidden);
+        }
+    }
+
+    pub fn evict_reg(&mut self, e_reg: Reg, forbidden: &Vec<Reg>) {
+        let v_reg = self.usage.map.get(&e_reg).cloned();
+        match v_reg {
+            Some(v_reg) => {
+                if e_reg.float {
+                    for reg in Reg::ALLOC_F {
+                        if forbidden.contains(&reg) {
+                            continue;
+                        }
+
+                        if self.usage.map.contains_key(&reg) {
+                            continue;
+                        }
+
+                        self.usage.alloc_sf(v_reg, reg);
+                        self.usage.map.remove(&e_reg);
+                        self.v_map[v_reg.usize()] = VLocation::Reg(reg);
+
+                        return;
+                    }
+                } else {
+                    for reg in Reg::ALLOC_I {
+                        if forbidden.contains(&reg) {
+                            continue;
+                        }
+
+                        if self.usage.map.contains_key(&reg) {
+                            continue;
+                        }
+
+                        self.usage.alloc_si(v_reg, reg);
+                        self.usage.map.remove(&e_reg);
+                        self.v_map[v_reg.usize()] = VLocation::Reg(reg);
+
+                        return;
+                    }
+                }
+
+                self.push(&v_reg);
+            }
+            None => {}
+        };
+    }
+
+    pub fn alloc(
+        &mut self,
+        v_reg: VirtualReg,
+        rconst: RegConstraint,
+        save: &Vec<Reg>,
+        forbidden: &Vec<Reg>,
+    ) -> Reg {
         let idx = v_reg.usize();
 
         match rconst {
             RegConstraint::Int => {
-                let alloc = self.usage.alloc_i(v_reg);
-                match alloc {
-                    Some(reg) => {
-                        self.v_map[idx] = VLocation::Reg(reg);
-                        reg
-                    }
-                    None => {
-                        let res = {
-                            let mut iter = self.usage.map.iter();
-                            loop {
-                                if let Some((reg, virt)) = iter.next() {
-                                    if save.contains(reg) {
-                                        continue;
-                                    }
-                                    break Some((reg.clone(), virt.clone()));
-                                } else {
-                                    break None;
+                let alloc = {
+                    let mut iter = Reg::ALLOC_I.iter();
+                    loop {
+                        if let Some(reg) = iter.next() {
+                            if forbidden.contains(&reg) {
+                                continue;
+                            }
+                            match self.usage.map.get(&reg) {
+                                Some(_) => {
+                                    continue;
                                 }
+                                None => {
+                                    break Some(reg);
+                                }
+                            }
+                        } else {
+                            break None;
+                        }
+                    }
+                };
+
+                match alloc {
+                    Some(reg) => reg.clone(),
+                    None => {
+                        let mut iter = Reg::ALLOC_I.iter();
+                        let res = loop {
+                            if let Some(reg) = iter.next() {
+                                if forbidden.contains(&reg) {
+                                    continue;
+                                }
+                                if save.contains(&reg) {
+                                    continue;
+                                }
+                                break Some(reg);
+                            } else {
+                                break None;
                             }
                         };
 
                         match res {
-                            Some((reg, virt)) => {
-                                self.push(&virt);
-                                self.usage.alloc_si(v_reg, reg);
-                                self.v_map[idx] = VLocation::Reg(reg);
-                                reg
+                            Some(reg) => {
+                                let val = self.usage.map.get(reg).cloned();
+                                match val {
+                                    Some(virt) => {
+                                        self.push(&virt);
+                                        self.usage.alloc_si(v_reg, reg.clone());
+                                        self.v_map[idx] = VLocation::Reg(reg.clone());
+                                        reg.clone()
+                                    }
+                                    None => panic!("Not possible"),
+                                }
                             }
                             None => panic!("Out of regs"),
                         }
                     }
                 }
             }
-            RegConstraint::Float => match self.usage.alloc_f(v_reg) {
-                Some(reg) => {
-                    self.v_map[idx] = VLocation::Reg(reg);
-                    reg
-                }
-                None => {
-                    let res = {
-                        let mut iter = self.usage.map.iter();
-                        loop {
-                            if let Some((reg, virt)) = iter.next() {
-                                if save.contains(reg) {
+            RegConstraint::Float => {
+                let alloc = {
+                    let mut iter = Reg::ALLOC_I.iter();
+                    loop {
+                        if let Some(reg) = iter.next() {
+                            if forbidden.contains(&reg) {
+                                continue;
+                            }
+                            match self.usage.map.get(&reg) {
+                                Some(_) => {
                                     continue;
                                 }
-                                break Some((reg.clone(), virt.clone()));
+                                None => {
+                                    break Some(reg);
+                                }
+                            }
+                        } else {
+                            break None;
+                        }
+                    }
+                };
+
+                match alloc {
+                    Some(reg) => reg.clone(),
+                    None => {
+                        let mut iter = Reg::ALLOC_I.iter();
+                        let res = loop {
+                            if let Some(reg) = iter.next() {
+                                if forbidden.contains(&reg) {
+                                    continue;
+                                }
+                                if save.contains(&reg) {
+                                    continue;
+                                }
+                                break Some(reg);
                             } else {
                                 break None;
                             }
-                        }
-                    };
+                        };
 
-                    match res {
-                        Some((reg, virt)) => {
-                            self.push(&virt);
-                            self.usage.alloc_sf(v_reg, reg);
-                            self.v_map[idx] = VLocation::Reg(reg);
-                            reg
+                        match res {
+                            Some(reg) => {
+                                let val = self.usage.map.get(reg).cloned();
+                                match val {
+                                    Some(virt) => {
+                                        self.push(&virt);
+                                        self.usage.alloc_si(v_reg, reg.clone());
+                                        self.v_map[idx] = VLocation::Reg(reg.clone());
+                                        reg.clone()
+                                    }
+                                    None => panic!("Not possible"),
+                                }
+                            }
+                            None => panic!("Out of regs"),
                         }
-                        None => panic!("Out of regs"),
                     }
                 }
-            },
+            }
             RegConstraint::Specific(reg) => {
                 if save.contains(&reg) {
                     panic!("oh fucky");
+                }
+
+                if forbidden.contains(&reg) {
+                    panic!("oh wucky");
                 }
 
                 if reg.float {
@@ -363,7 +479,7 @@ impl BodyBuilder {
                         self.v_map[idx] = VLocation::Reg(reg);
                         reg
                     } else {
-                        self.push(&v_reg);
+                        self.evict_reg(reg, save);
                         self.usage.alloc_sf(v_reg, reg);
                         self.v_map[idx] = VLocation::Reg(reg);
                         reg
@@ -374,7 +490,7 @@ impl BodyBuilder {
                         self.v_map[idx] = VLocation::Reg(reg);
                         reg
                     } else {
-                        self.push(&v_reg);
+                        self.evict_reg(reg, save);
                         self.usage.alloc_si(v_reg, reg);
                         self.v_map[idx] = VLocation::Reg(reg);
                         reg
@@ -511,190 +627,347 @@ impl BodyBuilder {
 
         for elem in v_body.instrs.iter() {
             match elem {
-                VInstrElement::VInstr(vinstr) => match vinstr.kind {
-                    VInstrKind::MOV_RI => {
-                        Self::expect_format(vinstr, true, 1);
+                VInstrElement::VInstr(vinstr) => {
+                    let forbidden = &vinstr.clobber;
+                    self.evict_regs(forbidden, &Vec::new());
+                    match vinstr.kind {
+                        VInstrKind::MOV_RI => {
+                            Self::expect_format(vinstr, true, 1);
 
-                        let dst = Self::expect_dest(vinstr.dest);
-                        let (dst_v_reg, dst_rconst) = Self::expect_reg(dst);
-                        let src = Self::expect_imm64(vinstr.srcs[0]);
-                        let dst_reg = self.ensure_reg(dst_v_reg, dst_rconst, &vec![]);
+                            let dst = Self::expect_dest(vinstr.dest);
+                            let (dst_v_reg, dst_rconst) = Self::expect_reg(dst);
+                            let src = Self::expect_imm64(vinstr.srcs[0]);
+                            let dst_reg =
+                                self.ensure_reg(dst_v_reg, dst_rconst, &Vec::new(), forbidden);
 
-                        self.instrs.puti(Instr::MOV_RI { dst: dst_reg, src });
-                    }
-                    VInstrKind::MOV_RR => {
-                        Self::expect_format(vinstr, true, 1);
+                            self.instrs.puti(Instr::MOV_RI { dst: dst_reg, src });
+                        }
+                        VInstrKind::MOV_RR => {
+                            Self::expect_format(vinstr, true, 1);
 
-                        let dst = Self::expect_dest(vinstr.dest);
-                        let (dst_v_reg, dst_rconst) = Self::expect_reg(dst);
-                        let (src_v_reg, src_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let dst = Self::expect_dest(vinstr.dest);
+                            let (dst_v_reg, dst_rconst) = Self::expect_reg(dst);
+                            let (src_v_reg, src_rconst) = Self::expect_reg(vinstr.srcs[0]);
 
-                        let src_reg = self.ensure_reg(src_v_reg, src_rconst, &vec![]);
-                        let dst_reg = self.ensure_reg(dst_v_reg, dst_rconst, &vec![src_reg]);
+                            let src_reg =
+                                self.ensure_reg(src_v_reg, src_rconst, &Vec::new(), forbidden);
+                            let dst_reg =
+                                self.ensure_reg(dst_v_reg, dst_rconst, &vec![src_reg], forbidden);
 
-                        self.instrs.puti(Instr::MOV_RR {
-                            dst: dst_reg,
-                            src: src_reg,
-                        });
-                    }
-                    VInstrKind::MOV_RM => {
-                        Self::expect_format(vinstr, true, 1);
+                            self.instrs.puti(Instr::MOV_RR {
+                                dst: dst_reg,
+                                src: src_reg,
+                            });
+                        }
+                        VInstrKind::MOV_RM => {
+                            Self::expect_format(vinstr, true, 1);
 
-                        let dst = Self::expect_dest(vinstr.dest);
-                        let (dst_v_reg, dst_rconst) = Self::expect_reg(dst);
-                        let (
-                            (src_v_index, src_v_base),
-                            (src_scale, src_index_rconst, src_base_rconst, src_offset),
-                        ) = Self::expect_mem(vinstr.srcs[0]);
+                            let dst = Self::expect_dest(vinstr.dest);
+                            let (dst_v_reg, dst_rconst) = Self::expect_reg(dst);
+                            let (
+                                (src_v_index, src_v_base),
+                                (src_scale, src_index_rconst, src_base_rconst, src_offset),
+                            ) = Self::expect_mem(vinstr.srcs[0]);
 
-                        let save = &mut Vec::new();
+                            let save = &mut Vec::new();
 
-                        let index_reg = match src_v_index {
-                            Some(v_reg) => {
-                                let reg = self.ensure_reg(v_reg, src_index_rconst, save);
-                                save.push(reg);
-                                Some(reg)
-                            }
-                            None => None,
-                        };
+                            let index_reg = match src_v_index {
+                                Some(v_reg) => {
+                                    let reg =
+                                        self.ensure_reg(v_reg, src_index_rconst, save, forbidden);
+                                    save.push(reg);
+                                    Some(reg)
+                                }
+                                None => None,
+                            };
 
-                        let base_reg = match src_v_base {
-                            Some(v_reg) => {
-                                let reg = self.ensure_reg(v_reg, src_base_rconst, save);
-                                save.push(reg);
-                                Some(reg)
-                            }
-                            None => None,
-                        };
+                            let base_reg = match src_v_base {
+                                Some(v_reg) => {
+                                    let reg =
+                                        self.ensure_reg(v_reg, src_base_rconst, save, forbidden);
+                                    save.push(reg);
+                                    Some(reg)
+                                }
+                                None => None,
+                            };
 
-                        let dst_reg = self.ensure_reg(dst_v_reg, dst_rconst, save);
+                            let dst_reg = self.ensure_reg(dst_v_reg, dst_rconst, save, forbidden);
 
-                        self.instrs.puti(Instr::MOV_RM {
-                            dst: dst_reg,
-                            scale: src_scale,
-                            index: index_reg,
-                            base: base_reg,
-                            offset: src_offset,
-                        });
-                    }
-                    VInstrKind::MOV_MR => {
-                        Self::expect_format(vinstr, true, 1);
+                            self.instrs.puti(Instr::MOV_RM {
+                                dst: dst_reg,
+                                scale: src_scale,
+                                index: index_reg,
+                                base: base_reg,
+                                offset: src_offset,
+                            });
+                        }
+                        VInstrKind::MOV_MR => {
+                            Self::expect_format(vinstr, true, 1);
 
-                        let dst = Self::expect_dest(vinstr.dest);
-                        let (
-                            (dst_v_index, dst_v_base),
-                            (dst_scale, dst_index_rconst, dst_base_rconst, dst_offset),
-                        ) = Self::expect_mem(vinstr.srcs[0]);
-                        let (src_v_reg, src_v_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let dst = Self::expect_dest(vinstr.dest);
+                            let (
+                                (dst_v_index, dst_v_base),
+                                (dst_scale, dst_index_rconst, dst_base_rconst, dst_offset),
+                            ) = Self::expect_mem(vinstr.srcs[0]);
+                            let (src_v_reg, src_v_rconst) = Self::expect_reg(vinstr.srcs[0]);
 
-                        let save = &mut Vec::new();
+                            let save = &mut Vec::new();
 
-                        let src_reg = self.ensure_reg(src_v_reg, src_v_rconst, save);
-                        save.push(src_reg);
+                            let src_reg = self.ensure_reg(src_v_reg, src_v_rconst, save, forbidden);
+                            save.push(src_reg);
 
-                        let index_reg = match dst_v_index {
-                            Some(v_reg) => {
-                                let reg = self.ensure_reg(v_reg, dst_index_rconst, save);
-                                save.push(reg);
-                                Some(reg)
-                            }
-                            None => None,
-                        };
+                            let index_reg = match dst_v_index {
+                                Some(v_reg) => {
+                                    let reg =
+                                        self.ensure_reg(v_reg, dst_index_rconst, save, forbidden);
+                                    save.push(reg);
+                                    Some(reg)
+                                }
+                                None => None,
+                            };
 
-                        let base_reg = match dst_v_base {
-                            Some(v_reg) => {
-                                let reg = self.ensure_reg(v_reg, dst_base_rconst, save);
-                                Some(reg)
-                            }
-                            None => None,
-                        };
+                            let base_reg = match dst_v_base {
+                                Some(v_reg) => {
+                                    let reg =
+                                        self.ensure_reg(v_reg, dst_base_rconst, save, forbidden);
+                                    Some(reg)
+                                }
+                                None => None,
+                            };
 
-                        self.instrs.puti(Instr::MOV_MR {
-                            scale: dst_scale,
-                            index: index_reg,
-                            base: base_reg,
-                            offset: dst_offset,
-                            src: src_reg,
-                        });
-                    }
-                    VInstrKind::NEG_R => {
-                        todo!()
-                    }
-                    VInstrKind::ADD_RR => {
-                        todo!()
-                    }
-                    VInstrKind::SUB_RR => {
-                        todo!()
-                    }
-                    VInstrKind::IMUL_RR => {
-                        todo!()
-                    }
-                    VInstrKind::IDIV_RR => {
-                        todo!()
-                    }
-                    VInstrKind::IMOD_RR => {
-                        todo!()
-                    }
-                    VInstrKind::NOT_R => {
-                        todo!()
-                    }
-                    VInstrKind::AND_RR => {
-                        todo!()
-                    }
-                    VInstrKind::OR_RR => {
-                        todo!()
-                    }
-                    VInstrKind::XOR_RI => {
-                        todo!()
-                    }
-                    VInstrKind::XOR_RR => {
-                        todo!()
-                    }
-                    VInstrKind::SHL_RR => {
-                        todo!()
-                    }
-                    VInstrKind::SHR_RR => {
-                        todo!()
-                    }
-                    VInstrKind::TEST_RI => {
-                        todo!()
-                    }
-                    VInstrKind::TEST_RR => {
-                        todo!()
-                    }
-                    VInstrKind::CMP_RR => {
-                        todo!()
-                    }
-                    VInstrKind::SETE_R => {
-                        todo!()
-                    }
-                    VInstrKind::SETNE_R => {
-                        todo!()
-                    }
-                    VInstrKind::SETG_R => {
-                        todo!()
-                    }
-                    VInstrKind::SETGE_R => {
-                        todo!()
-                    }
-                    VInstrKind::SETL_R => {
-                        todo!()
-                    }
-                    VInstrKind::SETLE_R => {
-                        todo!()
-                    }
-                    VInstrKind::JMP_I => todo!(),
-                    VInstrKind::JMP_R => todo!(),
-                    VInstrKind::JMP_M => todo!(),
-                    VInstrKind::JE_I => todo!(),
-                    VInstrKind::JNE_I => todo!(),
-                    VInstrKind::JG_I => todo!(),
-                    VInstrKind::JGE_I => todo!(),
-                    VInstrKind::JL_I => todo!(),
-                    VInstrKind::JLE_I => todo!(),
-                    VInstrKind::PUSH => todo!(),
-                    VInstrKind::POP => todo!(),
-                },
+                            self.instrs.puti(Instr::MOV_MR {
+                                scale: dst_scale,
+                                index: index_reg,
+                                base: base_reg,
+                                offset: dst_offset,
+                                src: src_reg,
+                            });
+                        }
+                        VInstrKind::NEG_R => {
+                            Self::expect_format(vinstr, false, 1);
+
+                            let (src_v_reg, src_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let src_reg =
+                                self.ensure_reg(src_v_reg, src_rconst, &Vec::new(), forbidden);
+
+                            self.instrs.puti(Instr::NEG_R { dst: src_reg });
+                        }
+                        VInstrKind::ADD_RR => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let save = &mut Vec::new();
+
+                            let (lhs_v_reg, lhs_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let lhs_reg = self.ensure_reg(lhs_v_reg, lhs_rconst, save, forbidden);
+                            save.push(lhs_reg);
+                            let (rhs_v_reg, rhs_rconst) = Self::expect_reg(vinstr.srcs[1]);
+                            let rhs_reg = self.ensure_reg(rhs_v_reg, rhs_rconst, save, forbidden);
+
+                            self.instrs.puti(Instr::ADD_RR {
+                                dst: lhs_reg,
+                                rhs: rhs_reg,
+                            });
+                        }
+                        VInstrKind::SUB_RR => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let save = &mut Vec::new();
+
+                            let (lhs_v_reg, lhs_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let lhs_reg = self.ensure_reg(lhs_v_reg, lhs_rconst, save, forbidden);
+                            save.push(lhs_reg);
+                            let (rhs_v_reg, rhs_rconst) = Self::expect_reg(vinstr.srcs[1]);
+                            let rhs_reg = self.ensure_reg(rhs_v_reg, rhs_rconst, save, forbidden);
+
+                            self.instrs.puti(Instr::SUB_RR {
+                                dst: lhs_reg,
+                                rhs: rhs_reg,
+                            });
+                        }
+                        VInstrKind::IMUL_RR => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let save = &mut Vec::new();
+
+                            let (lhs_v_reg, lhs_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let lhs_reg = self.ensure_reg(lhs_v_reg, lhs_rconst, save, forbidden);
+                            save.push(lhs_reg);
+                            let (rhs_v_reg, rhs_rconst) = Self::expect_reg(vinstr.srcs[1]);
+                            let rhs_reg = self.ensure_reg(rhs_v_reg, rhs_rconst, save, forbidden);
+
+                            self.instrs.puti(Instr::IMUL_RR {
+                                dst: lhs_reg,
+                                rhs: rhs_reg,
+                            });
+                        }
+                        VInstrKind::IDIV_RR => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let save = &mut Vec::new();
+
+                            let (lhs_v_reg, lhs_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let lhs_reg = self.ensure_reg(lhs_v_reg, lhs_rconst, save, forbidden);
+                            save.push(lhs_reg);
+                            let (rhs_v_reg, rhs_rconst) = Self::expect_reg(vinstr.srcs[1]);
+                            let rhs_reg = self.ensure_reg(rhs_v_reg, rhs_rconst, save, forbidden);
+
+                            self.instrs.puti(Instr::IDIV_RAX_R { rhs: rhs_reg });
+                        }
+                        VInstrKind::IMOD_RR => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let save = &mut Vec::new();
+
+                            let (lhs_v_reg, lhs_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let lhs_reg = self.ensure_reg(lhs_v_reg, lhs_rconst, save, forbidden);
+                            save.push(lhs_reg);
+                            let (rhs_v_reg, rhs_rconst) = Self::expect_reg(vinstr.srcs[1]);
+                            let rhs_reg = self.ensure_reg(rhs_v_reg, rhs_rconst, save, forbidden);
+
+                            self.instrs.puti(Instr::IMOD_RDX_R { rhs: rhs_reg });
+                        }
+                        VInstrKind::NOT_R => {
+                            Self::expect_format(vinstr, false, 1);
+
+                            let (src_v_reg, src_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let src_reg =
+                                self.ensure_reg(src_v_reg, src_rconst, &Vec::new(), forbidden);
+
+                            self.instrs.puti(Instr::NOT_R { dst: src_reg });
+                        }
+                        VInstrKind::AND_RR => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let save = &mut Vec::new();
+
+                            let (lhs_v_reg, lhs_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let lhs_reg = self.ensure_reg(lhs_v_reg, lhs_rconst, save, forbidden);
+                            save.push(lhs_reg);
+                            let (rhs_v_reg, rhs_rconst) = Self::expect_reg(vinstr.srcs[1]);
+                            let rhs_reg = self.ensure_reg(rhs_v_reg, rhs_rconst, save, forbidden);
+
+                            self.instrs.puti(Instr::AND_RR {
+                                dst: lhs_reg,
+                                rhs: rhs_reg,
+                            });
+                        }
+                        VInstrKind::OR_RR => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let save = &mut Vec::new();
+
+                            let (lhs_v_reg, lhs_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let lhs_reg = self.ensure_reg(lhs_v_reg, lhs_rconst, save, forbidden);
+                            save.push(lhs_reg);
+                            let (rhs_v_reg, rhs_rconst) = Self::expect_reg(vinstr.srcs[1]);
+                            let rhs_reg = self.ensure_reg(rhs_v_reg, rhs_rconst, save, forbidden);
+
+                            self.instrs.puti(Instr::OR_RR {
+                                dst: lhs_reg,
+                                rhs: rhs_reg,
+                            });
+                        }
+                        VInstrKind::XOR_RI => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let (src_v_reg, src_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let src_reg =
+                                self.ensure_reg(src_v_reg, src_rconst, &Vec::new(), forbidden);
+                            let rhs = Self::expect_imm32(vinstr.srcs[1]);
+
+                            self.instrs.puti(Instr::XOR_RI { dst: src_reg, rhs });
+                        }
+                        VInstrKind::XOR_RR => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let save = &mut Vec::new();
+
+                            let (lhs_v_reg, lhs_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let lhs_reg = self.ensure_reg(lhs_v_reg, lhs_rconst, save, forbidden);
+                            save.push(lhs_reg);
+                            let (rhs_v_reg, rhs_rconst) = Self::expect_reg(vinstr.srcs[1]);
+                            let rhs_reg = self.ensure_reg(rhs_v_reg, rhs_rconst, save, forbidden);
+
+                            self.instrs.puti(Instr::XOR_RR {
+                                dst: lhs_reg,
+                                rhs: rhs_reg,
+                            });
+                        }
+                        VInstrKind::SHL_RR => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let save = &mut Vec::new();
+
+                            let (rhs_v_reg, rhs_rconst) = Self::expect_reg(vinstr.srcs[1]);
+                            let rhs_reg = self.ensure_reg(rhs_v_reg, rhs_rconst, save, forbidden);
+                            save.push(rhs_reg);
+                            let (lhs_v_reg, lhs_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let lhs_reg = self.ensure_reg(lhs_v_reg, lhs_rconst, save, forbidden);
+
+                            self.instrs.puti(Instr::SHL_R_RCX { dst: lhs_reg });
+                        }
+                        VInstrKind::SHR_RR => {
+                            Self::expect_format(vinstr, false, 2);
+
+                            let save = &mut Vec::new();
+
+                            let (rhs_v_reg, rhs_rconst) = Self::expect_reg(vinstr.srcs[1]);
+                            let rhs_reg = self.ensure_reg(rhs_v_reg, rhs_rconst, save, forbidden);
+                            save.push(rhs_reg);
+                            let (lhs_v_reg, lhs_rconst) = Self::expect_reg(vinstr.srcs[0]);
+                            let lhs_reg = self.ensure_reg(lhs_v_reg, lhs_rconst, save, forbidden);
+
+                            self.instrs.puti(Instr::SHR_R_RCX { dst: lhs_reg });
+                        }
+                        VInstrKind::TEST_RI => {
+                            Self::expect_format(vinstr, false, 2);
+                            todo!()
+                        }
+                        VInstrKind::TEST_RR => {
+                            Self::expect_format(vinstr, false, 2);
+                            todo!()
+                        }
+                        VInstrKind::CMP_RR => {
+                            Self::expect_format(vinstr, false, 2);
+                            todo!()
+                        }
+                        VInstrKind::SETE_R => {
+                            Self::expect_format(vinstr, true, 0);
+                            todo!()
+                        }
+                        VInstrKind::SETNE_R => {
+                            Self::expect_format(vinstr, true, 0);
+                            todo!()
+                        }
+                        VInstrKind::SETG_R => {
+                            Self::expect_format(vinstr, true, 0);
+                            todo!()
+                        }
+                        VInstrKind::SETGE_R => {
+                            Self::expect_format(vinstr, true, 0);
+                            todo!()
+                        }
+                        VInstrKind::SETL_R => {
+                            Self::expect_format(vinstr, true, 0);
+                            todo!()
+                        }
+                        VInstrKind::SETLE_R => {
+                            Self::expect_format(vinstr, true, 0);
+                            todo!()
+                        }
+                        VInstrKind::JMP_I => todo!(),
+                        VInstrKind::JMP_R => todo!(),
+                        VInstrKind::JMP_M => todo!(),
+                        VInstrKind::JE_I => todo!(),
+                        VInstrKind::JNE_I => todo!(),
+                        VInstrKind::JG_I => todo!(),
+                        VInstrKind::JGE_I => todo!(),
+                        VInstrKind::JL_I => todo!(),
+                        VInstrKind::JLE_I => todo!(),
+                        VInstrKind::PUSH => todo!(),
+                        VInstrKind::POP => todo!(),
+                    };
+                }
                 VInstrElement::Label(v) => self.instrs.put(InstrElement::Label(v.clone())),
                 VInstrElement::DropVReg(virtual_reg) => {
                     let loc = virtual_reg.usize();

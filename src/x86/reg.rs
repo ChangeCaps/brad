@@ -5,6 +5,43 @@ pub struct Reg {
 }
 
 impl Reg {
+    pub const ALLOC_I: [Reg; 15] = [
+        Reg::RAX,
+        Reg::RBX,
+        Reg::RCX,
+        Reg::RDX,
+        Reg::RBP,
+        Reg::RSI,
+        Reg::RDI,
+        Reg::R8,
+        Reg::R9,
+        Reg::R10,
+        Reg::R11,
+        Reg::R12,
+        Reg::R13,
+        Reg::R14,
+        Reg::R15,
+    ];
+
+    pub const ALLOC_F: [Reg; 16] = [
+        Reg::XMM0,
+        Reg::XMM1,
+        Reg::XMM2,
+        Reg::XMM3,
+        Reg::XMM4,
+        Reg::XMM5,
+        Reg::XMM6,
+        Reg::XMM7,
+        Reg::XMM8,
+        Reg::XMM9,
+        Reg::XMM10,
+        Reg::XMM11,
+        Reg::XMM12,
+        Reg::XMM13,
+        Reg::XMM14,
+        Reg::XMM15,
+    ];
+
     pub const RAX: Reg = Reg::int(0);
     pub const RBX: Reg = Reg::int(1);
     pub const RCX: Reg = Reg::int(2);

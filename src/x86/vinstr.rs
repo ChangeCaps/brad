@@ -73,6 +73,7 @@ impl Arg {
     }
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Copy)]
 pub enum VInstrKind {
     MOV_RI,
@@ -126,6 +127,7 @@ pub struct VInstr {
     pub kind: VInstrKind,
     pub dest: Option<(VirtualArg, Arg)>,
     pub srcs: Vec<(VirtualArg, Arg)>,
+    pub clobber: Vec<Reg>,
 }
 
 #[derive(Debug, Clone)]
@@ -180,6 +182,7 @@ impl VInstr {
             kind: VInstrKind::MOV_RI,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![(VirtualArg::Imm, Arg::imm_64(src))],
+            clobber: Vec::new(),
         })
     }
 
@@ -188,6 +191,7 @@ impl VInstr {
             kind: VInstrKind::MOV_RR,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![(src, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -209,6 +213,7 @@ impl VInstr {
                     offset,
                 },
             )],
+            clobber: Vec::new(),
         })
     }
 
@@ -230,6 +235,7 @@ impl VInstr {
                 },
             )),
             srcs: vec![(src, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -238,6 +244,7 @@ impl VInstr {
             kind: VInstrKind::NEG_R,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -246,6 +253,7 @@ impl VInstr {
             kind: VInstrKind::ADD_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -254,6 +262,7 @@ impl VInstr {
             kind: VInstrKind::SUB_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -262,6 +271,7 @@ impl VInstr {
             kind: VInstrKind::IMUL_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -279,6 +289,7 @@ impl VInstr {
                 ),
                 (rhs, Arg::reg_i64()),
             ],
+            clobber: vec![Reg::RDX],
         })
     }
 
@@ -302,6 +313,7 @@ impl VInstr {
                 ),
                 (rhs, Arg::reg_i64()),
             ],
+            clobber: vec![Reg::RAX],
         })
     }
 
@@ -310,6 +322,7 @@ impl VInstr {
             kind: VInstrKind::NOT_R,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -318,6 +331,7 @@ impl VInstr {
             kind: VInstrKind::AND_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -326,6 +340,7 @@ impl VInstr {
             kind: VInstrKind::OR_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -334,6 +349,7 @@ impl VInstr {
             kind: VInstrKind::XOR_RI,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (VirtualArg::Imm, Arg::imm_32(rhs))],
+            clobber: Vec::new(),
         })
     }
 
@@ -342,6 +358,7 @@ impl VInstr {
             kind: VInstrKind::XOR_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -359,6 +376,7 @@ impl VInstr {
                     },
                 ),
             ],
+            clobber: Vec::new(),
         })
     }
 
@@ -376,6 +394,7 @@ impl VInstr {
                     },
                 ),
             ],
+            clobber: Vec::new(),
         })
     }
 
@@ -384,6 +403,7 @@ impl VInstr {
             kind: VInstrKind::CMP_RR,
             dest: None,
             srcs: vec![(lhs, Arg::reg_i64()), (rhs, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -392,6 +412,7 @@ impl VInstr {
             kind: VInstrKind::TEST_RI,
             dest: None,
             srcs: vec![(lhs, Arg::reg_i64()), (VirtualArg::Imm, Arg::imm_32(rhs))],
+            clobber: Vec::new(),
         })
     }
 
@@ -400,6 +421,7 @@ impl VInstr {
             kind: VInstrKind::TEST_RR,
             dest: None,
             srcs: vec![(lhs, Arg::reg_i64()), (rhs, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -408,6 +430,7 @@ impl VInstr {
             kind: VInstrKind::SETE_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
+            clobber: Vec::new(),
         })
     }
 
@@ -416,6 +439,7 @@ impl VInstr {
             kind: VInstrKind::SETNE_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
+            clobber: Vec::new(),
         })
     }
 
@@ -424,6 +448,7 @@ impl VInstr {
             kind: VInstrKind::SETG_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
+            clobber: Vec::new(),
         })
     }
 
@@ -432,6 +457,7 @@ impl VInstr {
             kind: VInstrKind::SETGE_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
+            clobber: Vec::new(),
         })
     }
 
@@ -440,6 +466,7 @@ impl VInstr {
             kind: VInstrKind::SETL_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
+            clobber: Vec::new(),
         })
     }
 
@@ -448,6 +475,7 @@ impl VInstr {
             kind: VInstrKind::SETLE_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
+            clobber: Vec::new(),
         })
     }
 
@@ -456,6 +484,7 @@ impl VInstr {
             kind: VInstrKind::JMP_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
+            clobber: Vec::new(),
         })
     }
 
@@ -464,6 +493,7 @@ impl VInstr {
             kind: VInstrKind::JMP_R,
             dest: None,
             srcs: vec![(reg, Arg::reg_i64())],
+            clobber: Vec::new(),
         })
     }
 
@@ -480,6 +510,7 @@ impl VInstr {
                     offset,
                 },
             )],
+            clobber: Vec::new(),
         })
     }
 
@@ -488,6 +519,7 @@ impl VInstr {
             kind: VInstrKind::JE_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
+            clobber: Vec::new(),
         })
     }
 
@@ -496,6 +528,7 @@ impl VInstr {
             kind: VInstrKind::JNE_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
+            clobber: Vec::new(),
         })
     }
 
@@ -504,6 +537,7 @@ impl VInstr {
             kind: VInstrKind::JG_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
+            clobber: Vec::new(),
         })
     }
 
@@ -512,6 +546,7 @@ impl VInstr {
             kind: VInstrKind::JGE_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
+            clobber: Vec::new(),
         })
     }
 
@@ -520,6 +555,7 @@ impl VInstr {
             kind: VInstrKind::JL_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
+            clobber: Vec::new(),
         })
     }
 
@@ -528,6 +564,7 @@ impl VInstr {
             kind: VInstrKind::JLE_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
+            clobber: Vec::new(),
         })
     }
 }
