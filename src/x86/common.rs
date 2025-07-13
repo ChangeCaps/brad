@@ -10,7 +10,6 @@ pub enum MemScale {
 
 #[derive(Debug, Clone, Copy)]
 pub enum RegConstraint {
-    None,
     Int,
     Float,
     Specific(Reg),
@@ -41,8 +40,15 @@ pub enum PrimitiveType {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ComptimeVal {
-    id: u32,
+pub struct LocalId(u32);
+
+#[derive(Debug, Clone, Copy)]
+pub struct GlobalId(u32);
+
+#[derive(Debug, Clone, Copy)]
+pub enum ComptimeVal {
+    Local(LocalId),
+    Global(GlobalId),
 }
 
 #[derive(Debug, Clone, Copy)]

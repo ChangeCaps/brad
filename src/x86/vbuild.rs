@@ -3,14 +3,43 @@ use solve::Tag;
 use crate::anf::{self, Local};
 
 use super::{
-    common::{Imm32, Imm64, MemScale, PrimitiveType},
+    common::{Imm32, Imm64, LocalId, MemScale, PrimitiveType},
     vinstr::{VInstr, VInstrBlock, VirtualArg, VirtualReg},
 };
 
 #[derive(Debug, Clone)]
 pub struct BodyBuilder {
+    instrs: VInstrBlock,
+    valc: u32,
+    locc: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct LoopInfo {
+    pub id: LocalId,
+    // both const and mut
+    // const may get pushed onto stack to make room
+    // needs to be placed back in register at end of loop
+    pub vars: Vec<VirtualReg>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BodyOutput {
     pub instrs: VInstrBlock,
+    pub loops: Vec<LoopInfo>,
     pub valc: u32,
+    pub locc: u32,
+}
+
+impl BodyOutput {
+    pub fn new() -> Self {
+        Self {
+            instrs: VInstrBlock::new(),
+            loops: Vec::new(),
+            valc: 0,
+            locc: 0,
+        }
+    }
 }
 
 impl BodyBuilder {
@@ -18,6 +47,7 @@ impl BodyBuilder {
         Self {
             instrs: VInstrBlock::new(),
             valc: 0,
+            locc: 0,
         }
     }
 
@@ -275,7 +305,7 @@ impl BodyBuilder {
         todo!()
     }
 
-    pub fn build(&mut self, body: &anf::Body, types: &anf::Types) {
+    pub fn build(&mut self, body: &anf::Body, types: &anf::Types) -> BodyOutput {
         self.instrs.clear();
         self.valc = body.locals.len() as u32;
 
@@ -301,7 +331,10 @@ impl BodyBuilder {
                 anf::ExprKind::Closure { dst, func } => todo!(),
                 anf::ExprKind::Call { dst, src, arg } => todo!(),
                 anf::ExprKind::Mov { dst, src } => {
-                    let v_dst = Self::virtual_from_local(dst);
+                    let v_dst = VirtualArg::Mem {
+                        index: None,
+                        base: Some(VirtualReg::new(dst.0 as u32)),
+                    };
                     let v_src = match src {
                         anf::Value::Local(local) => Self::virtual_from_local(local),
                         anf::Value::Int(val) => {
@@ -328,9 +361,12 @@ impl BodyBuilder {
                     };
 
                     let v_dst = Self::virtual_from_local(dst);
-                    let v_src = Self::virtual_from_local(src);
+                    let v_src = VirtualArg::Mem {
+                        index: None,
+                        base: Some(VirtualReg::new(src.0 as u32)),
+                    };
 
-                    self.mov_rm(v_dst, v_src, MemScale::S1, offset);
+                    self.mov_rm(v_dst, v_src, MemScale::S1, Imm32::Const(offset));
                 }
                 anf::ExprKind::Write { dst, access, src } => {
                     let offset = if access.len() > 0 {
@@ -357,7 +393,7 @@ impl BodyBuilder {
                         }
                     };
 
-                    self.mov_mr(v_dst, MemScale::S1, offset, v_src);
+                    self.mov_mr(v_dst, MemScale::S1, Imm32::Const(offset), v_src);
                 }
                 anf::ExprKind::ReadIndex {
                     dst,
@@ -429,8 +465,14 @@ impl BodyBuilder {
                 anf::ExprKind::Loop { dst, body } => todo!(),
                 anf::ExprKind::Continue {} => todo!(),
                 anf::ExprKind::Break { value } => todo!(),
-            }
+            };
         }
+
+        let mut out = BodyOutput::new();
+
+        todo!();
+
+        out
     }
 
     pub fn mov_ri(&mut self, dst: VirtualArg, src: Imm64) {
@@ -441,56 +483,56 @@ impl BodyBuilder {
         self.instrs.put(VInstr::mov_rr(dst, src));
     }
 
-    pub fn mov_rm(&mut self, dst: VirtualArg, mem: VirtualArg, scale: MemScale, offset: i32) {
+    pub fn mov_rm(&mut self, dst: VirtualArg, mem: VirtualArg, scale: MemScale, offset: Imm32) {
         self.instrs.put(VInstr::mov_rm(dst, mem, scale, offset));
     }
 
-    pub fn mov_mr(&mut self, mem: VirtualArg, scale: MemScale, offset: i32, src: VirtualArg) {
+    pub fn mov_mr(&mut self, mem: VirtualArg, scale: MemScale, offset: Imm32, src: VirtualArg) {
         self.instrs.put(VInstr::mov_mr(mem, scale, offset, src));
     }
 
     pub fn neg(&mut self, dst: VirtualArg, src: VirtualArg) {
         self.instrs.put(VInstr::mov_rr(dst, src));
-        self.instrs.put(VInstr::neg(dst));
+        self.instrs.put(VInstr::neg_r(dst));
     }
 
     pub fn add(&mut self, dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) {
         self.instrs.put(VInstr::mov_rr(dst, lhs));
-        self.instrs.put(VInstr::add(dst, rhs));
+        self.instrs.put(VInstr::add_rr(dst, rhs));
     }
 
     pub fn sub(&mut self, dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) {
         self.instrs.put(VInstr::mov_rr(dst, lhs));
-        self.instrs.put(VInstr::sub(dst, rhs));
+        self.instrs.put(VInstr::sub_rr(dst, rhs));
     }
 
     pub fn imul(&mut self, dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) {
         self.instrs.put(VInstr::mov_rr(dst, lhs));
-        self.instrs.put(VInstr::imul(dst, rhs));
+        self.instrs.put(VInstr::imul_rr(dst, rhs));
     }
 
     pub fn idiv(&mut self, dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) {
         self.instrs.put(VInstr::mov_rr(dst, lhs));
-        self.instrs.put(VInstr::idiv(dst, rhs));
+        self.instrs.put(VInstr::idiv_rr(dst, rhs));
     }
 
     pub fn imod(&mut self, dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) {
-        self.instrs.put(VInstr::imod(dst, lhs, rhs));
+        self.instrs.put(VInstr::imod_rr(dst, lhs, rhs));
     }
 
     pub fn not(&mut self, dst: VirtualArg, src: VirtualArg) {
         self.instrs.put(VInstr::mov_rr(dst, src));
-        self.instrs.put(VInstr::not(dst));
+        self.instrs.put(VInstr::not_r(dst));
     }
 
     pub fn and(&mut self, dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) {
         self.instrs.put(VInstr::mov_rr(dst, lhs));
-        self.instrs.put(VInstr::and(dst, rhs));
+        self.instrs.put(VInstr::and_rr(dst, rhs));
     }
 
     pub fn or(&mut self, dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) {
         self.instrs.put(VInstr::mov_rr(dst, lhs));
-        self.instrs.put(VInstr::or(dst, rhs));
+        self.instrs.put(VInstr::or_rr(dst, rhs));
     }
 
     pub fn xor_rr(&mut self, dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) {
@@ -505,16 +547,16 @@ impl BodyBuilder {
 
     pub fn shl(&mut self, dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) {
         self.instrs.put(VInstr::mov_rr(dst, lhs));
-        self.instrs.put(VInstr::shl(dst, rhs));
+        self.instrs.put(VInstr::shl_rr(dst, rhs));
     }
 
     pub fn shr(&mut self, dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) {
         self.instrs.put(VInstr::mov_rr(dst, lhs));
-        self.instrs.put(VInstr::shr(dst, rhs));
+        self.instrs.put(VInstr::shr_rr(dst, rhs));
     }
 
     pub fn cmp(&mut self, lhs: VirtualArg, rhs: VirtualArg) {
-        self.instrs.put(VInstr::cmp(lhs, rhs));
+        self.instrs.put(VInstr::cmp_rr(lhs, rhs));
     }
 
     pub fn test_ri(&mut self, lhs: VirtualArg, rhs: Imm32) {
@@ -526,54 +568,62 @@ impl BodyBuilder {
     }
 
     pub fn sete(&mut self, dst: VirtualArg) {
-        self.instrs.put(VInstr::sete(dst));
+        self.instrs.put(VInstr::sete_r(dst));
     }
 
     pub fn setne(&mut self, dst: VirtualArg) {
-        self.instrs.put(VInstr::setne(dst));
+        self.instrs.put(VInstr::setne_r(dst));
     }
 
     pub fn setg(&mut self, dst: VirtualArg) {
-        self.instrs.put(VInstr::setg(dst));
+        self.instrs.put(VInstr::setg_r(dst));
     }
 
     pub fn setge(&mut self, dst: VirtualArg) {
-        self.instrs.put(VInstr::setge(dst));
+        self.instrs.put(VInstr::setge_r(dst));
     }
 
     pub fn setl(&mut self, dst: VirtualArg) {
-        self.instrs.put(VInstr::setl(dst));
+        self.instrs.put(VInstr::setl_r(dst));
     }
 
     pub fn setle(&mut self, dst: VirtualArg) {
-        self.instrs.put(VInstr::setle(dst));
+        self.instrs.put(VInstr::setle_r(dst));
     }
 
     pub fn jmp(&mut self, rel: Imm32) {
-        self.instrs.put(VInstr::jmp(rel));
+        self.instrs.put(VInstr::jmp_rel(rel));
+    }
+
+    pub fn jmp_r(&mut self, reg: VirtualArg) {
+        self.instrs.put(VInstr::jmp_r(reg));
+    }
+
+    pub fn jmp_m(&mut self, mem: VirtualArg, scale: MemScale, offset: Imm32) {
+        self.instrs.put(VInstr::jmp_m(mem, scale, offset));
     }
 
     pub fn je(&mut self, rel: Imm32) {
-        self.instrs.put(VInstr::je(rel));
+        self.instrs.put(VInstr::je_rel(rel));
     }
 
     pub fn jne(&mut self, rel: Imm32) {
-        self.instrs.put(VInstr::jne(rel));
+        self.instrs.put(VInstr::jne_rel(rel));
     }
 
     pub fn jg(&mut self, rel: Imm32) {
-        self.instrs.put(VInstr::jg(rel));
+        self.instrs.put(VInstr::jg_rel(rel));
     }
 
     pub fn jge(&mut self, rel: Imm32) {
-        self.instrs.put(VInstr::jge(rel));
+        self.instrs.put(VInstr::jge_rel(rel));
     }
 
     pub fn jl(&mut self, rel: Imm32) {
-        self.instrs.put(VInstr::jl(rel));
+        self.instrs.put(VInstr::jl_rel(rel));
     }
 
     pub fn jle(&mut self, rel: Imm32) {
-        self.instrs.put(VInstr::jle(rel));
+        self.instrs.put(VInstr::jle_rel(rel));
     }
 }

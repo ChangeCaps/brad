@@ -1,23 +1,34 @@
 use super::{
-    common::{Imm32, Imm64, MemScale, RegConstraint, SizeConstraint, SizeKind},
+    common::{
+        ComptimeVal, Imm32, Imm64, MemScale, PrimitiveType, RegConstraint, SizeConstraint, SizeKind,
+    },
     reg::Reg,
 };
 
-#[derive(Debug, Clone, Copy)]
-pub struct VirtualReg(u32);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VirtualReg(pub u32);
 
 impl VirtualReg {
     pub fn new(v: u32) -> Self {
         Self(v)
+    }
+
+    pub fn usize(self) -> usize {
+        self.0 as usize
     }
 }
 
 // TODO :: add label
 #[derive(Debug, Clone, Copy)]
 pub enum VirtualArg {
-    Reg { local: VirtualReg },
+    Reg {
+        local: VirtualReg,
+    },
     Imm,
-    Mem { index: u32, base: u32 },
+    Mem {
+        index: Option<VirtualReg>,
+        base: Option<VirtualReg>,
+    },
 }
 
 // TODO :: add label
@@ -41,7 +52,7 @@ pub enum Arg {
         // base of memory block
         base: RegConstraint,
         // element offset
-        offset: i32,
+        offset: Imm32,
     },
 }
 
@@ -64,40 +75,47 @@ impl Arg {
 
 #[derive(Debug, Clone, Copy)]
 pub enum VInstrKind {
-    MOV,
+    MOV_RI,
+    MOV_RR,
+    MOV_RM,
+    MOV_MR,
 
-    NEG,
-    ADD,
-    SUB,
-    IMUL,
-    IDIV,
-    IMOD,
+    NEG_R,
+    ADD_RR,
+    SUB_RR,
+    IMUL_RR,
+    IDIV_RR,
+    IMOD_RR,
 
-    NOT,
-    AND,
-    OR,
-    XOR,
+    NOT_R,
+    AND_RR,
+    OR_RR,
+    XOR_RI,
+    XOR_RR,
 
-    SHL,
-    SHR,
+    SHL_RR,
+    SHR_RR,
 
-    TEST,
-    CMP,
+    TEST_RI,
+    TEST_RR,
+    CMP_RR,
 
-    SETE,
-    SETNE,
-    SETG,
-    SETGE,
-    SETL,
-    SETLE,
+    SETE_R,
+    SETNE_R,
+    SETG_R,
+    SETGE_R,
+    SETL_R,
+    SETLE_R,
 
-    JMP,
-    JE,
-    JNE,
-    JG,
-    JGE,
-    JL,
-    JLE,
+    JMP_I,
+    JMP_R,
+    JMP_M,
+    JE_I,
+    JNE_I,
+    JG_I,
+    JGE_I,
+    JL_I,
+    JLE_I,
 
     PUSH,
     POP,
@@ -111,19 +129,26 @@ pub struct VInstr {
 }
 
 #[derive(Debug, Clone)]
-pub struct VCall {}
+pub struct VCall {
+    args: Vec<(VirtualReg, PrimitiveType)>,
+}
 
 #[derive(Debug, Clone)]
 pub struct VRet {}
 
 #[derive(Debug, Clone)]
 pub enum VInstrElement {
+    // manual insertion
     VInstr(VInstr),
-    Label(u32),
-    AllocVReg(VirtualReg),
-    DropVReg(VirtualReg),
+    Label(ComptimeVal),
     VCall(VCall),
     VRet(VRet),
+
+    // automatic insertion
+    DropVReg(VirtualReg),
+    LoopBegin(ComptimeVal, Vec<VirtualReg>),
+    LoopEnd(ComptimeVal),
+    LoopExit(ComptimeVal),
 }
 
 #[derive(Debug, Clone)]
@@ -152,7 +177,7 @@ impl VInstrBlock {
 impl VInstr {
     pub fn mov_ri(dst: VirtualArg, src: Imm64) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::MOV,
+            kind: VInstrKind::MOV_RI,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![(VirtualArg::Imm, Arg::imm_64(src))],
         })
@@ -160,15 +185,20 @@ impl VInstr {
 
     pub fn mov_rr(dst: VirtualArg, src: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::MOV,
+            kind: VInstrKind::MOV_RR,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![(src, Arg::reg_i64())],
         })
     }
 
-    pub fn mov_rm(dst: VirtualArg, mem: VirtualArg, scale: MemScale, offset: i32) -> VInstrElement {
+    pub fn mov_rm(
+        dst: VirtualArg,
+        mem: VirtualArg,
+        scale: MemScale,
+        offset: Imm32,
+    ) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::MOV,
+            kind: VInstrKind::MOV_RM,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![(
                 mem,
@@ -182,9 +212,14 @@ impl VInstr {
         })
     }
 
-    pub fn mov_mr(mem: VirtualArg, scale: MemScale, offset: i32, src: VirtualArg) -> VInstrElement {
+    pub fn mov_mr(
+        mem: VirtualArg,
+        scale: MemScale,
+        offset: Imm32,
+        src: VirtualArg,
+    ) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::MOV,
+            kind: VInstrKind::MOV_MR,
             dest: Some((
                 mem,
                 Arg::Mem {
@@ -198,41 +233,41 @@ impl VInstr {
         })
     }
 
-    pub fn neg(dst: VirtualArg) -> VInstrElement {
+    pub fn neg_r(dst: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::NEG,
+            kind: VInstrKind::NEG_R,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64())],
         })
     }
 
-    pub fn add(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
+    pub fn add_rr(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::ADD,
+            kind: VInstrKind::ADD_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
         })
     }
 
-    pub fn sub(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
+    pub fn sub_rr(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::SUB,
+            kind: VInstrKind::SUB_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
         })
     }
 
-    pub fn imul(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
+    pub fn imul_rr(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::IMUL,
+            kind: VInstrKind::IMUL_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
         })
     }
 
-    pub fn idiv(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
+    pub fn idiv_rr(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::IDIV,
+            kind: VInstrKind::IDIV_RR,
             dest: None,
             srcs: vec![
                 (
@@ -247,9 +282,9 @@ impl VInstr {
         })
     }
 
-    pub fn imod(dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) -> VInstrElement {
+    pub fn imod_rr(dst: VirtualArg, lhs: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::IDIV,
+            kind: VInstrKind::IDIV_RR,
             dest: Some((
                 dst,
                 Arg::Reg {
@@ -270,25 +305,25 @@ impl VInstr {
         })
     }
 
-    pub fn not(dst: VirtualArg) -> VInstrElement {
+    pub fn not_r(dst: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::NOT,
+            kind: VInstrKind::NOT_R,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64())],
         })
     }
 
-    pub fn and(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
+    pub fn and_rr(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::AND,
+            kind: VInstrKind::AND_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
         })
     }
 
-    pub fn or(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
+    pub fn or_rr(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::OR,
+            kind: VInstrKind::OR_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
         })
@@ -296,7 +331,7 @@ impl VInstr {
 
     pub fn xor_ri(dst: VirtualArg, rhs: Imm32) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::XOR,
+            kind: VInstrKind::XOR_RI,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (VirtualArg::Imm, Arg::imm_32(rhs))],
         })
@@ -304,15 +339,15 @@ impl VInstr {
 
     pub fn xor_rr(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::XOR,
+            kind: VInstrKind::XOR_RR,
             dest: None,
             srcs: vec![(dst, Arg::reg_i64()), (rhs, Arg::reg_i64())],
         })
     }
 
-    pub fn shl(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
+    pub fn shl_rr(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::SHL,
+            kind: VInstrKind::SHL_RR,
             dest: None,
             srcs: vec![
                 (dst, Arg::reg_i64()),
@@ -327,9 +362,9 @@ impl VInstr {
         })
     }
 
-    pub fn shr(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
+    pub fn shr_rr(dst: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::SHR,
+            kind: VInstrKind::SHR_RR,
             dest: None,
             srcs: vec![
                 (dst, Arg::reg_i64()),
@@ -344,9 +379,9 @@ impl VInstr {
         })
     }
 
-    pub fn cmp(lhs: VirtualArg, rhs: VirtualArg) -> VInstrElement {
+    pub fn cmp_rr(lhs: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::CMP,
+            kind: VInstrKind::CMP_RR,
             dest: None,
             srcs: vec![(lhs, Arg::reg_i64()), (rhs, Arg::reg_i64())],
         })
@@ -354,7 +389,7 @@ impl VInstr {
 
     pub fn test_ri(lhs: VirtualArg, rhs: Imm32) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::TEST,
+            kind: VInstrKind::TEST_RI,
             dest: None,
             srcs: vec![(lhs, Arg::reg_i64()), (VirtualArg::Imm, Arg::imm_32(rhs))],
         })
@@ -362,111 +397,135 @@ impl VInstr {
 
     pub fn test_rr(lhs: VirtualArg, rhs: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::TEST,
+            kind: VInstrKind::TEST_RR,
             dest: None,
             srcs: vec![(lhs, Arg::reg_i64()), (rhs, Arg::reg_i64())],
         })
     }
 
-    pub fn sete(dst: VirtualArg) -> VInstrElement {
+    pub fn sete_r(dst: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::SETE,
+            kind: VInstrKind::SETE_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
         })
     }
 
-    pub fn setne(dst: VirtualArg) -> VInstrElement {
+    pub fn setne_r(dst: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::SETNE,
+            kind: VInstrKind::SETNE_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
         })
     }
 
-    pub fn setg(dst: VirtualArg) -> VInstrElement {
+    pub fn setg_r(dst: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::SETG,
+            kind: VInstrKind::SETG_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
         })
     }
 
-    pub fn setge(dst: VirtualArg) -> VInstrElement {
+    pub fn setge_r(dst: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::SETGE,
+            kind: VInstrKind::SETGE_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
         })
     }
 
-    pub fn setl(dst: VirtualArg) -> VInstrElement {
+    pub fn setl_r(dst: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::SETL,
+            kind: VInstrKind::SETL_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
         })
     }
 
-    pub fn setle(dst: VirtualArg) -> VInstrElement {
+    pub fn setle_r(dst: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::SETLE,
+            kind: VInstrKind::SETLE_R,
             dest: Some((dst, Arg::reg_i64())),
             srcs: vec![],
         })
     }
 
-    pub fn jmp(rel: Imm32) -> VInstrElement {
+    pub fn jmp_rel(rel: Imm32) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::JMP,
+            kind: VInstrKind::JMP_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
         })
     }
 
-    pub fn je(rel: Imm32) -> VInstrElement {
+    pub fn jmp_r(reg: VirtualArg) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::JE,
+            kind: VInstrKind::JMP_R,
+            dest: None,
+            srcs: vec![(reg, Arg::reg_i64())],
+        })
+    }
+
+    pub fn jmp_m(mem: VirtualArg, scale: MemScale, offset: Imm32) -> VInstrElement {
+        VInstrElement::VInstr(VInstr {
+            kind: VInstrKind::JMP_M,
+            dest: None,
+            srcs: vec![(
+                mem,
+                Arg::Mem {
+                    scale,
+                    index: RegConstraint::Int,
+                    base: RegConstraint::Int,
+                    offset,
+                },
+            )],
+        })
+    }
+
+    pub fn je_rel(rel: Imm32) -> VInstrElement {
+        VInstrElement::VInstr(VInstr {
+            kind: VInstrKind::JE_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
         })
     }
 
-    pub fn jne(rel: Imm32) -> VInstrElement {
+    pub fn jne_rel(rel: Imm32) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::JNE,
+            kind: VInstrKind::JNE_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
         })
     }
 
-    pub fn jg(rel: Imm32) -> VInstrElement {
+    pub fn jg_rel(rel: Imm32) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::JG,
+            kind: VInstrKind::JG_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
         })
     }
 
-    pub fn jge(rel: Imm32) -> VInstrElement {
+    pub fn jge_rel(rel: Imm32) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::JGE,
+            kind: VInstrKind::JGE_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
         })
     }
 
-    pub fn jl(rel: Imm32) -> VInstrElement {
+    pub fn jl_rel(rel: Imm32) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::JL,
+            kind: VInstrKind::JL_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
         })
     }
 
-    pub fn jle(rel: Imm32) -> VInstrElement {
+    pub fn jle_rel(rel: Imm32) -> VInstrElement {
         VInstrElement::VInstr(VInstr {
-            kind: VInstrKind::JLE,
+            kind: VInstrKind::JLE_I,
             dest: None,
             srcs: vec![(VirtualArg::Imm, Arg::imm_32(rel))],
         })
