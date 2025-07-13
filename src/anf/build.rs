@@ -1,9 +1,10 @@
 use crate::anf::{Bid, Body, Expr, ExprKind, Local, Program, Tid, Type, Value};
 use crate::hir2 as hir;
+use crate::hir2::Binding;
 use solve::Tag;
 use std::collections::HashMap;
 
-struct BuildContext<'a> {
+pub struct BuildContext<'a> {
     ir: Program,
     hir: &'a hir::SpecializedProgram,
 }
@@ -110,6 +111,17 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
         local
     }
 
+    pub fn build_expr_local(&mut self, hir_expr: &hir::Expr<Type>, local: hir::LocalId) -> Local {
+        if let Some(&local_id) = self.local_map.get(&local) {
+            local_id
+        } else {
+            let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+            let local_id = self.next_local(tid);
+            self.local_map.insert(local, local_id);
+            local_id
+        }
+    }
+
     pub fn build_expr(&mut self, hir_expr: &hir::Expr<Type>) -> Value {
         match hir_expr.kind {
             hir::ExprKind::Int(v) => Value::Int(v),
@@ -127,9 +139,7 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
                 Value::Local(local)
             }
             hir::ExprKind::String(v) => Value::String(v),
-            hir::ExprKind::Local(_) => {
-                todo!()
-            }
+            hir::ExprKind::Local(local) => Value::Local(self.build_expr_local(hir_expr, local)),
             hir::ExprKind::Tag(_, _) => {
                 todo!()
             }
@@ -233,8 +243,34 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
             hir::ExprKind::Break(_) => {
                 todo!()
             }
-            hir::ExprKind::Let(_, _) => {
-                todo!()
+            hir::ExprKind::Let(ref binding, ref expr) => {
+                let local = match binding {
+                    Binding::Wild { .. } => todo!(),
+                    Binding::Tuple { .. } => todo!(),
+                    Binding::Bind { local, .. } => self.build_expr_local(hir_expr, *local),
+                };
+
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+                let expr_value = self.build_expr(expr.as_ref());
+                self.body.exprs.push(Expr {
+                    kind: ExprKind::Mov {
+                        dst: local,
+                        src: expr_value,
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                let none_value = self.next_local(tid);
+                self.body.exprs.push(Expr {
+                    kind: ExprKind::TagInit {
+                        dst: none_value,
+                        tag: Tag::NONE,
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+                Value::Local(none_value)
             }
             hir::ExprKind::Block(ref hir_exprs) => {
                 let block_tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
