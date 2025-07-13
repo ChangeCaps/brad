@@ -468,7 +468,7 @@ impl BodyBuilder {
             };
         }
 
-        let mut out = BodyOutput::new();
+        let out = BodyOutput::new();
 
         todo!();
 

@@ -28,6 +28,14 @@ impl Type {
         Self::any().with_tag(Tag::INT)
     }
 
+    pub fn float() -> Self {
+        Self::any().with_tag(Tag::FLOAT)
+    }
+
+    pub fn str() -> Self {
+        Self::any().with_tag(Tag::STR)
+    }
+
     pub fn none() -> Self {
         Self::any().with_tag(Tag::NONE)
     }

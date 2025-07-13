@@ -11,7 +11,7 @@ use super::{
     vinstr::{self, VInstrElement, VInstrKind, VirtualArg, VirtualReg},
 };
 
-struct Builder {
+pub struct Builder {
     anf: anf::Program,
 }
 

@@ -54,7 +54,7 @@ pub enum ExprKind<T = Type> {
 
     Assign(Box<Expr<T>>, Box<Expr<T>>),
     Ref(Box<Expr<T>>),
-    Match(Box<Expr<T>>, MatchBody),
+    Match(Box<Expr<T>>, MatchBody<T>),
     Loop(Box<Expr<T>>),
     Break(Option<Box<Expr<T>>>),
     Let(Binding, Box<Expr<T>>),

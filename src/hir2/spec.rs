@@ -75,3 +75,5 @@ impl IndexMut<SpecializedBodyId> for SpecializedProgram {
         &mut self.bodies[index]
     }
 }
+
+

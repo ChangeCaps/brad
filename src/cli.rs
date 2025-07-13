@@ -2,7 +2,7 @@ use crate::ast::GeneratorOptions;
 use crate::compiler::Compiler;
 use crate::parse::{Interner, Tokens};
 use crate::v1::cli::{execute_v1, PipelineV1Cmd};
-use crate::{ast, hir2, parse};
+use crate::{ast, parse};
 use clap::{Args, Parser, Subcommand};
 use diagnostic::{Report, Source, Sources};
 use std::io::Write;
@@ -29,6 +29,7 @@ pub struct ModuleArgs {
 pub enum PipelineV2Cmd {
     Hir(ModuleArgs),
     Lua(ModuleArgs),
+    SimpleSpecPipeline(ModuleArgs),
 }
 
 #[derive(Subcommand)]
@@ -66,38 +67,27 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
     let f = match cmd {
         PipelineV2Cmd::Hir(f) => f,
         PipelineV2Cmd::Lua(f) => f,
+        PipelineV2Cmd::SimpleSpecPipeline(f) => f,
     };
+
+    let mut rep = Report::new();
+
+    let mut compiler = Compiler::new(sources);
+
+    for package in f.packages.iter() {
+        let name = Path::new(package).file_stem().unwrap().to_str().unwrap();
+        compiler.add_package(name, package).unwrap();
+    }
+
+    compiler.tokenize2(&mut rep).map_err(|_| rep.clone())?;
+    compiler.parse2(&mut rep).map_err(|_| rep.clone())?;
 
     match cmd {
         PipelineV2Cmd::Hir(_) => {
-            let mut rep = Report::new();
-
-            let mut compiler = Compiler::new(sources);
-
-            for package in f.packages.iter() {
-                let name = Path::new(package).file_stem().unwrap().to_str().unwrap();
-                compiler.add_package(name, package).unwrap();
-            }
-
-            compiler.tokenize2(&mut rep).map_err(|_| rep.clone())?;
-            compiler.parse2(&mut rep).map_err(|_| rep.clone())?;
-
-            let hir = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
+            let _ = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
             Ok(())
         }
         PipelineV2Cmd::Lua(_) => {
-            let mut rep = Report::new();
-
-            let mut compiler = Compiler::new(sources);
-
-            for package in f.packages.iter() {
-                let name = Path::new(package).file_stem().unwrap().to_str().unwrap();
-                compiler.add_package(name, package).unwrap();
-            }
-
-            compiler.tokenize2(&mut rep).map_err(|_| rep.clone())?;
-            compiler.parse2(&mut rep).map_err(|_| rep.clone())?;
-
             let mut file = fs::File::create("out.lua").unwrap();
 
             compiler.lua(&mut rep, &mut file).map_err(|_| rep.clone())?;
@@ -125,6 +115,15 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
                 .expect("failed to execute process");
 
             process::exit(output.status.code().unwrap_or(1));
+        }
+        PipelineV2Cmd::SimpleSpecPipeline(_) => {
+            let hir = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
+            let spec = crate::anf::simple_spec::simple_spec(&hir);
+            let anf = crate::anf::BuildContext::build(&spec);
+            println!("ANF: {:#?}", anf);
+            let builder = crate::x86::build::Builder::new(anf);
+            builder.build();
+            Ok(())
         }
     }
 }
