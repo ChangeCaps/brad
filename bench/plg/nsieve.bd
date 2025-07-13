@@ -49,6 +49,8 @@ fn nsieve (n: int) -> none {
 }
 
 fn main -> none {
+  std::panic "This is a test panic message"
+
   let n = 4
   let mut i = 0
   
