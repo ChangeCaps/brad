@@ -281,7 +281,35 @@ impl BodyBuilder {
                 });
                 reg
             }
-            VLocation::Reg(reg) => reg,
+            VLocation::Reg(reg) => match rconst {
+                RegConstraint::Int => {
+                    if reg.float {
+                        let n_reg = self.alloc(v_reg, rconst, save, forbidden);
+                        self.instrs.puti(Instr::MOV_RR {
+                            dst: n_reg,
+                            src: reg,
+                        });
+                        self.free(reg);
+                        n_reg
+                    } else {
+                        reg
+                    }
+                }
+                RegConstraint::Float => todo!(),
+                RegConstraint::Specific(s_reg) => {
+                    if reg == s_reg {
+                        reg
+                    } else {
+                        let n_reg = self.alloc(v_reg, rconst, save, forbidden);
+                        self.instrs.puti(Instr::MOV_RR {
+                            dst: n_reg,
+                            src: reg,
+                        });
+                        self.free(reg);
+                        n_reg
+                    }
+                }
+            },
         }
     }
 
@@ -347,7 +375,7 @@ impl BodyBuilder {
     ) -> Reg {
         let idx = v_reg.usize();
 
-        match rconst {
+        let ret = match rconst {
             RegConstraint::Int => {
                 let alloc = {
                     let mut iter = Reg::ALLOC_I.iter();
@@ -371,7 +399,12 @@ impl BodyBuilder {
                 };
 
                 match alloc {
-                    Some(reg) => reg.clone(),
+                    Some(reg) => {
+                        let ret = reg.clone();
+                        self.usage.alloc_si(v_reg, ret);
+                        self.v_map[v_reg.usize()] = VLocation::Reg(ret);
+                        ret
+                    }
                     None => {
                         let mut iter = Reg::ALLOC_I.iter();
                         let res = loop {
@@ -394,9 +427,10 @@ impl BodyBuilder {
                                 match val {
                                     Some(virt) => {
                                         self.push(&virt);
-                                        self.usage.alloc_si(v_reg, reg.clone());
-                                        self.v_map[idx] = VLocation::Reg(reg.clone());
-                                        reg.clone()
+                                        let ret = reg.clone();
+                                        self.usage.alloc_si(v_reg, ret);
+                                        self.v_map[idx] = VLocation::Reg(ret);
+                                        ret
                                     }
                                     None => panic!("Not possible"),
                                 }
@@ -429,9 +463,14 @@ impl BodyBuilder {
                 };
 
                 match alloc {
-                    Some(reg) => reg.clone(),
+                    Some(reg) => {
+                        let ret = reg.clone();
+                        self.usage.alloc_sf(v_reg, ret);
+                        self.v_map[v_reg.usize()] = VLocation::Reg(ret);
+                        ret
+                    }
                     None => {
-                        let mut iter = Reg::ALLOC_I.iter();
+                        let mut iter = Reg::ALLOC_F.iter();
                         let res = loop {
                             if let Some(reg) = iter.next() {
                                 if forbidden.contains(&reg) {
@@ -452,9 +491,10 @@ impl BodyBuilder {
                                 match val {
                                     Some(virt) => {
                                         self.push(&virt);
-                                        self.usage.alloc_si(v_reg, reg.clone());
-                                        self.v_map[idx] = VLocation::Reg(reg.clone());
-                                        reg.clone()
+                                        let ret = reg.clone();
+                                        self.usage.alloc_sf(v_reg, ret);
+                                        self.v_map[idx] = VLocation::Reg(ret);
+                                        ret
                                     }
                                     None => panic!("Not possible"),
                                 }
@@ -497,7 +537,9 @@ impl BodyBuilder {
                     }
                 }
             }
-        }
+        };
+
+        ret
     }
 
     pub fn expect_format(vinstr: &vinstr::VInstr, dest: bool, srcs: usize) {
@@ -620,10 +662,13 @@ impl BodyBuilder {
     pub fn build(&mut self, v_body: vbuild::BodyOutput, types: &anf::Types) -> InstrBlock {
         // step 1 - register alloc base assembly
 
+        println!("{:#?}", v_body);
+
         self.sp = -8;
         self.v_map.clear();
-        self.v_map.reserve_exact(v_body.valc as usize);
-        self.v_map.fill(VLocation::None);
+        self.v_map.resize(v_body.valc as usize, VLocation::None);
+
+        self.usage.reset();
 
         for elem in v_body.instrs.iter() {
             match elem {
@@ -978,7 +1023,17 @@ impl BodyBuilder {
                     };
                 }
                 VInstrElement::VCall(vcall) => todo!(),
-                VInstrElement::VRet(vret) => todo!(),
+                VInstrElement::VRet(vret) => {
+                    // TODO :: proper type handling and stuff
+                    let ret_reg = self.ensure_reg(
+                        vret.v_reg,
+                        RegConstraint::Specific(self.conv.iret[0]),
+                        &Vec::new(),
+                        &Vec::new(),
+                    );
+
+                    self.instrs.puti(Instr::RET);
+                }
                 VInstrElement::LoopBegin(comptime_val, virtual_regs) => todo!(),
                 VInstrElement::LoopEnd(comptime_val) => todo!(),
                 VInstrElement::LoopExit(comptime_val) => todo!(),
@@ -990,6 +1045,9 @@ impl BodyBuilder {
         // step 3 - save clobbered registers
 
         // block
+
+        print!("{:#?}", self.instrs);
+
         todo!()
     }
 }

@@ -1,10 +1,13 @@
 use solve::Tag;
 
-use crate::anf::{self, Local};
+use crate::{
+    anf::{self, Local},
+    x86::vinstr::VInstrElement,
+};
 
 use super::{
     common::{Imm32, Imm64, LocalId, MemScale, PrimitiveType},
-    vinstr::{VInstr, VInstrBlock, VirtualArg, VirtualReg},
+    vinstr::{VInstr, VInstrBlock, VRet, VirtualArg, VirtualReg},
 };
 
 #[derive(Debug, Clone)]
@@ -100,10 +103,16 @@ impl BodyBuilder {
         todo!()
     }
 
-    pub fn next_vreg(&mut self) -> VirtualArg {
+    pub fn next_varg(&mut self) -> VirtualArg {
         let ret = VirtualArg::Reg {
             local: VirtualReg::new(self.valc),
         };
+        self.valc = self.valc + 1;
+        ret
+    }
+
+    pub fn next_vreg(&mut self) -> VirtualReg {
+        let ret = VirtualReg::new(self.valc);
         self.valc = self.valc + 1;
         ret
     }
@@ -123,7 +132,7 @@ impl BodyBuilder {
         let val = match l_val {
             anf::Value::Local(local) => Self::virtual_from_local(local),
             anf::Value::Int(val) => {
-                let virt = self.next_vreg();
+                let virt = self.next_varg();
                 self.mov_ri(virt, Imm64::Const(val.clone()));
                 virt
             }
@@ -176,7 +185,7 @@ impl BodyBuilder {
         let lhs = match l_lhs {
             anf::Value::Local(local) => Self::virtual_from_local(local),
             anf::Value::Int(val) => {
-                let virt = self.next_vreg();
+                let virt = self.next_varg();
                 self.mov_ri(virt, Imm64::Const(val.clone()));
                 virt
             }
@@ -190,7 +199,7 @@ impl BodyBuilder {
         let rhs = match l_rhs {
             anf::Value::Local(local) => Self::virtual_from_local(local),
             anf::Value::Int(val) => {
-                let virt = self.next_vreg();
+                let virt = self.next_varg();
                 self.mov_ri(virt, Imm64::Const(val.clone()));
                 virt
             }
@@ -323,7 +332,7 @@ impl BodyBuilder {
                     arms,
                     default,
                 } => self.build_match(body, types, dst, target, arms, default),
-                anf::ExprKind::TagInit { dst, tag } => todo!(),
+                anf::ExprKind::TagInit { dst, tag } => { /*todo!()*/ }
                 anf::ExprKind::TupleInit { dst, vals } => todo!(),
                 anf::ExprKind::ArrayInit { dst, vals } => todo!(),
                 anf::ExprKind::RecordInit { dst, vals } => todo!(),
@@ -331,16 +340,14 @@ impl BodyBuilder {
                 anf::ExprKind::Closure { dst, func } => todo!(),
                 anf::ExprKind::Call { dst, src, arg } => todo!(),
                 anf::ExprKind::Mov { dst, src } => {
-                    let v_dst = VirtualArg::Mem {
-                        index: None,
-                        base: Some(VirtualReg::new(dst.0 as u32)),
-                    };
-                    let v_src = match src {
-                        anf::Value::Local(local) => Self::virtual_from_local(local),
+                    let v_dst = Self::virtual_from_local(dst);
+                    match src {
+                        anf::Value::Local(local) => {
+                            let v_src = Self::virtual_from_local(local);
+                            self.mov_rr(v_dst, v_src);
+                        }
                         anf::Value::Int(val) => {
-                            let virt = self.next_vreg();
-                            self.mov_ri(virt, Imm64::Const(val.clone()));
-                            virt
+                            self.mov_ri(v_dst, Imm64::Const(val.clone()));
                         }
                         anf::Value::Float(_) => {
                             todo!()
@@ -349,8 +356,6 @@ impl BodyBuilder {
                             todo!()
                         }
                     };
-
-                    self.mov_rr(v_dst, v_src);
                 }
                 anf::ExprKind::Read { dst, src, access } => {
                     let offset = if access.len() > 0 {
@@ -381,7 +386,7 @@ impl BodyBuilder {
                     let v_src = match src {
                         anf::Value::Local(local) => Self::virtual_from_local(local),
                         anf::Value::Int(val) => {
-                            let virt = self.next_vreg();
+                            let virt = self.next_varg();
                             self.mov_ri(virt, Imm64::Const(val.clone()));
                             virt
                         }
@@ -413,7 +418,7 @@ impl BodyBuilder {
                     let _v_index = match index {
                         anf::Value::Local(local) => Self::virtual_from_local(local),
                         anf::Value::Int(val) => {
-                            let virt = self.next_vreg();
+                            let virt = self.next_varg();
                             self.mov_ri(virt, Imm64::Const(val.clone()));
                             virt
                         }
@@ -446,7 +451,7 @@ impl BodyBuilder {
                     let _v_index = match index {
                         anf::Value::Local(local) => Self::virtual_from_local(local),
                         anf::Value::Int(val) => {
-                            let virt = self.next_vreg();
+                            let virt = self.next_varg();
                             self.mov_ri(virt, Imm64::Const(val.clone()));
                             virt
                         }
@@ -461,16 +466,123 @@ impl BodyBuilder {
                     // calculate element size
                     todo!()
                 }
-                anf::ExprKind::Return { val } => todo!(),
+                anf::ExprKind::Return { val } => {
+                    let v_reg = match val {
+                        anf::Value::Local(local) => VirtualReg(local.0 as u32),
+                        anf::Value::Int(val) => {
+                            let virt = self.next_vreg();
+                            self.mov_ri(VirtualArg::Reg { local: virt }, Imm64::Const(val.clone()));
+                            virt
+                        }
+                        anf::Value::Float(_) => todo!(),
+                        anf::Value::String(_) => todo!(),
+                    };
+
+                    self.instrs.put(VInstrElement::VRet(VRet { v_reg }));
+                }
                 anf::ExprKind::Loop { dst, body } => todo!(),
                 anf::ExprKind::Continue {} => todo!(),
                 anf::ExprKind::Break { value } => todo!(),
             };
         }
 
-        let out = BodyOutput::new();
+        let mut out = BodyOutput::new();
+        out.locc = self.locc;
+        out.valc = self.valc;
 
-        todo!();
+        // count reg usage
+        let mut counts: Vec<u32> = vec![0; self.valc as usize];
+        for instr in self.instrs.iter() {
+            match instr {
+                VInstrElement::VInstr(vinstr) => {
+                    for (v_arg, _) in vinstr.srcs.iter() {
+                        match v_arg {
+                            VirtualArg::Reg { local } => {
+                                let idx = local.usize();
+                                counts[idx] = counts[idx] + 1;
+                            }
+                            VirtualArg::Imm => {}
+                            VirtualArg::Mem { index, base } => {
+                                match index {
+                                    Some(v_reg) => {
+                                        let idx = v_reg.usize();
+                                        counts[idx] = counts[idx] + 1;
+                                    }
+                                    None => {}
+                                };
+                                match base {
+                                    Some(v_reg) => {
+                                        let idx = v_reg.usize();
+                                        counts[idx] = counts[idx] + 1;
+                                    }
+                                    None => {}
+                                };
+                            }
+                        }
+                    }
+                }
+                VInstrElement::Label(_) | VInstrElement::VCall(_) | VInstrElement::VRet(_) => {}
+                VInstrElement::DropVReg(_)
+                | VInstrElement::LoopBegin(_, _)
+                | VInstrElement::LoopEnd(_)
+                | VInstrElement::LoopExit(_) => panic!(),
+            }
+        }
+
+        for instr in self.instrs.iter() {
+            match instr {
+                VInstrElement::VInstr(vinstr) => {
+                    out.instrs.put(instr.clone());
+                    for (v_arg, _) in vinstr.srcs.iter() {
+                        match v_arg {
+                            VirtualArg::Reg { local } => {
+                                let idx = local.usize();
+                                counts[idx] = counts[idx] - 1;
+                                if counts[idx] == 0 {
+                                    out.instrs.put(VInstrElement::DropVReg(local.clone()));
+                                }
+                            }
+                            VirtualArg::Imm => {}
+                            VirtualArg::Mem { index, base } => {
+                                match index {
+                                    Some(v_reg) => {
+                                        let idx = v_reg.usize();
+                                        counts[idx] = counts[idx] - 1;
+                                        if counts[idx] == 0 {
+                                            out.instrs.put(VInstrElement::DropVReg(v_reg.clone()));
+                                        }
+                                    }
+                                    None => {}
+                                };
+                                match base {
+                                    Some(v_reg) => {
+                                        let idx = v_reg.usize();
+                                        counts[idx] = counts[idx] - 1;
+                                        if counts[idx] == 0 {
+                                            out.instrs.put(VInstrElement::DropVReg(v_reg.clone()));
+                                        }
+                                    }
+                                    None => {}
+                                };
+                            }
+                        }
+                    }
+                }
+                VInstrElement::Label(_) => {
+                    out.instrs.put(instr.clone());
+                }
+                VInstrElement::VCall(vcall) => todo!(),
+                VInstrElement::VRet(vret) => {
+                    out.instrs.put(instr.clone());
+                }
+                VInstrElement::DropVReg(_)
+                | VInstrElement::LoopBegin(_, _)
+                | VInstrElement::LoopEnd(_)
+                | VInstrElement::LoopExit(_) => panic!(),
+            }
+        }
+
+        // TODO :: loop handling (add annotations)
 
         out
     }

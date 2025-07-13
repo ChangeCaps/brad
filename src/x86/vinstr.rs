@@ -136,7 +136,9 @@ pub struct VCall {
 }
 
 #[derive(Debug, Clone)]
-pub struct VRet {}
+pub struct VRet {
+    pub v_reg: VirtualReg,
+}
 
 #[derive(Debug, Clone)]
 pub enum VInstrElement {
