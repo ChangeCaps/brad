@@ -247,7 +247,7 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
                 let local = match binding {
                     Binding::Wild { .. } => todo!(),
                     Binding::Tuple { .. } => todo!(),
-                    Binding::Bind { local, .. } => self.build_expr_local(hir_expr, *local),
+                    Binding::Bind { local, .. } => self.build_expr_local(expr, *local),
                 };
 
                 let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());

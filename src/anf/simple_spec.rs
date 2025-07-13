@@ -264,13 +264,15 @@ fn convert_match_body(
     type_converter: &mut TypeConverter,
 ) -> hir2::MatchBody<Type> {
     hir2::MatchBody {
-        arms: match_body.arms.iter().map(|arm| convert_arm(arm, type_converter)).collect(),
-        default: match_body.default.as_ref().map(|default| {
-            Box::new((
-                default.0.clone(),
-                convert_expr(&default.1, type_converter)
-            ))
-        }),
+        arms: match_body
+            .arms
+            .iter()
+            .map(|arm| convert_arm(arm, type_converter))
+            .collect(),
+        default: match_body
+            .default
+            .as_ref()
+            .map(|default| Box::new((default.0.clone(), convert_expr(&default.1, type_converter)))),
     }
 }
 
