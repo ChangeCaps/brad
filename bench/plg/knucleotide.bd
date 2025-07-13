@@ -25,7 +25,7 @@ fn count-nucleotides (sequence: str) (k: int) -> [str] {
   }
 }
 
-fn update-count (counts: [(str, int)]) (kmer: str) -> [(str, int)] {
+fn update-count (counts: [str * int]) (kmer: str) -> [str * int] {
   let mut result = []
   let mut found = false
   let mut i = 0
@@ -38,7 +38,7 @@ fn update-count (counts: [(str, int)]) (kmer: str) -> [(str, int)] {
     
     let entry = counts[i]
     match entry
-    | (k, c) => {
+    | _ as k, c => {
       match k == kmer
       | true => {
         result = std::array::append result (k, c + 1)
@@ -79,7 +79,7 @@ fn main -> none {
     
     let entry = one-mers[i]
     match entry
-    | (kmer, count) => print-nucleotide-count kmer count
+    | _ as (kmer, count) => print-nucleotide-count kmer count
     
     i = i + 1
   }
@@ -95,29 +95,28 @@ fn main -> none {
     
     let entry = two-mers[j]
     match entry
-    | (kmer, count) => print-nucleotide-count kmer count
+    | _ as (kmer, count) => print-nucleotide-count kmer count
     
     j = j + 1
   }
   
   std::io::println ""
-  let ggt-count = match count-nucleotides dna-sequence 3
-  | counts => {
-    let mut k = 0
-    let counts-len = std::array::len counts
-    loop {
-      match k >= counts-len
-      | true => break 0
+  let counts = count-nucleotides dna-sequence 3
+  let mut k = 0
+  let counts-len = std::array::len counts
+  loop {
+    match k >= counts-len
+    | true => break 0
+    | false => {}
+
+    let entry = counts[k]
+    match entry
+    | _ as (k,c) => match k == "GGT"
+      | true => break c
       | false => {}
-      
-      let entry = counts[k]
-      match entry
-      | ("GGT", count) => break count
-      | _ => {}
-      
-      k = k + 1
-    }
+
+    k = k + 1
   }
-  
-  print-nucleotide-count "GGT" ggt-count
+
+  print-nucleotide-count "GGT" counts
 }

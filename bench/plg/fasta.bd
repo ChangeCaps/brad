@@ -36,7 +36,7 @@ fn main -> none {
   }
   
   std::io::println ">TWO IUB ambiguity codes"
-  let iub_chars = ["a", "c", "g", "t", "B", "D", "H", "K", "M", "N", "R", "S", "V", "W", "Y"]
+  let iub_chars = ["a"; "c"; "g"; "t"; "B"; "D"; "H"; "K"; "M"; "N"; "R"; "S"; "V"; "W"; "Y"]
   let mut seed = 42
   let mut printed2 = 0
   let target2 = n * 3
@@ -67,7 +67,7 @@ fn main -> none {
   }
   
   std::io::println ">THREE Homo sapiens frequency"
-  let homo_chars = ["a", "c", "g", "t"]
+  let homo_chars = ["a"; "c"; "g"; "t"]
   let mut printed3 = 0
   let target3 = n * 5
   

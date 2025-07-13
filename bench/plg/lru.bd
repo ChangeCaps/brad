@@ -53,7 +53,7 @@ fn lru-get (cache: [int]) (key: int) -> int | none {
     
     let entry = cache[i]
     match entry
-    | (k, v) => {
+    | _ as (k, v) => {
       match k == key
       | true => break v
       | false => {}
@@ -80,7 +80,7 @@ fn lru-put (cache: [int]) (key: int) (value: int) (max_size: int) -> [int] {
     
     let entry = cache[i]
     match entry
-    | (k, v) => {
+    | _ as (k, v) => {
       match k == key
       | true => {}
       | false => {

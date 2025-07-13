@@ -1,0 +1,11 @@
+fn pow x y -> int {
+  match y == 0
+  | true => 1
+  | false => x * pow x (y - 1)
+}
+
+fn main -> int {
+  let x = 2
+  let y = 10
+  pow x y
+}

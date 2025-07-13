@@ -19,6 +19,7 @@
 
 ## TODO
 
+- Read args from CLI
 - Inline comments do not work.
 - Fix float/int behavior
 - Match kinda useless unless tuple matching works

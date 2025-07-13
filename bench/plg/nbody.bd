@@ -27,7 +27,7 @@ fn energy (bodies: [planet]) -> float {
       let dx = bi.x - bj.x
       let dy = bi.y - bj.y
       let dz = bi.z - bj.z
-      let distance = 1.0
+      let distance: float = 1.0
       e = e - bi.mass * bj.mass / distance
       j = j + 1
     }
