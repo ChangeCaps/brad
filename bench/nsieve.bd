@@ -1,0 +1,64 @@
+fn create-flags (n: int) -> [true | false] {
+  let mut result = []
+  let mut i = 0
+  loop {
+    match i >= n
+    | true => break result
+    | false => {}
+    result = std::array::append result true
+    i = i + 1
+  }
+}
+
+fn print-primes-result (n: int) (count: int) -> none {
+  std::io::print "Primes up to "
+  std::debug::print n
+  std::io::print " "
+  std::debug::print count
+  std::io::println ""
+}
+
+fn nsieve (n: int) -> none {
+  let mut count = 0
+  let mut flags = create-flags n
+  let mut i = 2
+  
+  loop {
+    match i >= n
+    | true => break
+    | false => {}
+    
+    match flags[i]
+    | true => {
+      count = count + 1
+      let mut j = i * 2
+      loop {
+        match j >= n  
+        | true => break
+        | false => {}
+        flags[j] = false
+        j = j + i
+      }
+    }
+    | false => {}
+    
+    i = i + 1
+  }
+  
+  print-primes-result n count
+}
+
+fn main -> none {
+  let n = 4
+  let mut i = 0
+  
+  loop {
+    match i >= 3
+    | true => break
+    | false => {}
+    
+    let size = 10000 << (n - i)
+    nsieve size
+    i = i + 1
+  }
+}

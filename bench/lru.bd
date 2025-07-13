@@ -1,0 +1,94 @@
+alias lru-node = { key: int; value: int; next: lru-node | none; prev: lru-node | none }
+
+fn lru-node::new (key: int) (value: int) -> lru-node {
+  { key: key; value: value; next: none; prev: none }
+}
+
+fn main -> none {
+  let size = 100
+  let n = 1000
+  let mod_val = size * 10
+  
+  let mut seed0 = 0
+  let mut seed1 = 1
+  let mut hit = 0
+  let mut missed = 0
+  
+  let mut cache = []
+  let mut i = 0
+  
+  loop {
+    match i >= n
+    | true => break
+    | false => {}
+    
+    seed0 = (1103515245 * seed0 + 12345) % 2147483648
+    let n0 = seed0 % mod_val
+    
+    cache = lru-put cache n0 n0 size
+    
+    seed1 = (1103515245 * seed1 + 12345) % 2147483648
+    let n1 = seed1 % mod_val
+    
+    match lru-get cache n1
+    | none => missed = missed + 1
+    | _ => hit = hit + 1
+    
+    i = i + 1
+  }
+  
+  std::debug::print hit
+  std::io::println ""
+  std::debug::print missed
+  std::io::println ""
+}
+
+fn lru-get (cache: [int]) (key: int) -> int | none {
+  let mut i = 0
+  let cache_len = std::array::len cache
+  loop {
+    match i >= cache_len
+    | true => break none
+    | false => {}
+    
+    let entry = cache[i]
+    match entry
+    | (k, v) => {
+      match k == key
+      | true => break v
+      | false => {}
+    }
+    
+    i = i + 1
+  }
+}
+
+fn lru-put (cache: [int]) (key: int) (value: int) (max_size: int) -> [int] {
+  let new_entry = (key, value)
+  let mut result = [new_entry]
+  let mut i = 0
+  let cache_len = std::array::len cache
+  let mut added_count = 1
+  
+  loop {
+    match i >= cache_len
+    | true => break result
+    | false => {}
+    match added_count >= max_size
+    | true => break result
+    | false => {}
+    
+    let entry = cache[i]
+    match entry
+    | (k, v) => {
+      match k == key
+      | true => {}
+      | false => {
+        result = std::array::append result entry
+        added_count = added_count + 1
+      }
+    }
+    
+    i = i + 1
+  }
+}

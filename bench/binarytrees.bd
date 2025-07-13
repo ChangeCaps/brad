@@ -1,0 +1,79 @@
+alias node = { left: node | none; right: node | none }
+
+fn print-tree-result (label: str) (depth: int) (check: int) -> none {
+  std::io::print label
+  std::io::print " of depth "
+  std::debug::print depth
+  std::io::print "\t check: "
+  std::debug::print check
+  std::io::println ""
+}
+
+fn print-trees-result (iterations: int) (depth: int) (check: int) -> none {
+  std::debug::print iterations
+  std::io::print "\t trees of depth "
+  std::debug::print depth
+  std::io::print "\t check: "
+  std::debug::print check
+  std::io::println ""
+}
+
+// Construct a binary tree of depth `depth`
+fn node::new (depth: int) -> node | none {
+    match depth <= 0
+    | true  => none
+    | false => {
+        let left = node::new (depth - 1)
+        let right = node::new (depth - 1)
+        { left: left; right: right }
+    }
+}
+
+fn node::check (n: node | none) -> int {
+    match n
+    | none => 1
+    | node as n => 1 + (node::check n.left) + (node::check n.right)
+}
+
+fn main -> none {
+   let n = 14
+   let min-depth = 4
+   // max(min-depth + 2, n)
+   let max-depth = 7
+   let tree = node::new max-depth
+
+   // Stretch depth test
+   let stretch-depth = max-depth + 1
+   let stretch-tree = node::new stretch-depth
+   let stretch-check = node::check stretch-tree
+   print-tree-result "stretch tree" stretch-depth stretch-check
+
+   // Long lived.
+   let long-lived-tree = node::new max-depth
+
+   // Trees
+   let mut depth = min-depth
+
+   loop {
+     match depth > max-depth
+     | true => break
+     | _ => {}
+
+     let iterations = 1 << (max-depth - depth + min-depth)
+     let mut chk = 0
+     let mut i = 0
+     loop {
+        match i >= iterations
+        | true => break
+        | _ => {}
+        let a = node::new depth
+        chk = chk + node::check a
+        i = i + 1
+     }
+     print-trees-result iterations depth chk
+     depth = depth + 2
+   }
+
+   let long-lived-check = node::check long-lived-tree
+   print-tree-result "long lived tree" max-depth long-lived-check
+}

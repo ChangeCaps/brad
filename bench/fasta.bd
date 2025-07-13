@@ -1,0 +1,98 @@
+fn main -> none {
+  let n = 1000
+  
+  std::io::println ">ONE Homo sapiens alu"
+  let alu = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATGGTGAAACCCCGTCTCTACTAAAAATACAAAAATTAGCCGGGCGTGGTGGCGCGCGCCTGTAATCCCAGCTACTCGGGAGGCTGAGGCAGGAGAATCGCTTGAACCCGGGAGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA"
+  
+  let mut printed = 0
+  let target = n * 2
+  let alu_len = std::string::len alu
+  let mut pos = 0
+  
+  loop {
+    match printed >= target
+    | true => break
+    | false => {}
+    
+    let mut line = ""
+    let mut line_len = 0
+    loop {
+      match line_len >= 60
+      | true => break
+      | false => {}
+      match printed + line_len >= target
+      | true => break
+      | false => {}
+      
+      let chars = std::string::chars alu
+      let char_at_pos = chars[pos % alu_len]
+      line = std::string::append line char_at_pos
+      pos = pos + 1
+      line_len = line_len + 1
+    }
+    
+    std::io::println line
+    printed = printed + line_len
+  }
+  
+  std::io::println ">TWO IUB ambiguity codes"
+  let iub_chars = ["a", "c", "g", "t", "B", "D", "H", "K", "M", "N", "R", "S", "V", "W", "Y"]
+  let mut seed = 42
+  let mut printed2 = 0
+  let target2 = n * 3
+  
+  loop {
+    match printed2 >= target2
+    | true => break
+    | false => {}
+    
+    let mut line2 = ""
+    let mut line_len2 = 0
+    loop {
+      match line_len2 >= 60
+      | true => break
+      | false => {}
+      match printed2 + line_len2 >= target2
+      | true => break
+      | false => {}
+      
+      seed = (seed * 3877 + 29573) % 139968
+      let char_idx = seed % 15
+      line2 = std::string::append line2 iub_chars[char_idx]
+      line_len2 = line_len2 + 1
+    }
+    
+    std::io::println line2
+    printed2 = printed2 + line_len2
+  }
+  
+  std::io::println ">THREE Homo sapiens frequency"
+  let homo_chars = ["a", "c", "g", "t"]
+  let mut printed3 = 0
+  let target3 = n * 5
+  
+  loop {
+    match printed3 >= target3
+    | true => break
+    | false => {}
+    
+    let mut line3 = ""
+    let mut line_len3 = 0
+    loop {
+      match line_len3 >= 60
+      | true => break
+      | false => {}
+      match printed3 + line_len3 >= target3
+      | true => break
+      | false => {}
+      
+      seed = (seed * 3877 + 29573) % 139968
+      let char_idx = seed % 4
+      line3 = std::string::append line3 homo_chars[char_idx]
+      line_len3 = line_len3 + 1
+    }
+    
+    std::io::println line3
+    printed3 = printed3 + line_len3
+  }
+}

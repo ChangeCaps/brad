@@ -1,0 +1,60 @@
+fn reverse-array (arr: [int]) (n: int) -> [int] {
+  let mut result = []
+  let mut i = n - 1
+  loop {
+    match i < 0
+    | true => break result
+    | false => {}
+    
+    result = std::array::append result arr[i]
+    i = i - 1
+  }
+}
+
+fn count-flips (perm: [int]) -> int {
+  let mut arr = perm
+  let mut flips = 0
+  
+  loop {
+    let first = arr[0]
+    match first == 0
+    | true => break flips
+    | false => {}
+    
+    arr = reverse-array arr (first + 1)
+    flips = flips + 1
+  }
+}
+
+fn main -> none {
+  let n = 6
+  let mut perm = [0; 1; 2; 3; 4; 5]
+  let mut checksum = 0
+  let mut max_flips = 0
+  let mut permutation_count = 0
+  let mut sign = 1
+  
+  loop {
+    match permutation_count >= 720
+    | true => break
+    | false => {}
+    
+    let flips = count-flips perm
+    match flips > max_flips
+    | true => max_flips = flips
+    | false => {}
+    
+    checksum = checksum + sign * flips
+    sign = 0 - sign
+    
+    permutation_count = permutation_count + 1
+  }
+  
+  std::debug::print checksum
+  std::io::println ""
+  std::io::print "Pfannkuchen("
+  std::debug::print n
+  std::io::print ") = "
+  std::debug::print max_flips
+  std::io::println ""
+}

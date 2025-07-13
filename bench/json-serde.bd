@@ -1,0 +1,27 @@
+fn main -> none {
+  let sample_json = "sample json string"
+  let n = 3
+  
+  std::io::println "Processing single JSON object:"
+  std::debug::print (std::string::len sample_json)
+  std::io::println ""
+  
+  std::io::println "Processing JSON array:"
+  let mut total_len = 2
+  let mut i = 0
+  loop {
+    match i >= n
+    | true => break
+    | false => {}
+    
+    total_len = total_len + std::string::len sample_json
+    match i < n - 1
+    | true => total_len = total_len + 1
+    | false => {}
+    
+    i = i + 1
+  }
+  
+  std::debug::print total_len
+  std::io::println ""
+}

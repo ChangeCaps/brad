@@ -25,11 +25,9 @@ pub struct Locals<T = Type> {
     locals: Vec<Local<T>>,
 }
 
-impl <T> Default for Locals<T> {
+impl<T> Default for Locals<T> {
     fn default() -> Self {
-        Self {
-            locals: Vec::new(),
-        }
+        Self { locals: Vec::new() }
     }
 }
 

@@ -1,0 +1,129 @@
+alias merkle-node = { value: int | none; left: merkle-node | none; right: merkle-node | none; hash: int | none }
+
+fn merkle-node::make (depth: int) -> merkle-node {
+  match depth > 0
+  | true => {
+    let left = merkle-node::make (depth - 1)
+    let right = merkle-node::make (depth - 1) 
+    { value: none; left: left; right: right; hash: none }
+  }
+  | false => { value: 1; left: none; right: none; hash: none }
+}
+
+fn merkle-node::cal-hash (node: merkle-node) -> merkle-node {
+  match node.hash
+  | none => {
+    match node.value
+    | int as v => { value: node.value; left: node.left; right: node.right; hash: v }
+    | none => {
+      match node.left
+      | merkle-node as l => match node.right
+        | merkle-node as r => {
+          let left-updated = merkle-node::cal-hash l
+          let right-updated = merkle-node::cal-hash r
+          let combined-hash = merkle-node::get-hash left-updated + merkle-node::get-hash right-updated
+          { value: node.value; left: left-updated; right: right-updated; hash: combined-hash }
+        }
+        | _ => none
+      | _ => none
+    }
+  }
+  | _ => node
+}
+
+fn merkle-node::get-hash (node: merkle-node) -> int {
+  match node.hash
+  | none => -1
+  | int as h => h
+}
+
+fn merkle-node::check (node: merkle-node) -> true | false {
+  match node.hash
+  | none => false
+  | int as h => {
+    match node.value
+    | int as v => true
+    | none => {
+      match node.left
+      | merkle-node as l => match node.right
+        | merkle-node as r => {
+          let left-check = merkle-node::check l
+          let right-check = merkle-node::check r
+          left-check && right-check
+        }
+        | none => false
+      | none => false
+    }
+  }
+}
+
+fn main -> none {
+  let n = 2
+  let min_depth = 1
+  let max_depth = match (min_depth + 2 > n)
+    | true => min_depth + 2
+    | false => n
+  let stretch_depth = max_depth + 1
+  
+  let stretch_tree = merkle-node::make stretch_depth
+  let stretch_tree_hashed = merkle-node::cal-hash stretch_tree
+  let stretch_hash = merkle-node::get-hash stretch_tree_hashed
+  let stretch_check = merkle-node::check stretch_tree_hashed
+  
+  std::io::print "stretch tree of depth "
+  std::debug::print stretch_depth
+  std::io::print "\t root hash: "
+  std::debug::print stretch_hash
+  std::io::print " check: "
+  match stretch_check
+  | true => std::io::print "true"
+  | false => std::io::print "false"
+  std::io::println ""
+  
+  let long_lived_tree = merkle-node::make max_depth
+  
+  let mmd = max_depth + min_depth
+  let mut d = min_depth
+  loop {
+    match d >= stretch_depth
+    | true => break
+    | false => {}
+    
+    let iterations = 1 << (mmd - d)
+    let mut sum = 0
+    let mut i = 0
+    loop {
+      match i >= iterations
+      | true => break
+      | false => {}
+      
+      let tree = merkle-node::make d
+      let tree_hashed = merkle-node::cal-hash tree
+      sum = sum + merkle-node::get-hash tree_hashed
+      i = i + 1
+    }
+    
+    std::debug::print iterations
+    std::io::print "\t trees of depth "
+    std::debug::print d
+    std::io::print "\t root hash sum: "
+    std::debug::print sum
+    std::io::println ""
+    
+    d = d + 2
+  }
+  
+  let long_lived_hashed = merkle-node::cal-hash long_lived_tree
+  let long_lived_hash = merkle-node::get-hash long_lived_hashed
+  let long_lived_check = merkle-node::check long_lived_hashed
+  
+  std::io::print "long lived tree of depth "
+  std::debug::print n
+  std::io::print "\t root hash: "
+  std::debug::print long_lived_hash
+  std::io::print " check: "
+  match long_lived_check
+  | true => std::io::print "true"
+  | false => std::io::print "false"
+  std::io::println ""
+}

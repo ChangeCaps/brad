@@ -1,0 +1,55 @@
+fn main -> none {
+  let n = 27
+  let mut digits = ""
+  let mut i = 0
+  
+  loop {
+    match i >= n
+    | true => break
+    | false => {}
+    
+    digits = std::string::append digits "2"
+    i = i + 1
+  }
+  
+  let mut printed = 0
+  let mut pos = 0
+  loop {
+    match printed >= n
+    | true => break
+    | false => {}
+    
+    let mut line = ""
+    let mut line_count = 0
+    loop {
+      match line_count >= 10
+      | true => break
+      | false => {}
+      match printed + line_count >= n
+      | true => break
+      | false => {}
+      
+      line = std::string::append line "2"
+      line_count = line_count + 1
+    }
+    
+    match line_count < 10
+    | true => {
+      let mut spaces = 10 - line_count
+      loop {
+        match spaces <= 0
+        | true => break
+        | false => {}
+        line = std::string::append line " "
+        spaces = spaces - 1
+      }
+    }
+    | false => {}
+    
+    std::io::print line
+    std::io::print "\t:"
+    printed = printed + line_count
+    std::debug::print printed
+    std::io::println ""
+  }
+}

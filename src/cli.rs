@@ -83,8 +83,6 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
             compiler.parse2(&mut rep).map_err(|_| rep.clone())?;
 
             let hir = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
-            let mut formatter = hir2::Formatter::new(std::io::stdout(), &hir);
-            formatter.format().unwrap();
             Ok(())
         }
         PipelineV2Cmd::Lua(_) => {
