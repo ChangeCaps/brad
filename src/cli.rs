@@ -5,9 +5,9 @@ use crate::v1::cli::{execute_v1, PipelineV1Cmd};
 use crate::{ast, parse};
 use clap::{Args, Parser, Subcommand};
 use diagnostic::{Report, Source, Sources};
-use std::io::Write;
+use std::fs::{self, File};
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::fs;
 
 #[derive(Args, Clone)]
 pub struct FileArgs {
@@ -115,7 +115,11 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
             let spec = crate::anf::simple_spec::simple_spec(&hir);
             let anf = crate::anf::BuildContext::build(&spec);
             println!("ANF: {:#?}", anf);
-            let builder = crate::x86::build::Builder::new(anf);
+
+            let file = File::create("out.asm").expect("failed to create file");
+            let writer = BufWriter::new(file);
+
+            let mut builder = crate::x86::build::Builder::new(anf, writer);
             builder.build();
             Ok(())
         }

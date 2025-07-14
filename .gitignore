@@ -4,6 +4,7 @@ Cargo.lock
 /a.out
 /run.log
 /out.lua
+out.asm
 /playground.bd
 
 .venv

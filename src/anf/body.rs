@@ -5,7 +5,7 @@ use std::ops::{Index, IndexMut};
 use super::{Expr, Tid};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Bid(usize);
+pub struct Bid(pub usize);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Local(pub usize);
