@@ -8,6 +8,7 @@ use diagnostic::{Report, Source, Sources};
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Args, Clone)]
 pub struct FileArgs {
@@ -121,6 +122,19 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
 
             let mut builder = crate::x86::build::Builder::new(anf, writer);
             builder.build();
+
+            // nasm -o out.o -f elf64 out.asm
+            // ld -m elf_x86_64 -o out.elf out.o
+
+            Command::new("nasm")
+                .args(["-o", "out.o", "-f", "elf64", "out.asm"])
+                .output()
+                .expect("failed to assemble");
+            Command::new("ld")
+                .args(["-m", "elf_x86_64", "-o", "out.elf", "out.o"])
+                .output()
+                .expect("failed to link");
+
             Ok(())
         }
     }
