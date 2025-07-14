@@ -5,6 +5,8 @@ Cargo.lock
 /run.log
 /out.lua
 out.asm
+out.o
+out.elf
 /playground.bd
 
 .venv

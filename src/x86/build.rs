@@ -43,7 +43,21 @@ impl<W: std::io::Write> Builder<W> {
     }
 
     fn build_asm(&mut self, bodies: &Vec<(anf::Bid, ibuild::BodyOutput)>) {
+        self.write(b"section .text\n\n");
+        {
+            self.write(b"global _start\n");
+            self.write(b"_start:\n");
+            self.write(b"\tcall ");
+            self.write(Self::bid_name(anf::Bid(0)).as_bytes());
+            self.write(b"\n");
+            self.write(b"\tmov ebx, eax\n");
+            self.write(b"\tmov ax, 1\n");
+            self.write(b"\tint 0x80\n");
+            self.write(b"\n");
+        }
+
         for (bid, body) in bodies.iter() {
+            self.write(b"\n");
             self.write(Self::bid_name(bid.clone()).as_bytes());
             self.write(b":\n");
             for instr in body.instrs.iter() {
