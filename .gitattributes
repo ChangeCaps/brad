@@ -1,1 +1,6 @@
 * text eol=lf
+
+*.c text
+*.h text
+*.rs text
+*.envrc text
