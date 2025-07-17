@@ -57,7 +57,7 @@ pub enum Type {
 
     // 8 bytes (ptr)
     Array { ty: Tid },
-    // 8 bytes (packed ptr, tag + addr)
+    // real shit (i die)
     Union { types: BTreeSet<Tid> },
     // 8 bytes (ptr)
     Tuple { types: Vec<Tid> },
