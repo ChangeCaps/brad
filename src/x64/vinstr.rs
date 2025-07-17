@@ -2,46 +2,28 @@ use crate::anf;
 
 use super::{
     common::{
-        ComptimeVal, Imm32, Imm64, MemScale, PrimitiveType, RegConstraint, SizeConstraint, SizeKind,
+        ComptimeVal, Imm32, Imm64, MemScale, RegConstraint, SizeConstraint, SizeKind, VRegister,
     },
     reg::Reg,
+    types::NativeType,
 };
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct VirtualReg(pub u32);
-
-impl VirtualReg {
-    pub fn new(v: u32) -> Self {
-        Self(v)
-    }
-
-    pub fn from_local(local: anf::Local) -> Self {
-        Self(local.0 as u32)
-    }
-
-    pub fn usize(self) -> usize {
-        self.0 as usize
-    }
-}
 
 // TODO :: add label
 #[derive(Debug, Clone, Copy)]
 pub enum VirtualArg {
     Reg {
-        local: VirtualReg,
+        local: VRegister,
     },
     Imm,
     Mem {
-        index: Option<VirtualReg>,
-        base: Option<VirtualReg>,
+        index: Option<VRegister>,
+        base: Option<VRegister>,
     },
 }
 
 impl VirtualArg {
     pub fn from_local(local: anf::Local) -> Self {
-        Self::Reg {
-            local: VirtualReg::from_local(local),
-        }
+        todo!()
     }
 }
 
@@ -146,12 +128,12 @@ pub struct VInstr {
 
 #[derive(Debug, Clone)]
 pub struct VCall {
-    args: Vec<(VirtualReg, PrimitiveType)>,
+    args: Vec<(VRegister, NativeType)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct VRet {
-    pub v_reg: VirtualReg,
+    pub v_reg: VRegister,
 }
 
 #[derive(Debug, Clone)]
@@ -163,8 +145,8 @@ pub enum VInstrElement {
     VRet(VRet),
 
     // automatic insertion
-    DropVReg(VirtualReg),
-    LoopBegin(ComptimeVal, Vec<VirtualReg>),
+    DropVReg(VRegister),
+    LoopBegin(ComptimeVal, Vec<VRegister>),
     LoopEnd(ComptimeVal),
     LoopExit(ComptimeVal),
 }

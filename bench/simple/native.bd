@@ -1,0 +1,11 @@
+#[link = "brad_print"]
+extern fn print (a: str) -> none
+
+fn main -> int {
+  let x: int = 1
+  let y: int = 2
+  
+  print "Hello World!\n"
+  
+  x + y
+}

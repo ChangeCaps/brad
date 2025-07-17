@@ -1,0 +1,6 @@
+fn main -> int {
+  let x: int | float = 1
+  match x
+  | int as y => 3
+  | float as y => 7
+}

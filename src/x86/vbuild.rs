@@ -60,16 +60,20 @@ impl BodyBuilder {
         }
     }
 
-    pub fn get_value_type(val: &anf::Value, body: &anf::Body, types: &anf::Types) -> PrimitiveType {
+    pub fn get_value_primitive_type(
+        val: &anf::Value,
+        body: &anf::Body,
+        types: &anf::Types,
+    ) -> PrimitiveType {
         match val {
-            anf::Value::Local(local) => Self::get_local_type(local, body, types),
+            anf::Value::Local(local) => Self::get_local_primitive_type(local, body, types),
             anf::Value::Int(_) => PrimitiveType::Int,
             anf::Value::Float(_) => PrimitiveType::Float,
             anf::Value::String(_) => PrimitiveType::String,
         }
     }
 
-    pub fn get_local_type(
+    pub fn get_local_primitive_type(
         local: &anf::Local,
         body: &anf::Body,
         types: &anf::Types,
@@ -85,22 +89,113 @@ impl BodyBuilder {
             }
         };
 
-        if terms.len() == 1 {
-            if terms[0].tags.contains(Tag::INT) {
+        if terms[0].tags.contains(Tag::INT) {
+            let mut iter = terms.iter();
+            if loop {
+                if let Some(term) = iter.next() {
+                    if term.tags.contains(Tag::INT) {
+                        continue;
+                    } else {
+                        break false;
+                    }
+                } else {
+                    break true;
+                }
+            } {
                 return PrimitiveType::Int;
             }
-            if terms[0].tags.contains(Tag::FLOAT) {
+        }
+        if terms[0].tags.contains(Tag::FLOAT) {
+            let mut iter = terms.iter();
+            if loop {
+                if let Some(term) = iter.next() {
+                    if term.tags.contains(Tag::FLOAT) {
+                        continue;
+                    } else {
+                        break false;
+                    }
+                } else {
+                    break true;
+                }
+            } {
                 return PrimitiveType::Float;
             }
-            if terms[0].tags.contains(Tag::STR) {
+        }
+        if terms[0].tags.contains(Tag::STR) {
+            let mut iter = terms.iter();
+            if loop {
+                if let Some(term) = iter.next() {
+                    if term.tags.contains(Tag::STR) {
+                        continue;
+                    } else {
+                        break false;
+                    }
+                } else {
+                    break true;
+                }
+            } {
                 return PrimitiveType::String;
             }
-            if terms[0].tags.contains(Tag::NONE) {
+        }
+        if terms[0].tags.contains(Tag::NONE) {
+            let mut iter = terms.iter();
+            if loop {
+                if let Some(term) = iter.next() {
+                    if term.tags.contains(Tag::NONE) {
+                        continue;
+                    } else {
+                        break false;
+                    }
+                } else {
+                    break true;
+                }
+            } {
                 return PrimitiveType::None;
             }
         }
 
-        todo!()
+        if let anf::Base::Array(ty) = &terms[0].base {
+            todo!()
+        };
+
+        if let anf::Base::Tuple(types) = &terms[0].base {
+            todo!()
+        };
+
+        if let anf::Base::Record(fields) = &terms[0].base {
+            todo!()
+        };
+
+        if let anf::Base::Function(input, output) = &terms[0].base {
+            todo!()
+        };
+
+        panic!()
+    }
+
+    pub fn get_local_type(
+        local: &anf::Local,
+        body: &anf::Body,
+        types: &anf::Types,
+    ) -> (anf::Tid, anf::Type) {
+        let tid = body.locals[local.0];
+        (tid, types[tid].clone())
+    }
+
+    pub fn get_field_index(base: &anf::Base, field: &'static str) -> i32 {
+        match base {
+            anf::Base::Record(items) => {
+                let mut i = 0;
+                for (f, _) in items {
+                    if *f == field {
+                        return i;
+                    }
+                    i = i + 1;
+                }
+                panic!("Didn't find field in record");
+            }
+            _ => panic!("Expected union"),
+        }
     }
 
     pub fn next_varg(&mut self) -> VirtualArg {
@@ -125,7 +220,7 @@ impl BodyBuilder {
         l_dst: &anf::Local,
         l_val: &anf::Value,
     ) {
-        let p_type = Self::get_value_type(l_val, body, types);
+        let p_type = Self::get_value_primitive_type(l_val, body, types);
 
         let dst = Self::virtual_from_local(l_dst);
 
@@ -162,6 +257,11 @@ impl BodyBuilder {
             },
             PrimitiveType::String => panic!("Unary op on string"),
             PrimitiveType::None => panic!("Unary op on none"),
+            PrimitiveType::Function => panic!("Unary op on function"),
+            PrimitiveType::Array => panic!("Unary op on array"),
+            PrimitiveType::Union => panic!("Unary op on union"),
+            PrimitiveType::Tuple => panic!("Unary op on tuple"),
+            PrimitiveType::Record => panic!("Unary op on record"),
         };
     }
 
@@ -174,9 +274,9 @@ impl BodyBuilder {
         l_lhs: &anf::Value,
         l_rhs: &anf::Value,
     ) {
-        let p_type = Self::get_value_type(l_lhs, body, types);
+        let p_type = Self::get_value_primitive_type(l_lhs, body, types);
         assert!(
-            p_type == Self::get_value_type(l_rhs, body, types),
+            p_type == Self::get_value_primitive_type(l_rhs, body, types),
             "Incompatible types in binary expression"
         );
 
@@ -297,8 +397,13 @@ impl BodyBuilder {
                 anf::BinaryOp::Gt => todo!(),
                 anf::BinaryOp::Ge => todo!(),
             },
-            PrimitiveType::String => panic!("Unary op on string"),
-            PrimitiveType::None => panic!("Unary op on none"),
+            PrimitiveType::String => panic!("Binary op on string"),
+            PrimitiveType::None => panic!("Binary op on none"),
+            PrimitiveType::Function => panic!("Binary op on function"),
+            PrimitiveType::Array => panic!("Binary op on array"),
+            PrimitiveType::Union => panic!("Binary op on union"),
+            PrimitiveType::Tuple => panic!("Binary op on tuple"),
+            PrimitiveType::Record => panic!("Binary op on record"),
         }
     }
 
@@ -332,13 +437,19 @@ impl BodyBuilder {
                     arms,
                     default,
                 } => self.build_match(body, types, dst, target, arms, default),
-                anf::ExprKind::TagInit { dst, tag } => { /*todo!()*/ }
+                anf::ExprKind::TagInit { dst, tag } => {
+                    todo!()
+                }
                 anf::ExprKind::TupleInit { dst, vals } => todo!(),
                 anf::ExprKind::ArrayInit { dst, vals } => todo!(),
                 anf::ExprKind::RecordInit { dst, vals } => todo!(),
                 anf::ExprKind::UnionInit { dst, val, union } => todo!(),
-                anf::ExprKind::Closure { dst, func } => todo!(),
-                anf::ExprKind::Call { dst, src, arg } => todo!(),
+                anf::ExprKind::Closure { dst, func } => {
+                    todo!()
+                }
+                anf::ExprKind::Call { dst, src, arg } => {
+                    todo!()
+                }
                 anf::ExprKind::Mov { dst, src } => {
                     let v_dst = Self::virtual_from_local(dst);
                     match src {
@@ -358,33 +469,33 @@ impl BodyBuilder {
                     };
                 }
                 anf::ExprKind::Read { dst, src, access } => {
-                    let offset = if access.len() > 0 {
-                        // calculate field offset
-                        todo!()
-                    } else {
-                        0
-                    };
-
                     let v_dst = Self::virtual_from_local(dst);
                     let v_src = VirtualArg::Mem {
                         index: None,
-                        base: Some(VirtualReg::new(src.0 as u32)),
+                        base: Some(VirtualReg::from_local(src.clone())),
                     };
 
-                    self.mov_rm(v_dst, v_src, MemScale::S1, Imm32::Const(offset));
+                    if let Some(access) = access {
+                        let (tid, ty) = Self::get_local_type(dst, body, types);
+
+                        if ty.terms.len() == 1 {
+                            // static offset
+
+                            let idx = Self::get_field_index(&ty.terms[0].base, access);
+                            self.mov_rm(v_dst, v_src, MemScale::S1, Imm32::Const(idx * 8));
+                        } else {
+                            // dynamic offset
+                            todo!()
+                        }
+                    } else {
+                        self.mov_rm(v_dst, v_src, MemScale::S1, Imm32::Const(0));
+                    }
                 }
                 anf::ExprKind::Write { dst, access, src } => {
-                    let offset = if access.len() > 0 {
-                        // calculate field offset
-                        todo!()
-                    } else {
-                        0
-                    };
-
-                    let v_dst = Self::virtual_from_local(dst);
+                    let v_dst = VirtualReg::from_local(dst.clone());
 
                     let v_src = match src {
-                        anf::Value::Local(local) => Self::virtual_from_local(local),
+                        anf::Value::Local(local) => VirtualArg::from_local(local.clone()),
                         anf::Value::Int(val) => {
                             let virt = self.next_varg();
                             self.mov_ri(virt, Imm64::Const(val.clone()));
@@ -398,7 +509,37 @@ impl BodyBuilder {
                         }
                     };
 
-                    self.mov_mr(v_dst, MemScale::S1, Imm32::Const(offset), v_src);
+                    if let Some(access) = access {
+                        let (tid, ty) = Self::get_local_type(dst, body, types);
+
+                        if ty.terms.len() == 1 {
+                            // static offset
+
+                            let idx = Self::get_field_index(&ty.terms[0].base, access);
+                            self.mov_mr(
+                                VirtualArg::Mem {
+                                    index: None,
+                                    base: Some(v_dst),
+                                },
+                                MemScale::S1,
+                                Imm32::Const(idx * 8),
+                                v_src,
+                            );
+                        } else {
+                            // dynamic offset
+                            todo!()
+                        }
+                    } else {
+                        self.mov_mr(
+                            VirtualArg::Mem {
+                                index: None,
+                                base: Some(v_dst),
+                            },
+                            MemScale::S1,
+                            Imm32::Const(0),
+                            v_src,
+                        );
+                    }
                 }
                 anf::ExprKind::ReadIndex {
                     dst,
@@ -406,20 +547,14 @@ impl BodyBuilder {
                     index,
                     access,
                 } => {
-                    let _offset = if access.len() > 0 {
-                        // calculate field offset
-                        todo!()
-                    } else {
-                        0
-                    };
+                    let v_dst = VirtualArg::from_local(dst.clone());
 
-                    let _v_dst = Self::virtual_from_local(dst);
-
-                    let _v_index = match index {
-                        anf::Value::Local(local) => Self::virtual_from_local(local),
+                    let v_src = VirtualReg::from_local(src.clone());
+                    let v_index = match index {
+                        anf::Value::Local(local) => VirtualReg::from_local(local.clone()),
                         anf::Value::Int(val) => {
-                            let virt = self.next_varg();
-                            self.mov_ri(virt, Imm64::Const(val.clone()));
+                            let virt = self.next_vreg();
+                            self.mov_ri(VirtualArg::Reg { local: virt }, Imm64::Const(val.clone()));
                             virt
                         }
                         anf::Value::Float(_) => {
@@ -430,8 +565,36 @@ impl BodyBuilder {
                         }
                     };
 
-                    // calculate element size
-                    todo!()
+                    if let Some(access) = access {
+                        let (tid, ty) = Self::get_local_type(dst, body, types);
+
+                        if ty.terms.len() == 1 {
+                            // static offset
+                            let idx = Self::get_field_index(&ty.terms[0].base, access);
+                            self.mov_rm(
+                                v_dst,
+                                VirtualArg::Mem {
+                                    index: Some(v_index),
+                                    base: Some(v_src),
+                                },
+                                MemScale::S8,
+                                Imm32::Const(idx * 8),
+                            );
+                        } else {
+                            // dynamic offset
+                            todo!()
+                        }
+                    } else {
+                        self.mov_rm(
+                            v_dst,
+                            VirtualArg::Mem {
+                                index: Some(v_index),
+                                base: Some(v_src),
+                            },
+                            MemScale::S8,
+                            Imm32::Const(0),
+                        );
+                    }
                 }
                 anf::ExprKind::WriteIndex {
                     dst,
@@ -439,20 +602,14 @@ impl BodyBuilder {
                     access,
                     src,
                 } => {
-                    let _offset = if access.len() > 0 {
-                        // calculate field offset
-                        todo!()
-                    } else {
-                        0
-                    };
+                    // TODO :: look at this again
+                    let v_dst = VirtualReg::from_local(dst.clone());
 
-                    let _v_dst = Self::virtual_from_local(dst);
-
-                    let _v_index = match index {
-                        anf::Value::Local(local) => Self::virtual_from_local(local),
+                    let v_index = match index {
+                        anf::Value::Local(local) => VirtualReg::from_local(local.clone()),
                         anf::Value::Int(val) => {
-                            let virt = self.next_varg();
-                            self.mov_ri(virt, Imm64::Const(val.clone()));
+                            let virt = self.next_vreg();
+                            self.mov_ri(VirtualArg::Reg { local: virt }, Imm64::Const(val.clone()));
                             virt
                         }
                         anf::Value::Float(_) => {
@@ -463,8 +620,53 @@ impl BodyBuilder {
                         }
                     };
 
-                    // calculate element size
-                    todo!()
+                    let v_src = match src {
+                        anf::Value::Local(local) => VirtualArg::from_local(local.clone()),
+                        anf::Value::Int(val) => {
+                            let virt = self.next_varg();
+                            self.mov_ri(virt, Imm64::Const(val.clone()));
+                            virt
+                        }
+                        anf::Value::Float(_) => {
+                            todo!()
+                        }
+                        anf::Value::String(_) => {
+                            todo!()
+                        }
+                    };
+
+                    if let Some(access) = access {
+                        let (tid, ty) = Self::get_local_type(dst, body, types);
+
+                        // TODO :: check if access == "len"
+
+                        if ty.terms.len() == 1 {
+                            // static field offset
+                            let idx = Self::get_field_index(&ty.terms[0].base, access);
+                            self.mov_mr(
+                                VirtualArg::Mem {
+                                    index: Some(v_index),
+                                    base: Some(v_dst),
+                                },
+                                MemScale::S8,
+                                Imm32::Const(idx * 8),
+                                v_src,
+                            );
+                        } else {
+                            // dynamic field offset
+                            todo!()
+                        }
+                    } else {
+                        self.mov_mr(
+                            VirtualArg::Mem {
+                                index: Some(v_index),
+                                base: Some(v_dst),
+                            },
+                            MemScale::S8,
+                            Imm32::Const(0),
+                            v_src,
+                        );
+                    }
                 }
                 anf::ExprKind::Return { val } => {
                     let v_reg = match val {

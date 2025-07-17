@@ -320,7 +320,7 @@ impl<W: std::io::Write> Builder<W> {
         if bid == anf::Bid(0) {
             String::from("brad_main")
         } else {
-            format!("func_{}", bid.0)
+            format!("brad_func_{}", bid.0)
         }
     }
 

@@ -9,6 +9,7 @@ mod lower2;
 mod lua;
 pub mod parse;
 mod v1;
+mod x64;
 mod x86;
 
 use diagnostic::Sources;

@@ -59,23 +59,23 @@ pub enum ExprKind {
     Read {
         dst: Local, // reg
         src: Local, // addr
-        access: Vec<&'static str>,
+        access: Option<&'static str>,
     },
     Write {
         dst: Local, // addr
-        access: Vec<&'static str>,
+        access: Option<&'static str>,
         src: Value, // reg
     },
     ReadIndex {
         dst: Local, // reg
         src: Local, // addr
         index: Value,
-        access: Vec<&'static str>,
+        access: Option<&'static str>,
     },
     WriteIndex {
         dst: Local, // addr
         index: Value,
-        access: Vec<&'static str>,
+        access: Option<&'static str>,
         src: Value, // reg
     },
     Loop {
