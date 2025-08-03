@@ -6,11 +6,15 @@ pub fn specialize(program: &hir2::Program) -> hir2::SpecializedProgram {
     let mut spec = Specializer {
         hir: program.clone(),
         spec: hir2::SpecializedProgram::default(),
+        cache: HashMap::default(),
     };
 
-    for (bid, _) in program.bodies.iter() {
+    for (bid, body) in program.bodies.iter() {
         let map = Default::default();
-        spec.spec_body(&map, bid);
+
+        let ty = spec.spec_type(&map, &body.ty(), true);
+
+        spec.spec_body(&map, bid, ty);
     }
 
     spec.spec
@@ -19,6 +23,7 @@ pub fn specialize(program: &hir2::Program) -> hir2::SpecializedProgram {
 struct Specializer {
     hir: hir2::Program,
     spec: hir2::SpecializedProgram,
+    cache: HashMap<(hir2::BodyId, anf::Type), hir2::SpecializedBodyId>,
 }
 
 impl Specializer {
@@ -26,7 +31,27 @@ impl Specializer {
         &mut self,
         map: &HashMap<solve::Var, anf::Type>,
         bid: hir2::BodyId,
+        ty: anf::Type,
     ) -> hir2::SpecializedBodyId {
+        if let Some(id) = self.cache.get(&(bid, ty.clone())) {
+            return *id;
+        }
+
+        let spec = hir2::SpecializedBody {
+            attrs: Default::default(),
+            is_extern: Default::default(),
+            name: Default::default(),
+            locals: Default::default(),
+            input: Default::default(),
+            output: Default::default(),
+            expr: Default::default(),
+            span: Default::default(),
+        };
+
+        let specid = self.spec.bodies.insert(spec);
+
+        self.cache.insert((bid, ty), specid);
+
         let body = self.hir.bodies[bid].clone();
 
         let expr = body.expr.map(|expr| self.spec_expr(map, &expr));
@@ -62,7 +87,9 @@ impl Specializer {
             span: body.span,
         };
 
-        self.spec.bodies.insert(spec)
+        self.spec.bodies[specid] = spec;
+
+        specid
     }
 
     fn spec_expr(
@@ -86,9 +113,9 @@ impl Specializer {
                 let ty = self.spec_type(map, &expr.ty, true);
 
                 let mut new_map = Default::default();
-                self.unify_type(&mut new_map, &self.hir.bodies[*bid].ty(), ty);
+                self.unify_type(&mut new_map, &self.hir.bodies[*bid].ty(), ty.clone());
 
-                let bid = self.spec_body(&new_map, *bid);
+                let bid = self.spec_body(&new_map, *bid, ty);
                 hir2::ExprKind::Func(hir2::BodyId(bid.0))
             }
 
@@ -145,7 +172,12 @@ impl Specializer {
                 body,
             } => todo!(),
 
-            hir2::ExprKind::Assign(_expr, _expr1) => todo!(),
+            hir2::ExprKind::Assign(lhs, rhs) => {
+                let lhs = self.spec_expr(map, lhs);
+                let rhs = self.spec_expr(map, rhs);
+
+                hir2::ExprKind::Assign(Box::new(lhs), Box::new(rhs))
+            }
 
             hir2::ExprKind::Ref(_expr) => todo!(),
 
@@ -211,6 +243,16 @@ impl Specializer {
         ty: &solve::Type,
         pol: bool,
     ) -> anf::Type {
+        self.spec_type_impl(map, ty, pol, &mut Default::default())
+    }
+
+    fn spec_type_impl(
+        &mut self,
+        map: &HashMap<solve::Var, anf::Type>,
+        ty: &solve::Type,
+        pol: bool,
+        cache: &mut HashMap<Result<(solve::Var, bool), solve::App>, ()>,
+    ) -> anf::Type {
         let mut anf = anf::Type { terms: Vec::new() };
 
         for term in ty.conjuncts() {
@@ -224,7 +266,7 @@ impl Specializer {
                             let mut fields = Vec::new();
 
                             for (name, item) in &record.fields {
-                                let item = self.spec_type(map, item, pol);
+                                let item = self.spec_type_impl(map, item, pol, cache);
                                 let item = self.spec.types.insert(item);
 
                                 fields.push((*name, item));
@@ -237,7 +279,7 @@ impl Specializer {
                             let mut items = Vec::new();
 
                             for item in &tuple.fields {
-                                let item = self.spec_type(map, item, pol);
+                                let item = self.spec_type_impl(map, item, pol, cache);
                                 let item = self.spec.types.insert(item);
 
                                 items.push(item);
@@ -247,15 +289,15 @@ impl Specializer {
                         }
 
                         solve::Base::Array(ref array) => {
-                            let item = self.spec_type(map, &array.element, pol);
+                            let item = self.spec_type_impl(map, &array.element, pol, cache);
                             let item = self.spec.types.insert(item);
 
                             anf::Base::Array(item)
                         }
 
                         solve::Base::Function(ref function) => {
-                            let input = self.spec_type(map, &function.input, !pol);
-                            let output = self.spec_type(map, &function.output, pol);
+                            let input = self.spec_type_impl(map, &function.input, !pol, cache);
+                            let output = self.spec_type_impl(map, &function.output, pol, cache);
 
                             let input = self.spec.types.insert(input);
                             let output = self.spec.types.insert(output);
@@ -267,8 +309,14 @@ impl Specializer {
             };
 
             for app in &term.positive.apps {
+                if cache.get(&Err(app.clone())).is_some() {
+                    continue;
+                }
+
+                cache.insert(Err(app.clone()), ());
+
                 let app = self.hir.tcx.expand(app.clone());
-                let app = self.spec_type(map, &app, pol);
+                let app = self.spec_type_impl(map, &app, pol, cache);
 
                 self.spec.types.intersect(&mut term_ty, &app);
             }
@@ -279,6 +327,12 @@ impl Specializer {
                     continue;
                 }
 
+                if cache.get(&Ok((var, pol))).is_some() {
+                    continue;
+                }
+
+                cache.insert(Ok((var, pol)), ());
+
                 let bounds = self.hir.tcx.bounds(var);
 
                 let bound = match pol {
@@ -286,7 +340,7 @@ impl Specializer {
                     false => bounds.lower,
                 };
 
-                let bound = self.spec_type(map, &bound, pol);
+                let bound = self.spec_type_impl(map, &bound, pol, cache);
                 self.spec.types.intersect(&mut term_ty, &bound);
             }
 

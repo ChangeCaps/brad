@@ -4,6 +4,7 @@ use crate::hir2::{Argument, Expr, Locals};
 use diagnostic::Span;
 use std::ops::{Index, IndexMut};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SpecializedBodyId(pub usize);
 
 #[derive(Clone, Debug)]
@@ -75,5 +76,3 @@ impl IndexMut<SpecializedBodyId> for SpecializedProgram {
         &mut self.bodies[index]
     }
 }
-
-
