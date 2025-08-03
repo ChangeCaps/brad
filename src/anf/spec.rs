@@ -29,7 +29,7 @@ impl Specializer {
     ) -> hir2::SpecializedBodyId {
         let body = self.hir.bodies[bid].clone();
 
-        let expr = self.spec_expr(map, &body.expr.unwrap());
+        let expr = body.expr.map(|expr| self.spec_expr(map, &expr));
 
         let mut locals = hir2::Locals::new();
 
@@ -58,7 +58,7 @@ impl Specializer {
             locals,
             input,
             output: self.spec_type(map, &body.output, true),
-            expr: Some(expr),
+            expr,
             span: body.span,
         };
 
@@ -72,9 +72,9 @@ impl Specializer {
     ) -> hir2::Expr<anf::Type> {
         let kind = match &expr.kind {
             hir2::ExprKind::Int(v) => hir2::ExprKind::Int(*v),
-            hir2::ExprKind::Float(_) => todo!(),
-            hir2::ExprKind::ZeroSize(tag) => todo!(),
-            hir2::ExprKind::String(_) => todo!(),
+            hir2::ExprKind::Float(v) => hir2::ExprKind::Float(*v),
+            hir2::ExprKind::String(v) => hir2::ExprKind::String(v),
+            hir2::ExprKind::ZeroSize(tag) => hir2::ExprKind::ZeroSize(*tag),
             hir2::ExprKind::Local(lid) => hir2::ExprKind::Local(*lid),
 
             hir2::ExprKind::Tag(tag, expr) => {
@@ -83,7 +83,7 @@ impl Specializer {
             }
 
             hir2::ExprKind::Func(bid) => {
-                let ty = self.spec_type(map, &expr.ty, false);
+                let ty = self.spec_type(map, &expr.ty, true);
 
                 let mut new_map = Default::default();
                 self.unify_type(&mut new_map, &self.hir.bodies[*bid].ty(), ty);
@@ -158,12 +158,22 @@ impl Specializer {
                     tags: term.positive.tags.clone(),
                     base: match term.positive.base {
                         solve::Base::None => anf::Base::Any,
+
                         solve::Base::Record(ref record) => todo!(),
+
                         solve::Base::Tuple(ref tuple) => todo!(),
-                        solve::Base::Array(ref array) => todo!(),
+
+                        solve::Base::Array(ref array) => {
+                            let item = self.spec_type(map, &array.element, pol);
+
+                            let item = self.spec.types.insert(item);
+
+                            anf::Base::Array(item)
+                        }
+
                         solve::Base::Function(ref function) => {
                             let input = self.spec_type(map, &function.input, !pol);
-                            let output = self.spec_type(map, &function.output, !pol);
+                            let output = self.spec_type(map, &function.output, pol);
 
                             let input = self.spec.types.insert(input);
                             let output = self.spec.types.insert(output);
@@ -190,8 +200,8 @@ impl Specializer {
                 let bounds = self.hir.tcx.bounds(var);
 
                 let bound = match pol {
-                    true => bounds.lower,
-                    false => bounds.upper,
+                    true => bounds.upper,
+                    false => bounds.lower,
                 };
 
                 let bound = self.spec_type(map, &bound, pol);
@@ -270,9 +280,35 @@ impl Specializer {
                 tags: term.tags.clone(),
                 base: match term.base {
                     anf::Base::Any => solve::Base::None,
-                    anf::Base::Record(ref items) => todo!(),
-                    anf::Base::Tuple(ref tids) => todo!(),
-                    anf::Base::Array(tid) => todo!(),
+
+                    anf::Base::Record(ref items) => {
+                        let mut fields = Vec::new();
+
+                        for (name, item) in items {
+                            let item = self.tid_to_solve(*item);
+                            fields.push((*name, item));
+                        }
+
+                        solve::Base::Record(solve::Record { fields })
+                    }
+
+                    anf::Base::Tuple(ref items) => {
+                        let mut fields = Vec::new();
+
+                        for item in items {
+                            let item = self.tid_to_solve(*item);
+                            fields.push(item);
+                        }
+
+                        solve::Base::Tuple(solve::Tuple { fields })
+                    }
+
+                    anf::Base::Array(item) => {
+                        let item = self.tid_to_solve(item);
+
+                        solve::Base::Array(solve::Array { element: item })
+                    }
+
                     anf::Base::Function(input, output) => {
                         let input = self.tid_to_solve(input);
                         let output = self.tid_to_solve(output);
