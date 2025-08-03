@@ -31,6 +31,17 @@ impl Specializer {
 
         let expr = self.spec_expr(map, &body.expr.unwrap());
 
+        let mut locals = hir2::Locals::new();
+
+        for local in body.locals {
+            locals.insert(hir2::Local {
+                is_mutable: local.is_mutable,
+                name: local.name,
+                ty: self.spec_type(map, &local.ty, true),
+                span: local.span,
+            });
+        }
+
         let mut input = Vec::new();
 
         for arg in body.input {
@@ -44,7 +55,7 @@ impl Specializer {
             attrs: body.attrs.clone(),
             is_extern: body.is_extern,
             name: body.name.clone(),
-            locals: Default::default(),
+            locals,
             input,
             output: self.spec_type(map, &body.output, true),
             expr: Some(expr),

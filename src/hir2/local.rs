@@ -62,3 +62,13 @@ impl<T> Index<LocalId> for Locals<T> {
         &self.locals[id]
     }
 }
+
+impl<T> IntoIterator for Locals<T> {
+    type Item = Local<T>;
+
+    type IntoIter = std::vec::IntoIter<Local<T>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.locals.into_iter()
+    }
+}
