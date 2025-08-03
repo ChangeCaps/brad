@@ -1,0 +1,24 @@
+type error<'a> = 'a
+
+fn error::assert<'a, 'e> (x: 'a | error<'e>) -> 'a {
+  match x
+  | error as e => panic <| debug::format e
+  | _     as a => a
+}
+
+fn panic (msg: str) -> ! {
+  io::println msg
+  os::exit 1
+}
+
+fn assert (cond: true | false) -> none {
+  match cond
+  | true  => none
+  | false => panic "assertion failed"
+}
+
+fn assert-eq<'a> (lhs: 'a) (rhs: 'a) -> none {
+  match lhs == rhs
+  | true  => none
+  | false => panic "assertion failed"
+}
