@@ -1,7 +1,7 @@
-fn main -> none {
-  let x: int -> int -> int = foo
-  let y: int -> int = x 0
-  let z: int = y 1
+type nat = int
+
+fn main {
+  foo <| nat 0
 }
 
-fn foo (a: int) (b: int) -> int => a + b
+fn foo x => x + 2

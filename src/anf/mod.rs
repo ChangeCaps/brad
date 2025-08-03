@@ -2,6 +2,7 @@ mod body;
 mod build;
 mod expr;
 pub mod simple_spec;
+pub mod spec;
 mod types;
 
 pub use body::*;

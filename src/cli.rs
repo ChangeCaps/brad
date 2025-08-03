@@ -113,7 +113,7 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
         }
         PipelineV2Cmd::SimpleSpecPipeline(_) => {
             let hir = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
-            let spec = crate::anf::simple_spec::simple_spec(&hir);
+            let spec = crate::anf::spec::specialize(&hir);
             let anf = crate::anf::BuildContext::build(&spec);
             println!("ANF: {:#?}", anf);
 

@@ -3,7 +3,7 @@ use std::ops::{Index, IndexMut};
 
 /// Program before specialization.
 /// Still has type context etc.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Program {
     pub modules: Modules,
     pub bodies: Bodies,

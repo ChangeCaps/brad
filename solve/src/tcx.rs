@@ -29,6 +29,10 @@ impl Tcx {
         self.bounds.get(&var).cloned().unwrap_or(Bounds::default())
     }
 
+    pub fn set_bounds(&mut self, var: Var, bounds: Bounds) {
+        self.bounds.insert(var, bounds);
+    }
+
     fn bounds_mut(&mut self, var: Var) -> &mut Bounds {
         self.bounds.entry(var).or_default()
     }
@@ -261,7 +265,7 @@ impl Tcx {
                 for (name, rhs_ty) in rhs.fields {
                     let Some(lhs_ty) = Self::find_field(&lhs.fields, name) else {
                         let diagnostic = Diagnostic::error("missing::field")
-                            .message(format!("field `{name}` not found in record `{}`", lhs))
+                            .message(format!("field `{name}` not found in record `{lhs}`"))
                             .span(span);
 
                         return Err(diagnostic);
@@ -333,6 +337,170 @@ impl Tcx {
 
                 Err(diagnostic)
             }
+        }
+    }
+
+    pub fn is_subtype(&mut self, lhs: Type, rhs: Type) -> bool {
+        let nf = Self::make_normal_form(lhs, rhs);
+        let mut conjuncts = nf.into_conjuncts();
+
+        while let Some(conjunct) = conjuncts.pop() {
+            if self.cache.contains(&conjunct) {
+                continue;
+            }
+
+            self.cache.insert(conjunct.clone());
+
+            if !self.is_subtype_conjunct(&mut conjuncts, conjunct.clone()) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn is_subtype_conjunct(&self, conjuncts: &mut Vec<Conjunct>, conjunct: Conjunct) -> bool {
+        let Some(conjunct) = self.is_subtype_vars(conjuncts, conjunct) else {
+            return true;
+        };
+
+        let Some(conjunct) = self.is_subtype_apps(conjuncts, conjunct) else {
+            return true;
+        };
+
+        let lhs = conjunct.positive;
+        let rhs = conjunct.negative;
+
+        if rhs.tags.iter().any(|tag| lhs.tags.contains(tag)) {
+            return true;
+        }
+
+        self.is_subtype_bases(conjuncts, lhs, rhs)
+    }
+
+    #[inline(always)]
+    fn is_subtype_vars(
+        &self,
+        conjuncts: &mut Vec<Conjunct>,
+        mut conjunct: Conjunct,
+    ) -> Option<Conjunct> {
+        if let Some(var) = conjunct.positive.vars.pop() {
+            if conjunct.negative.vars.binary_search(&var).is_ok() {
+                return None;
+            }
+
+            let upper = Type::from(conjunct).neg();
+
+            let bounds = self.bounds(var);
+
+            let nf = Self::make_normal_form(bounds.lower.clone(), upper);
+            conjuncts.extend(nf.into_conjuncts());
+
+            return None;
+        }
+
+        if let Some(var) = conjunct.negative.vars.pop() {
+            if conjunct.positive.vars.binary_search(&var).is_ok() {
+                return None;
+            }
+
+            let lower = Type::from(conjunct);
+
+            let bounds = self.bounds(var);
+
+            let nf = Self::make_normal_form(lower, bounds.upper.clone());
+            conjuncts.extend(nf.into_conjuncts());
+
+            return None;
+        }
+
+        Some(conjunct)
+    }
+
+    #[inline(always)]
+    fn is_subtype_apps(
+        &self,
+        conjuncts: &mut Vec<Conjunct>,
+        mut conjunct: Conjunct,
+    ) -> Option<Conjunct> {
+        if let Some(app) = conjunct.positive.apps.pop() {
+            if conjunct.negative.apps.binary_search(&app).is_ok() {
+                return None;
+            }
+
+            let upper = Type::from(conjunct).neg();
+            let app = self.expand(app);
+
+            let nf = Self::make_normal_form(app, upper);
+            conjuncts.extend(nf.into_conjuncts());
+
+            return None;
+        }
+
+        if let Some(app) = conjunct.negative.apps.pop() {
+            if conjunct.positive.apps.binary_search(&app).is_ok() {
+                return None;
+            }
+
+            let lower = Type::from(conjunct);
+            let app = self.expand(app);
+
+            let nf = Self::make_normal_form(lower, app);
+            conjuncts.extend(nf.into_conjuncts());
+
+            return None;
+        }
+
+        Some(conjunct)
+    }
+
+    #[inline(always)]
+    fn is_subtype_bases(&self, conjuncts: &mut Vec<Conjunct>, lhs: Term, rhs: Term) -> bool {
+        match (lhs.base, rhs.base) {
+            (Base::Record(lhs), Base::Record(rhs)) => {
+                for (name, rhs_ty) in rhs.fields {
+                    let Some(lhs_ty) = Self::find_field(&lhs.fields, name) else {
+                        return false;
+                    };
+
+                    let nf = Self::make_normal_form(lhs_ty.clone(), rhs_ty.clone());
+                    conjuncts.extend(nf.into_conjuncts());
+                }
+
+                true
+            }
+
+            (Base::Tuple(lhs), Base::Tuple(rhs)) => {
+                if lhs.fields.len() != rhs.fields.len() {
+                    return false;
+                }
+
+                for (lhs_ty, rhs_ty) in lhs.fields.into_iter().zip(rhs.fields) {
+                    let nf = Self::make_normal_form(lhs_ty, rhs_ty);
+                    conjuncts.extend(nf.into_conjuncts());
+                }
+
+                true
+            }
+
+            (Base::Array(lhs), Base::Array(rhs)) => {
+                let nf = Self::make_normal_form(lhs.element, rhs.element);
+                conjuncts.extend(nf.into_conjuncts());
+
+                true
+            }
+
+            (Base::Function(lhs), Base::Function(rhs)) => {
+                let input = Self::make_normal_form(rhs.input, lhs.input);
+                let output = Self::make_normal_form(lhs.output, rhs.output);
+
+                conjuncts.extend(input.into_conjuncts());
+                conjuncts.extend(output.into_conjuncts());
+
+                true
+            }
+
+            (_, _) => false,
         }
     }
 
