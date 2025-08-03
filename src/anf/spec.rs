@@ -92,12 +92,37 @@ impl Specializer {
                 hir2::ExprKind::Func(hir2::BodyId(bid.0))
             }
 
-            hir2::ExprKind::Array(exprs) => todo!(),
-            hir2::ExprKind::Tuple(exprs) => todo!(),
-            hir2::ExprKind::Record(inits) => todo!(),
+            hir2::ExprKind::Array(_exprs) => todo!(),
+
+            hir2::ExprKind::Tuple(exprs) => {
+                let exprs = exprs.iter().map(|expr| self.spec_expr(map, expr)).collect();
+                hir2::ExprKind::Tuple(exprs)
+            }
+
+            hir2::ExprKind::Record(inits) => {
+                let inits = inits
+                    .iter()
+                    .map(|init| hir2::Init {
+                        name: init.name,
+                        value: self.spec_expr(map, &init.value),
+                        span: init.span,
+                    })
+                    .collect();
+
+                hir2::ExprKind::Record(inits)
+            }
+
             hir2::ExprKind::Index(expr, expr1) => todo!(),
-            hir2::ExprKind::Field(expr, _) => todo!(),
-            hir2::ExprKind::Unary(unary_op, expr) => todo!(),
+
+            hir2::ExprKind::Field(expr, name) => {
+                let expr = self.spec_expr(map, expr);
+                hir2::ExprKind::Field(Box::new(expr), name)
+            }
+
+            hir2::ExprKind::Unary(op, expr) => {
+                let expr = self.spec_expr(map, expr);
+                hir2::ExprKind::Unary(*op, Box::new(expr))
+            }
 
             hir2::ExprKind::Binary(op, lhs, rhs) => {
                 let lhs = self.spec_expr(map, lhs);
@@ -119,11 +144,47 @@ impl Specializer {
                 locals,
                 body,
             } => todo!(),
-            hir2::ExprKind::Assign(expr, expr1) => todo!(),
-            hir2::ExprKind::Ref(expr) => todo!(),
-            hir2::ExprKind::Match(expr, match_body) => todo!(),
-            hir2::ExprKind::Loop(expr) => todo!(),
-            hir2::ExprKind::Break(expr) => todo!(),
+
+            hir2::ExprKind::Assign(_expr, _expr1) => todo!(),
+
+            hir2::ExprKind::Ref(_expr) => todo!(),
+
+            hir2::ExprKind::Match(expr, body) => {
+                let expr = self.spec_expr(map, expr);
+
+                let mut arms = Vec::new();
+
+                for arm in &body.arms {
+                    arms.push(hir2::Arm {
+                        pattern: arm.pattern.clone(),
+                        body: self.spec_expr(map, &arm.body),
+                        span: arm.span,
+                    });
+                }
+
+                let default = body
+                    .default
+                    .as_deref()
+                    .map(|(binding, expr)| Box::new((binding.clone(), self.spec_expr(map, expr))));
+
+                let body = hir2::MatchBody { arms, default };
+
+                hir2::ExprKind::Match(Box::new(expr), body)
+            }
+
+            hir2::ExprKind::Loop(expr) => {
+                let expr = self.spec_expr(map, expr);
+                hir2::ExprKind::Loop(Box::new(expr))
+            }
+
+            hir2::ExprKind::Break(expr) => {
+                let expr = expr
+                    .as_deref()
+                    .map(|expr| self.spec_expr(map, expr))
+                    .map(Box::new);
+
+                hir2::ExprKind::Break(expr)
+            }
 
             hir2::ExprKind::Let(binding, expr) => {
                 let expr = self.spec_expr(map, expr);
@@ -159,13 +220,34 @@ impl Specializer {
                     base: match term.positive.base {
                         solve::Base::None => anf::Base::Any,
 
-                        solve::Base::Record(ref record) => todo!(),
+                        solve::Base::Record(ref record) => {
+                            let mut fields = Vec::new();
 
-                        solve::Base::Tuple(ref tuple) => todo!(),
+                            for (name, item) in &record.fields {
+                                let item = self.spec_type(map, item, pol);
+                                let item = self.spec.types.insert(item);
+
+                                fields.push((*name, item));
+                            }
+
+                            anf::Base::Record(fields)
+                        }
+
+                        solve::Base::Tuple(ref tuple) => {
+                            let mut items = Vec::new();
+
+                            for item in &tuple.fields {
+                                let item = self.spec_type(map, item, pol);
+                                let item = self.spec.types.insert(item);
+
+                                items.push(item);
+                            }
+
+                            anf::Base::Tuple(items)
+                        }
 
                         solve::Base::Array(ref array) => {
                             let item = self.spec_type(map, &array.element, pol);
-
                             let item = self.spec.types.insert(item);
 
                             anf::Base::Array(item)
