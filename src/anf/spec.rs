@@ -74,12 +74,8 @@ impl Specializer {
             hir2::ExprKind::Func(bid) => {
                 let ty = self.spec_type(map, &expr.ty, false);
 
-                println!("{}", self.spec.types.format_type(ty.clone()));
-
                 let mut new_map = Default::default();
                 self.unify_type(&mut new_map, &self.hir.bodies[*bid].ty(), ty);
-
-                println!("{new_map:?}");
 
                 let bid = self.spec_body(&new_map, *bid);
                 hir2::ExprKind::Func(hir2::BodyId(bid.0))
