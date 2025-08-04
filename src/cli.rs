@@ -83,13 +83,15 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
     compiler.tokenize2(&mut rep).map_err(|_| rep.clone())?;
     compiler.parse2(&mut rep).map_err(|_| rep.clone())?;
 
+    let default_output_file: Option<&str> = f.output.as_ref().map(|p| p.to_str().unwrap());
+
     match cmd {
         PipelineV2Cmd::Hir(_) => {
             let _ = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
             Ok(())
         }
         PipelineV2Cmd::Lua(_) => {
-            let file_path = f.output.as_ref().map_or("out.lua", |p| p.to_str().unwrap());
+            let file_path = default_output_file.unwrap_or("out.lua");
             let mut file = fs::File::create(file_path).unwrap();
 
             compiler.lua(&mut rep, &mut file).map_err(|_| rep.clone())?;
@@ -117,7 +119,12 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
             let anf = crate::anf::BuildContext::build(&spec);
             println!("ANF: {:#?}", anf);
 
-            let file = File::create("out.asm").expect("failed to create file");
+            let output_file_name = default_output_file.unwrap_or("a");
+            let output_obj_path = format!("{}.o", output_file_name);
+            let output_asm_path = format!("{}.asm", output_file_name);
+            let output_elf_path = format!("{}", output_file_name);
+
+            let file = File::create(&output_asm_path).expect("failed to create file");
             let writer = BufWriter::new(file);
 
             let mut builder = crate::x86::build::Builder::new(anf, writer);
@@ -127,11 +134,11 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
             // ld -m elf_x86_64 -o out.elf out.o
 
             Command::new("nasm")
-                .args(["-o", "out.o", "-f", "elf64", "out.asm"])
+                .args(["-o", &output_obj_path, "-f", "elf64", &output_asm_path])
                 .output()
                 .expect("failed to assemble");
             Command::new("ld")
-                .args(["-m", "elf_x86_64", "-o", "out.elf", "out.o"])
+                .args(["-m", "elf_x86_64", "-o", &output_elf_path, &output_obj_path])
                 .output()
                 .expect("failed to link");
 
