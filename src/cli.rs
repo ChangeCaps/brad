@@ -8,7 +8,6 @@ use diagnostic::{Report, Source, Sources};
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 #[derive(Args, Clone)]
 pub struct FileArgs {
@@ -85,6 +84,14 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
 
     let default_output_file: Option<&str> = f.output.as_ref().map(|p| p.to_str().unwrap());
 
+    let main_package = Path::new(f.packages.last().unwrap())
+        .file_stem()
+        .unwrap()
+        .to_str()
+        .unwrap();
+
+    let entrypoint = format!("{}::main", main_package);
+
     match cmd {
         PipelineV2Cmd::Hir(_) => {
             let _ = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
@@ -95,14 +102,6 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
             let mut file = fs::File::create(file_path).unwrap();
 
             compiler.lua(&mut rep, &mut file).map_err(|_| rep.clone())?;
-
-            let main_package = Path::new(f.packages.last().unwrap())
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap();
-
-            let entrypoint = format!("{}::main", main_package);
 
             file.write_all(format!("M['{}']()", entrypoint).as_bytes())
                 .unwrap();
@@ -115,7 +114,7 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
         }
         PipelineV2Cmd::SimpleSpecPipeline(_) => {
             let hir = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
-            let spec = crate::anf::spec::specialize(&hir);
+            let spec = crate::anf::spec::specialize(&hir, entrypoint.as_str());
             let anf = crate::anf::BuildContext::build(&spec);
             println!("ANF: {:#?}", anf);
 

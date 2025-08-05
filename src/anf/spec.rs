@@ -2,20 +2,27 @@ use std::collections::HashMap;
 
 use crate::{anf, hir2};
 
-pub fn specialize(program: &hir2::Program) -> hir2::SpecializedProgram {
+pub fn specialize(program: &hir2::Program, entrypoint: &str) -> hir2::SpecializedProgram {
     let mut spec = Specializer {
         hir: program.clone(),
         spec: hir2::SpecializedProgram::default(),
         cache: HashMap::default(),
     };
 
-    for (bid, body) in program.bodies.iter() {
-        let map = Default::default();
+    // find function called "main"
+    let main = program
+        .bodies
+        .iter()
+        .find(|(_, body)| body.name == entrypoint)
+        .expect("No main function found");
 
-        let ty = spec.spec_type(&map, &body.ty(), true);
+    let (bid, body) = main;
 
-        spec.spec_body(&map, bid, ty);
-    }
+    let map = Default::default();
+
+    let ty = spec.spec_type(&map, &body.ty(), true);
+
+    spec.spec_body(&map, bid, ty);
 
     spec.spec
 }
