@@ -1,36 +1,62 @@
 use crate::anf::{Bid, Body, Expr, ExprKind, Local, Program, Tid, Type, Value};
 use crate::hir2 as hir;
-use crate::hir2::Binding;
+use crate::hir2::{Binding, SpecializedBodyId};
 use solve::Tag;
 use std::collections::HashMap;
 
 pub struct BuildContext<'a> {
     ir: Program,
     hir: &'a hir::SpecializedProgram,
+    bid_map: HashMap<hir::SpecializedBodyId, Bid>,
 }
 
 impl<'a> BuildContext<'a> {
     pub fn build(program: &hir::SpecializedProgram) -> Program {
         let ir = Program::default();
 
-        let mut ctx = BuildContext { ir, hir: program };
+        let mut ctx = BuildContext {
+            ir,
+            hir: program,
+            bid_map: Default::default(),
+        };
 
-        for (_, body) in program.bodies.iter() {
-            println!("Building body: {}", body.name);
-            ctx.build_body(body);
+        // Hoist every body in the program.
+        for (hir_body_id, hir_body) in program.bodies.iter() {
+            ctx.build_body(hir_body_id, hir_body);
+        }
+
+        // Build every body in the program.
+        for (hir_body_id, hir_body) in program.bodies.iter() {
+            let bid = *ctx
+                .bid_map
+                .get(&hir_body_id)
+                .expect("Body ID not found in map");
+
+            let mut body_ctx = BodyBuildContext {
+                ctx: &mut ctx,
+                hir_body,
+                bid,
+                local_map: HashMap::new(),
+            };
+
+            body_ctx.build();
         }
 
         ctx.ir
     }
 
-    pub fn build_body(&mut self, hir_body: &hir::SpecializedBody) -> Bid {
+    pub fn build_body(
+        &mut self,
+        hir_body_id: hir::SpecializedBodyId,
+        hir_body: &hir::SpecializedBody,
+    ) -> Bid {
         let locals = if hir_body.is_extern {
             Vec::new()
         } else {
             Vec::with_capacity(hir_body.input.len() + hir_body.locals.len())
         };
 
-        let mut body = Body {
+        let body = Body {
             name: Some(hir_body.name.clone()),
             attrs: hir_body.attrs.clone(),
             is_extern: hir_body.is_extern,
@@ -41,73 +67,82 @@ impl<'a> BuildContext<'a> {
             span: hir_body.span,
         };
 
-        let mut body_ctx = BodyBuildContext {
-            ctx: self,
-            body: &mut body,
-            hir_body,
-            local_map: HashMap::new(),
-        };
-
-        body_ctx.build();
-
-        self.ir.bodies.insert(body)
+        let bid = self.ir.bodies.insert(body);
+        self.bid_map.insert(hir_body_id, bid);
+        bid
     }
 }
 
 struct BodyBuildContext<'a, 'b> {
     ctx: &'a mut BuildContext<'b>,
-    body: &'a mut Body,
     hir_body: &'a hir::SpecializedBody,
+    bid: Bid,
     /// Map between HIR locals and ANF locals.
     local_map: HashMap<hir::LocalId, Local>,
 }
 
 impl<'a, 'b> BodyBuildContext<'a, 'b> {
+    pub fn body_mut(&mut self) -> &mut Body {
+        &mut self.ctx.ir.bodies[self.bid]
+    }
+
+    pub fn body(&self) -> &Body {
+        &self.ctx.ir.bodies[self.bid]
+    }
+
+    pub fn body_output(&self) -> Tid {
+        self.body().output
+    }
+
+    pub fn add_expr(&mut self, expr: Expr) {
+        self.body_mut().exprs.push(expr);
+    }
+
     pub fn build(&mut self) {
         // arguments are the first N locals.
         for arg in &self.hir_body.input {
             let tid = self.ctx.ir.types.insert(arg.ty.clone());
-            self.body.locals.push(tid);
+            self.body_mut().locals.push(tid);
         }
 
         // build exprs after allocating arguments.
         if let Some(hir_expr) = &self.hir_body.expr {
             let expr_value = self.build_expr(hir_expr);
-            self.body.exprs.push(Expr {
+            self.add_expr(Expr {
                 kind: ExprKind::Return { val: expr_value },
-                ty: self.body.output,
+                ty: self.body_output(),
                 span: hir_expr.span,
             })
         } else {
-            let none_value = self.next_local(self.body.output);
+            let none_value = self.next_local(self.body_output());
 
             // If there is no expression, we still need to return a unit value.
-            self.body.exprs.push(Expr {
+            self.add_expr(Expr {
                 kind: ExprKind::TagInit {
                     dst: none_value,
                     tag: Tag::NONE,
                 },
-                ty: self.body.output,
+                ty: self.body_output(),
                 span: self.hir_body.span,
             });
 
-            self.body.exprs.push(Expr {
+            self.add_expr(Expr {
                 kind: ExprKind::Return {
                     val: Value::Local(none_value),
                 },
-                ty: self.body.output,
+                ty: self.body_output(),
                 span: self.hir_body.span,
             });
         }
     }
 
-    pub fn prev_local(&self) -> Local {
-        Local(self.body.locals.len() - 1)
+    pub fn prev_local(&mut self) -> Local {
+        Local(self.body_mut().locals.len() - 1)
     }
 
     pub fn next_local(&mut self, tid: Tid) -> Local {
-        let local = Local(self.body.locals.len());
-        self.body.locals.push(tid);
+        let local = Local(self.body_mut().locals.len());
+        self.body_mut().locals.push(tid);
         local
     }
 
@@ -130,7 +165,7 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
                 let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
                 let local = self.next_local(tid);
 
-                self.body.exprs.push(Expr {
+                self.add_expr(Expr {
                     kind: ExprKind::TagInit { dst: local, tag: v },
                     ty: tid,
                     span: hir_expr.span,
@@ -143,8 +178,28 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
             hir::ExprKind::Tag(_, _) => {
                 todo!()
             }
-            hir::ExprKind::Func(_) => {
-                todo!()
+            hir::ExprKind::Func(bid) => {
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+                let local = self.next_local(tid);
+
+                // bid is of type BodyId and needs to be casted to SpecializedBodyId
+                let bid = SpecializedBodyId(bid.0);
+
+                // Smack lamda into local
+                self.add_expr(Expr {
+                    kind: ExprKind::Closure {
+                        dst: local,
+                        func: *self
+                            .ctx
+                            .bid_map
+                            .get(&bid)
+                            .expect("Body ID not found in map"),
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                Value::Local(local)
             }
             hir::ExprKind::Array(_) => {
                 todo!()
@@ -165,7 +220,7 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
                 let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
                 let val = self.build_expr(arg);
                 let local = self.next_local(tid);
-                self.body.exprs.push(Expr {
+                self.add_expr(Expr {
                     kind: ExprKind::Unary {
                         op: op.into(),
                         dst: local,
@@ -182,7 +237,7 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
                 let lhs = self.build_expr(lhs);
                 let rhs = self.build_expr(rhs);
                 let local = self.next_local(tid);
-                self.body.exprs.push(Expr {
+                self.add_expr(Expr {
                     kind: ExprKind::Binary {
                         op: op.into(),
                         dst: local,
@@ -195,8 +250,28 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
 
                 Value::Local(local)
             }
-            hir::ExprKind::Call(_, _) => {
-                todo!()
+            hir::ExprKind::Call(ref lhs, ref rhs) => {
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+
+                let Value::Local(lhs) = self.build_expr(lhs) else {
+                    panic!("Expected a local value for function call, found: {:?}", lhs);
+                };
+
+                let rhs = self.build_expr(rhs);
+
+                let local = self.next_local(tid);
+
+                self.add_expr(Expr {
+                    kind: ExprKind::Call {
+                        dst: local,
+                        src: lhs,
+                        arg: rhs,
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                Value::Local(local)
             }
             hir::ExprKind::Lambda { .. } => {
                 todo!()
@@ -209,7 +284,7 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
                 let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
                 let rhs = self.build_expr(rhs);
 
-                self.body.exprs.push(Expr {
+                self.add_expr(Expr {
                     kind: ExprKind::Mov {
                         dst: local,
                         src: rhs,
@@ -220,7 +295,7 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
 
                 let none_value = self.next_local(tid);
 
-                self.body.exprs.push(Expr {
+                self.add_expr(Expr {
                     kind: ExprKind::TagInit {
                         dst: none_value,
                         tag: Tag::NONE,
@@ -252,7 +327,7 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
 
                 let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
                 let expr_value = self.build_expr(expr.as_ref());
-                self.body.exprs.push(Expr {
+                self.add_expr(Expr {
                     kind: ExprKind::Mov {
                         dst: local,
                         src: expr_value,
@@ -262,7 +337,7 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
                 });
 
                 let none_value = self.next_local(tid);
-                self.body.exprs.push(Expr {
+                self.add_expr(Expr {
                     kind: ExprKind::TagInit {
                         dst: none_value,
                         tag: Tag::NONE,
@@ -283,7 +358,7 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
                 if last_value.is_none() {
                     // If the block is empty, we need to return a unit value.
                     let local = self.next_local(block_tid);
-                    self.body.exprs.push(Expr {
+                    self.add_expr(Expr {
                         kind: ExprKind::TagInit {
                             dst: local,
                             tag: Tag::NONE,
