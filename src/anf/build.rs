@@ -1,7 +1,7 @@
-use crate::anf::{Bid, Body, Expr, ExprKind, Local, Program, Tid, Type, Value};
+use crate::anf::{Arm, Bid, Body, Expr, ExprKind, Local, Program, Tid, Type, Value};
 use crate::hir2 as hir;
-use crate::hir2::{Binding, SpecializedBodyId};
-use solve::Tag;
+use crate::hir2::{Binding, Pattern, SpecializedBodyId};
+use solve::{Tag, Tags};
 use std::collections::HashMap;
 
 pub struct BuildContext<'a> {
@@ -37,6 +37,7 @@ impl<'a> BuildContext<'a> {
                 hir_body,
                 bid,
                 local_map: HashMap::new(),
+                alt_block: None,
             };
 
             body_ctx.build();
@@ -79,6 +80,7 @@ struct BodyBuildContext<'a, 'b> {
     bid: Bid,
     /// Map between HIR locals and ANF locals.
     local_map: HashMap<hir::LocalId, Local>,
+    alt_block: Option<Vec<Expr>>,
 }
 
 impl<'a, 'b> BodyBuildContext<'a, 'b> {
@@ -95,6 +97,11 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
     }
 
     pub fn add_expr(&mut self, expr: Expr) {
+        if let Some(alt_block) = &mut self.alt_block {
+            alt_block.push(expr);
+            return;
+        }
+
         self.body_mut().exprs.push(expr);
     }
 
@@ -175,8 +182,32 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
             }
             hir::ExprKind::String(v) => Value::String(v),
             hir::ExprKind::Local(local) => Value::Local(self.build_expr_local(hir_expr, local)),
-            hir::ExprKind::Tag(_, _) => {
-                todo!()
+            hir::ExprKind::Tag(ref tag, ref expr) => {
+                // Construct union with one case, if expr is a union append the case.
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+                let local = self.next_local(tid);
+                let expr_value = self.build_expr(expr);
+                let ty = &self.ctx.ir.types[tid];
+
+                let mut tags = Tags::new();
+
+                for term in &ty.terms {
+                    tags.union(&term.tags);
+                }
+
+                tags.insert(*tag);
+
+                self.add_expr(Expr {
+                    kind: ExprKind::UnionInit {
+                        dst: local,
+                        val: expr_value,
+                        union: tags,
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                Value::Local(local)
             }
             hir::ExprKind::Func(bid) => {
                 let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
@@ -309,14 +340,134 @@ impl<'a, 'b> BodyBuildContext<'a, 'b> {
             hir::ExprKind::Ref(_) => {
                 todo!()
             }
-            hir::ExprKind::Match(_, _) => {
-                todo!()
+            hir::ExprKind::Match(ref expr, ref body) => {
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+                let local = self.next_local(tid); // return value
+                let target = self.build_expr(expr);
+
+                let mut anf_arms: Vec<(Tag, Arm)> = Vec::with_capacity(body.arms.len());
+
+                for arm in &body.arms {
+                    let arm_exprs = Vec::new();
+                    self.alt_block = Some(arm_exprs);
+
+                    let Pattern::Tag { tag, binding, .. } = &arm.pattern;
+                    let arm_local = match binding {
+                        Binding::Wild { .. } => Local(0),
+                        Binding::Tuple { .. } => todo!(),
+                        Binding::Bind { local, .. } => self.build_expr_local(expr, *local),
+                    };
+
+                    let arm_value = self.build_expr(&arm.body);
+
+                    let arm_exprs = self.alt_block.take().unwrap();
+                    self.add_expr(Expr {
+                        kind: ExprKind::Mov {
+                            dst: local,
+                            src: arm_value,
+                        },
+                        ty: tid,
+                        span: arm.body.span,
+                    });
+
+                    anf_arms.push((
+                        *tag,
+                        Arm {
+                            local: arm_local,
+                            body: arm_exprs,
+                        },
+                    ));
+                }
+
+                let mut default_arm: Option<Box<Arm>> = None;
+
+                if let Some((binding, body_expr)) = &body.default.as_deref() {
+                    let arm_local = match binding {
+                        Binding::Wild { .. } => Local(0),
+                        Binding::Tuple { .. } => todo!(),
+                        Binding::Bind { local, .. } => self.build_expr_local(expr, *local),
+                    };
+
+                    let arm_exprs = Vec::new();
+                    self.alt_block = Some(arm_exprs);
+                    let arm_value = self.build_expr(body_expr);
+                    let arm_exprs = self.alt_block.take().unwrap();
+                    self.add_expr(Expr {
+                        kind: ExprKind::Mov {
+                            dst: local,
+                            src: arm_value,
+                        },
+                        ty: tid,
+                        span: body_expr.span,
+                    });
+
+                    default_arm = Some(Box::new(Arm {
+                        local: arm_local,
+                        body: arm_exprs,
+                    }));
+                }
+
+                self.add_expr(Expr {
+                    kind: ExprKind::Match {
+                        dst: local,
+                        target,
+                        arms: anf_arms,
+                        default: default_arm,
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                Value::Local(local)
             }
-            hir::ExprKind::Loop(_) => {
-                todo!()
+            hir::ExprKind::Loop(ref expr) => {
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+                let local = self.next_local(tid);
+                let exprs = Vec::new();
+                self.alt_block = Some(exprs);
+
+                self.build_expr(expr);
+
+                let exprs = self.alt_block.take().unwrap();
+
+                self.add_expr(Expr {
+                    kind: ExprKind::Loop {
+                        dst: local,
+                        body: exprs,
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                Value::Local(local)
             }
-            hir::ExprKind::Break(_) => {
-                todo!()
+            hir::ExprKind::Break(ref expr) => {
+                let tid = self.ctx.ir.types.insert(hir_expr.ty.clone());
+
+                let value = if let Some(expr) = expr {
+                    self.build_expr(expr)
+                } else {
+                    let local = self.next_local(tid);
+                    self.add_expr(Expr {
+                        kind: ExprKind::TagInit {
+                            dst: local,
+                            tag: Tag::NONE,
+                        },
+                        ty: tid,
+                        span: hir_expr.span,
+                    });
+                    Value::Local(local)
+                };
+
+                self.add_expr(Expr {
+                    kind: ExprKind::Break {
+                        value: Some(value.clone()),
+                    },
+                    ty: tid,
+                    span: hir_expr.span,
+                });
+
+                value
             }
             hir::ExprKind::Let(ref binding, ref expr) => {
                 let local = match binding {
