@@ -1,16 +1,261 @@
+// Comprehensive BRAD syntax test file
+#![inline]
+
+// Module-level imports
+import std::io
+import std::debug
 import std::list
 
-fn foo (x: int) -> float {
-  0.0
+// Module-level attributes
+#[inline]
+#[deprecated]
+
+// Type declarations
+type error<'a> = 'a
+
+type Option<'T> = 'T | none
+
+type Result<'T, 'E> = 'T | error<'E>
+
+type Point = { x: int; y: int }
+
+type Tree<'T> = { value: 'T; left: Tree<'T> | none; right: Tree<'T> | none }
+
+// Array types
+type IntArray = [int]
+
+// Tuple types  
+type Coord = int & float & str
+
+// Reference and task types
+type RefInt = ref 'a
+
+// Never type
+type Never = !
+
+// Alias declarations
+alias node = { left: node | none; right: node | none }
+
+alias my_int<'a> = int
+
+// External declarations
+extern type CString
+
+extern fn malloc (size: int) -> ref int
+
+extern fn free (ptr: ref int) -> none
+
+// Function declarations with various signatures
+
+// Simple function with no arguments
+fn simple -> int {
+    42
 }
 
-fn bar x y => x * y 
+// Function with single argument
+fn increment (x: int) -> int {
+    x + 1
+}
 
-fn main {
-    let x = 10
-    let y = "Super cool string"
-    let z = 10.0 |> bar <| 20.0
-    match z
-      | float as a => a
-      | int   as b => foo b
+// Function with multiple arguments
+fn add (x: int) (y: int) -> int {
+    x + y
+}
+
+// Function with generics
+fn identity<'T> (x: 'T) -> 'T {
+    x
+}
+
+// Function with complex types
+fn process<'T, 'E> (input: 'T | error<'E>) -> 'T {
+    match input
+    | error as e => panic <| debug::format e
+    | _ as value => value
+}
+
+// Arrow function syntax
+fn multiply (x: int) (y: int) => x * y
+
+// Function with all expression types
+fn comprehensive_test (input: int) -> int {
+    // Let bindings
+    let simple_var = 42
+    let mut mutable_var: int = 0
+    let (tuple_a, tuple_b) = 1, 2
+    let typed_var: float = 3.14
+
+    // Assignment
+    mutable_var = 100
+
+    // Arithmetic expressions
+    let arithmetic = 1 + 2 * 3 / 4 % 5 - 6
+
+    // Bitwise operations
+    let bitwise = 0xFF & 0xAA | 0x55 ^ 0x0F
+    let shifts = 8 << 2 >> 1
+
+    // Comparisons
+    let comparisons = (1 < 2) && (3 <= 4) && (5 > 6) && (7 >= 8)
+    let equality = (9 == 10) || (11 != 12)
+
+    // Unary operations
+    let unary = !true
+    let negation = -42
+    let bitwise_not = ~0xFF
+    let dereference = *some_ref
+    let reference = ref mutable_var
+
+    // Function calls
+    let result1 = increment 10
+    let result2 = add 5 3
+    let result3 = identity<int> 42
+
+    // Pipe operators
+    let piped = 10 |> increment |> multiply 2
+    let reverse_piped = multiply 3 <| increment <| 5
+
+    // Access expressions
+    let field_access = point.x
+    let array_access = array[0]
+    let nested_access = tree.left.value
+
+    // Control flow - if expressions
+    // let conditional = if input > 0 -> "positive"
+    
+    // let if_else = if input == 0 {
+    //     "zero"
+    // } else if input > 0 {
+    //     "positive"
+    // } else {
+    //     "negative"
+    // }
+
+    // Match expressions
+    // let matched = match input
+    // | 0 => "zero"
+    // | 1 => "one"
+    // | n => "many"
+
+    let type_match = match some_value
+    | int as i => i * 2
+    | str as s => s.length
+    | true => 1
+    | false => 0
+    | none => -1
+
+    // Loop expressions
+    let loop_result = loop {
+        match condition
+        | true => break 42
+        | false => continue
+    }
+
+    // Return expressions
+    // if input < 0 {
+    //     return -1
+    // }
+
+    // Data structures
+    
+    // Lists (semicolon separated)
+    let empty_list = []
+    let int_list = [1; 2; 3; 4; 5]
+    let mixed_list = [
+        first_item
+        second_item
+        third_item
+    ]
+
+    // Tuples (comma separated)
+    let pair = 1, 2
+    let triple = "a", 1.0, true
+    let no_trailing_comma = 1, 2, 3
+
+    // Records (semicolon separated fields)
+    let empty_record = {}
+    let point = { x: 10; y: 20 }
+    let person = { 
+        name: "Alice"
+        age: 30
+        active: true
+    }
+
+    // Parenthesized expressions
+    let grouped = (1 + 2) * (3 + 4)
+
+    // Block expressions
+    let block_result = {
+        let temp = 10
+        temp * 2
+    }
+
+    // Literals
+    let string_lit = "Hello, world!"
+    let int_lit = 42
+    let float_lit = 3.14159
+    let bool_true = true
+    let bool_false = false
+    let none_value = none
+
+    // Complex nested expression
+    let complex = match some_option
+    | some as value => {
+        let processed = value |> transform |> validate
+        // if processed.is_valid {
+        //     processed.result
+        // } else {
+        //     default_value
+        // }
+        match processed.is_valid
+        | true => processed.result
+        | false => default_value
+    }
+    | none => fallback_function <| default_params
+
+    // Final result
+    input + 1
+}
+
+// Pattern matching examples
+fn pattern_examples<'T> (value: 'T) -> str {
+    match value
+    | int as i => "integer"
+    | float as f => "floating point"
+    | str as s => "string"
+    | true => "true boolean"
+    | false => "false boolean" 
+    | none => "none value"
+    | error as e => "error case"
+    | _ as other => "unknown type"
+}
+
+// Binding patterns
+fn binding_examples -> none {
+    let simple = 42
+    let mut mutable = 0
+    let (a, b, c) = get_triple
+    let (first, rest) = get_pair
+}
+
+// Complex generics example
+fn complex_generics<'A, 'B, 'C> (f: 'A -> 'B)  (g: 'B -> 'C) (value: 'A) -> 'C  {
+    value |> f |> g
+}
+
+// Main function
+fn main -> none {
+    let test_input = 42
+    let result = comprehensive_test test_input
+    
+    std::io::println "Testing BRAD syntax"
+    std::debug::print<int> result
+    
+    // Test all control structures
+    loop {
+        match get_input
+        | quit => break
+        | continue => continue  
+        | value => process_value value
+    }
 }
