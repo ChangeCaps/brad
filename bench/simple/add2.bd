@@ -1,0 +1,7 @@
+fn add x y {
+  x + y
+}
+
+fn main -> int {
+  add 1 2
+}
