@@ -116,30 +116,15 @@ fn execute_v2(cmd: &PipelineV2Cmd, sources: &mut Sources) -> Result<(), Report> 
             let hir = compiler.lower2(&mut rep).map_err(|_| rep.clone())?;
             let spec = crate::anf::spec::specialize(&hir, entrypoint.as_str());
             let anf = crate::anf::BuildContext::build(&spec);
-            println!("ANF: {:#?}", anf);
+            println!("{:#?}", anf);
 
-            let output_file_name = default_output_file.unwrap_or("a");
-            let output_obj_path = format!("{}.o", output_file_name);
-            let output_asm_path = format!("{}.asm", output_file_name);
-            let output_elf_path = format!("{}", output_file_name);
+            let output_asm_path = default_output_file.unwrap_or("out.asm");
 
-            let file = File::create(&output_asm_path).expect("failed to create file");
+            let file = File::create(output_asm_path).expect("failed to create file");
             let writer = BufWriter::new(file);
 
             let mut builder = crate::x86::build::Builder::new(anf, writer);
             builder.build();
-
-            // nasm -o out.o -f elf64 out.asm
-            // ld -m elf_x86_64 -o out.elf out.o
-
-            Command::new("nasm")
-                .args(["-o", &output_obj_path, "-f", "elf64", &output_asm_path])
-                .output()
-                .expect("failed to assemble");
-            Command::new("ld")
-                .args(["-m", "elf_x86_64", "-o", &output_elf_path, &output_obj_path])
-                .output()
-                .expect("failed to link");
 
             Ok(())
         }
